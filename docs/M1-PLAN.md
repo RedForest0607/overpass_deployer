@@ -27,8 +27,8 @@
 - [~] jar 파일이 bastion에서 VM으로 전송된다
 - [~] 동일한 jar 재전송 시 SHA256 비교 후 skip 된다
 - [~] `application.yml`, `logback.xml`이 VM에 배포된다
-- [~] `start.sh`, `stop.sh`가 템플릿으로부터 렌더링되어 VM에 배포된다
-- [~] 배포된 `start.sh`, `stop.sh`에 실행 권한(+x)이 부여된다
+- [~] `server.sh start|stop` 실행 모델을 따르는 서버 제어 스크립트가 템플릿으로부터 렌더링되어 VM에 배포된다
+- [~] 배포된 서버 제어 스크립트에 실행 권한(+x)이 부여된다
 - [~] 각 단계가 `HH:MM:SS LEVEL [host] message` 형식으로 로그 출력된다
 
 ---
@@ -193,10 +193,12 @@ out, err = client.Run("ls /none")      // err != nil
 
 - [x] `templates/start.sh.tmpl`
   - [x] 변수: `AppName`, `JarPath`, `BaseDir`, `Port`, `JvmMin`, `JvmMax`, `ExtraOpts`
+  - [x] `server.sh start` 실행 모델 지원
   - [x] 이미 실행 중이면 종료 (PID 파일 + kill -0 확인)
   - [x] `nohup java ... &` + PID 파일 저장
 
 - [x] `templates/stop.sh.tmpl`
+  - [x] `server.sh stop` 실행 모델 지원
   - [x] PID 파일 없음 처리
   - [x] `kill ${PID}` + PID 파일 삭제
   - [x] stale PID 처리
