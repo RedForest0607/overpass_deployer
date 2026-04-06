@@ -1,0 +1,36 @@
+ssh:
+  user: deploy
+  key_path: ~/.ssh/id_rsa
+  host_key_checking: accept-new
+  port: 22
+  timeout_sec: 30
+
+bastion:
+  host: bastion.example.com
+  alias_user: ec2-user
+
+servers:
+  - host: 10.0.1.10
+    name: app-prod-a
+    app:
+      name: sample-api
+      base_dir: /opt/sample-api
+      port: 8080
+      extra_opts:
+        - --spring.profiles.active=prod
+      jar:
+        local_path: ./dist/sample-api.jar
+        remote_path: /opt/sample-api/bin/sample-api.jar
+      jvm:
+        min_heap: 256m
+        max_heap: 1g
+        java_opts:
+          - -Dfile.encoding=UTF-8
+      config_files:
+        - local: ./configs/application-prod.yml
+          remote: /opt/sample-api/config/application.yml
+        - local: ./configs/logback.xml
+          remote: /opt/sample-api/config/logback.xml
+      script:
+        template: ""
+        remote_dir: /opt/sample-api/scripts

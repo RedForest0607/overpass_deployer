@@ -2,6 +2,7 @@ package config
 
 type Config struct {
 	SSH     SSHConfig      `yaml:"ssh"`
+	Bastion BastionConfig  `yaml:"bastion"`
 	Servers []ServerConfig `yaml:"servers"`
 }
 
@@ -12,6 +13,19 @@ type SSHConfig struct {
 	HostKeyChecking string `yaml:"host_key_checking"`
 	Port            int    `yaml:"port"`
 	TimeoutSec      int    `yaml:"timeout_sec"`
+}
+
+type BastionConfig struct {
+	Host             string `yaml:"host"`
+	User             string `yaml:"user"`
+	KeyPath          string `yaml:"key_path"`
+	KnownHosts       string `yaml:"known_hosts_path"`
+	HostKeyChecking  string `yaml:"host_key_checking"`
+	Port             int    `yaml:"port"`
+	TimeoutSec       int    `yaml:"timeout_sec"`
+	AliasUser        string `yaml:"alias_user"`
+	SSHConfigPath    string `yaml:"ssh_config_path"`
+	TargetKnownHosts string `yaml:"target_known_hosts_path"`
 }
 
 type ServerConfig struct {
@@ -75,4 +89,33 @@ func (c *AppConfig) ToScriptData() ScriptData {
 		JavaOpts:  c.Jvm.JavaOpts,
 		ExtraOpts: c.ExtraOpts,
 	}
+}
+
+func (c BastionConfig) Enabled() bool {
+	return c.Host != ""
+}
+
+func (c BastionConfig) SSHSettings(base SSHConfig) SSHConfig {
+	sshCfg := base
+
+	if c.User != "" {
+		sshCfg.User = c.User
+	}
+	if c.KeyPath != "" {
+		sshCfg.KeyPath = c.KeyPath
+	}
+	if c.KnownHosts != "" {
+		sshCfg.KnownHosts = c.KnownHosts
+	}
+	if c.HostKeyChecking != "" {
+		sshCfg.HostKeyChecking = c.HostKeyChecking
+	}
+	if c.Port != 0 {
+		sshCfg.Port = c.Port
+	}
+	if c.TimeoutSec != 0 {
+		sshCfg.TimeoutSec = c.TimeoutSec
+	}
+
+	return sshCfg
 }

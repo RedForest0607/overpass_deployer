@@ -1,4 +1,72 @@
-PROGRESS.md
-TEST/
-.serena
+# =========================
+# macOS
+# =========================
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.Spotlight-V100
+.Trashes
+
+# =========================
+# Visual Studio Code
+# =========================
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+.history/
+
+# =========================
+# Environment Variables & Secrets
+# (Codex API 키 등 보안 정보 보호)
+# =========================
+.env
+.env.local
+.env.*.local
+*.pem
+secrets.json
+
+# =========================
+# Go
+# =========================
+# 빌드된 바이너리 및 라이브러리
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+bin/
+
+# 테스트 바이너리, 프로파일링 및 커버리지 결과물
+*.test
+*.out
+*.prof
+*.cov
+coverage.out
+coverage.html
+
+# CGO 생성 파일
+_obj/
+_cgo_defun.c
+_cgo_gotypes.go
+_cgo_export.*
+
+# Go 워크스페이스 로컬 설정 파일
+go.work
+go.work.sum
+
+# 캐시
+.gocache
+.cache
+
+# 빌드 및 codex
 deploy
+AGENTS.md
+PROGRESS.md
+
+# 테스트 관련 파일
+TEST

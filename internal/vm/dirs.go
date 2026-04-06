@@ -9,13 +9,15 @@ import (
 	"go-deployer/pkg/logger"
 )
 
-func CreateDirectories(runner ssh.Runner, app *config.AppConfig) error {
-	host := runner.Host()
-	logger.Info(host, "Creating directories in %s...", app.BaseDir)
+func CreateDirectories(runner ssh.Runner, app *config.AppConfig, opts RunOptions, host string) error {
+	host = runnerHost(runner, host)
+	logger.Info(host, "%s directories in %s...", actionLabel(opts, "creating"), app.BaseDir)
 
 	baseDir := ssh.ShellQuote(app.BaseDir)
 	setupCmd := fmt.Sprintf("mkdir -p %s && chown -R $(whoami) %s", baseDir, baseDir)
-	if _, err := runner.RunSudo(setupCmd); err != nil {
+	if opts.DryRun {
+		logger.Info(host, "DRY-RUN: would try sudo setup command: %s", setupCmd)
+	} else if _, err := runner.RunSudo(setupCmd); err != nil {
 		logger.Warn(host, "Failed to run sudo mkdir, falling back to normal mkdir: %v", err)
 	}
 
@@ -29,11 +31,15 @@ func CreateDirectories(runner ssh.Runner, app *config.AppConfig) error {
 
 	for _, dir := range dirs {
 		cmd := fmt.Sprintf("mkdir -p %s", ssh.ShellQuote(dir))
+		if opts.DryRun {
+			logger.Info(host, "DRY-RUN: would run %s", cmd)
+			continue
+		}
 		if _, err := runner.Run(cmd); err != nil {
 			return fmt.Errorf("creating directory %s: %w", dir, err)
 		}
 	}
 
-	logger.Ok(host, "Created directories")
+	logger.Ok(host, "%s directories", resultLabel(opts, "created", "planned"))
 	return nil
 }

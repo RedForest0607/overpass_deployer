@@ -148,6 +148,133 @@ func TestValidateAndApplyDefaultsStrictRequiresKnownHostsFile(t *testing.T) {
 	}
 }
 
+func TestValidateAndApplyDefaultsAppliesBastionDefaults(t *testing.T) {
+	keyPath := writeTempFile(t, "id_rsa", "key")
+	jarPath := writeTempFile(t, "app.jar", "jar")
+
+	cfg := &Config{
+		SSH: SSHConfig{
+			User:    "ec2-user",
+			KeyPath: keyPath,
+		},
+		Bastion: BastionConfig{
+			Host: "bastion.example.com",
+		},
+		Servers: []ServerConfig{
+			{
+				Host: "10.0.0.10",
+				Name: "app-a",
+				App: AppConfig{
+					Name:    "sample",
+					BaseDir: "/opt/sample",
+					Port:    8080,
+					Jar: JarConfig{
+						LocalPath:  jarPath,
+						RemotePath: "/opt/sample/bin/app.jar",
+					},
+				},
+			},
+		},
+	}
+
+	if err := ValidateAndApplyDefaults(cfg); err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+
+	if cfg.Bastion.User != "ec2-user" {
+		t.Fatalf("expected bastion user to default from ssh.user, got %q", cfg.Bastion.User)
+	}
+	if cfg.Bastion.AliasUser != "ec2-user" {
+		t.Fatalf("expected bastion alias user to default from ssh.user, got %q", cfg.Bastion.AliasUser)
+	}
+	if cfg.Bastion.SSHConfigPath == "" {
+		t.Fatal("expected bastion ssh config path to be defaulted")
+	}
+	if cfg.Bastion.TargetKnownHosts == "" {
+		t.Fatal("expected bastion target known_hosts path to be defaulted")
+	}
+}
+
+func TestValidateAndApplyDefaultsRejectsInvalidBastionAliasName(t *testing.T) {
+	keyPath := writeTempFile(t, "id_rsa", "key")
+	jarPath := writeTempFile(t, "app.jar", "jar")
+
+	cfg := &Config{
+		SSH: SSHConfig{
+			User:    "deploy",
+			KeyPath: keyPath,
+		},
+		Bastion: BastionConfig{
+			Host: "bastion.example.com",
+		},
+		Servers: []ServerConfig{
+			{
+				Host: "app.example.com",
+				Name: "bad alias",
+				App: AppConfig{
+					Name:    "sample",
+					BaseDir: "/opt/sample",
+					Port:    8080,
+					Jar: JarConfig{
+						LocalPath:  jarPath,
+						RemotePath: "/opt/sample/bin/app.jar",
+					},
+				},
+			},
+		},
+	}
+
+	err := ValidateAndApplyDefaults(cfg)
+	if err == nil || !strings.Contains(err.Error(), "servers[0].name must contain only letters, numbers, dots, hyphens, or underscores") {
+		t.Fatalf("expected bastion alias validation error, got %v", err)
+	}
+}
+
+func TestValidateAndApplyDefaultsRejectsDuplicateServerNames(t *testing.T) {
+	keyPath := writeTempFile(t, "id_rsa", "key")
+	jarPath := writeTempFile(t, "app.jar", "jar")
+
+	cfg := &Config{
+		SSH: SSHConfig{
+			User:    "deploy",
+			KeyPath: keyPath,
+		},
+		Servers: []ServerConfig{
+			{
+				Host: "app-a.example.com",
+				Name: "app",
+				App: AppConfig{
+					Name:    "sample-a",
+					BaseDir: "/opt/sample-a",
+					Port:    8080,
+					Jar: JarConfig{
+						LocalPath:  jarPath,
+						RemotePath: "/opt/sample-a/bin/app.jar",
+					},
+				},
+			},
+			{
+				Host: "app-b.example.com",
+				Name: "app",
+				App: AppConfig{
+					Name:    "sample-b",
+					BaseDir: "/opt/sample-b",
+					Port:    8081,
+					Jar: JarConfig{
+						LocalPath:  jarPath,
+						RemotePath: "/opt/sample-b/bin/app.jar",
+					},
+				},
+			},
+		},
+	}
+
+	err := ValidateAndApplyDefaults(cfg)
+	if err == nil || !strings.Contains(err.Error(), `server name "app" must be unique`) {
+		t.Fatalf("expected duplicate server name validation error, got %v", err)
+	}
+}
+
 func writeTempFile(t *testing.T, pattern, content string) string {
 	t.Helper()
 

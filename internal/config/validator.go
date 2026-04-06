@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -60,6 +61,7 @@ func validateHostKeyCheckingMode(mode string, errs *[]string) string {
 
 func ValidateAndApplyDefaults(cfg *Config) error {
 	var errs []string
+	aliasNames := make(map[string]int, len(cfg.Servers))
 
 	checkUnresolvedEnv := func(val string, fieldName string) {
 		if strings.Contains(val, "${") && strings.Contains(val, "}") {
@@ -100,6 +102,9 @@ func ValidateAndApplyDefaults(cfg *Config) error {
 			validateExistingFile(cfg.SSH.KnownHosts, "ssh.known_hosts_path", &errs)
 		}
 	}
+
+	// 1.1 Bastion Config
+	validateBastionConfig(cfg, &errs, checkUnresolvedEnv)
 
 	// 2. Server Configs
 	if len(cfg.Servers) == 0 {
@@ -189,6 +194,16 @@ func ValidateAndApplyDefaults(cfg *Config) error {
 		if s.Name == "" {
 			cfg.Servers[i].Name = s.Host
 		}
+		if !isValidBastionAlias(cfg.Servers[i].Name) {
+			errs = append(errs, prefix+".name must contain only letters, numbers, dots, hyphens, or underscores")
+		}
+		aliasNames[cfg.Servers[i].Name]++
+	}
+
+	for alias, count := range aliasNames {
+		if count > 1 {
+			errs = append(errs, fmt.Sprintf("server name %q must be unique", alias))
+		}
 	}
 
 	if len(errs) > 0 {
@@ -196,4 +211,107 @@ func ValidateAndApplyDefaults(cfg *Config) error {
 	}
 
 	return nil
+}
+
+var bastionAliasPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+
+func isValidBastionAlias(value string) bool {
+	return bastionAliasPattern.MatchString(strings.TrimSpace(value))
+}
+
+func validateBastionConfig(cfg *Config, errs *[]string, checkUnresolvedEnv func(string, string)) {
+	bastion := &cfg.Bastion
+	if !bastion.Enabled() {
+		for _, field := range []struct {
+			name  string
+			value string
+		}{
+			{name: "bastion.user", value: bastion.User},
+			{name: "bastion.host_key_checking", value: bastion.HostKeyChecking},
+			{name: "bastion.key_path", value: bastion.KeyPath},
+			{name: "bastion.known_hosts_path", value: bastion.KnownHosts},
+			{name: "bastion.alias_user", value: bastion.AliasUser},
+			{name: "bastion.ssh_config_path", value: bastion.SSHConfigPath},
+			{name: "bastion.target_known_hosts_path", value: bastion.TargetKnownHosts},
+		} {
+			if strings.TrimSpace(field.value) != "" {
+				*errs = append(*errs, field.name+" requires bastion.host")
+			}
+		}
+		if bastion.Port != 0 {
+			*errs = append(*errs, "bastion.port requires bastion.host")
+		}
+		if bastion.TimeoutSec != 0 {
+			*errs = append(*errs, "bastion.timeout_sec requires bastion.host")
+		}
+		return
+	}
+
+	checkUnresolvedEnv(bastion.Host, "bastion.host")
+	checkUnresolvedEnv(bastion.User, "bastion.user")
+	checkUnresolvedEnv(bastion.KeyPath, "bastion.key_path")
+	checkUnresolvedEnv(bastion.KnownHosts, "bastion.known_hosts_path")
+	checkUnresolvedEnv(bastion.AliasUser, "bastion.alias_user")
+	checkUnresolvedEnv(bastion.SSHConfigPath, "bastion.ssh_config_path")
+	checkUnresolvedEnv(bastion.TargetKnownHosts, "bastion.target_known_hosts_path")
+
+	if bastion.User == "" {
+		bastion.User = cfg.SSH.User
+	}
+	if bastion.User == "" {
+		*errs = append(*errs, "bastion.user is required")
+	}
+
+	if bastion.KeyPath == "" {
+		bastion.KeyPath = cfg.SSH.KeyPath
+	}
+	if bastion.KeyPath == "" {
+		*errs = append(*errs, "bastion.key_path is required")
+	} else {
+		bastion.KeyPath = expandHome(bastion.KeyPath)
+		validateExistingFile(bastion.KeyPath, "bastion.key_path", errs)
+	}
+
+	if bastion.Port == 0 {
+		bastion.Port = cfg.SSH.Port
+	}
+	validatePort(bastion.Port, "bastion.port", errs)
+
+	if bastion.TimeoutSec == 0 {
+		bastion.TimeoutSec = cfg.SSH.TimeoutSec
+	} else if bastion.TimeoutSec < 0 {
+		*errs = append(*errs, "bastion.timeout_sec must be zero or greater")
+	}
+
+	if bastion.HostKeyChecking == "" {
+		bastion.HostKeyChecking = cfg.SSH.HostKeyChecking
+	}
+	bastion.HostKeyChecking = validateHostKeyCheckingMode(bastion.HostKeyChecking, errs)
+	if bastion.HostKeyChecking != HostKeyInsecure {
+		if bastion.KnownHosts == "" {
+			bastion.KnownHosts = cfg.SSH.KnownHosts
+		}
+		if bastion.KnownHosts == "" {
+			bastion.KnownHosts = "~/.ssh/known_hosts"
+		}
+		bastion.KnownHosts = expandHome(bastion.KnownHosts)
+		if bastion.HostKeyChecking == HostKeyStrict {
+			validateExistingFile(bastion.KnownHosts, "bastion.known_hosts_path", errs)
+		}
+	}
+
+	if bastion.AliasUser == "" {
+		bastion.AliasUser = cfg.SSH.User
+	}
+	if strings.TrimSpace(bastion.AliasUser) == "" {
+		*errs = append(*errs, "bastion.alias_user is required")
+	}
+
+	if bastion.SSHConfigPath == "" {
+		bastion.SSHConfigPath = "~/.ssh/config"
+	}
+
+	if bastion.TargetKnownHosts == "" {
+		bastion.TargetKnownHosts = "~/.ssh/known_hosts"
+	}
 }

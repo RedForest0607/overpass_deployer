@@ -63,9 +63,17 @@ func (pw *progressWriter) Write(p []byte) (int, error) {
 	return n, nil
 }
 
+type TransferOptions struct {
+	DryRun bool
+	Host   string
+}
+
 // Transfer transfers a local file to a remote path via SFTP, skipping if the SHA256 checksum matches.
-func Transfer(client *ssh.Client, localPath, remotePath string) error {
-	host := client.Host()
+func Transfer(client *ssh.Client, localPath, remotePath string, opts TransferOptions) error {
+	host := opts.Host
+	if client != nil {
+		host = client.Host()
+	}
 	fileName := filepath.Base(localPath)
 
 	localInfo, err := os.Stat(localPath)
@@ -77,6 +85,15 @@ func Transfer(client *ssh.Client, localPath, remotePath string) error {
 	localHash, err := calculateLocalSHA256(localPath)
 	if err != nil {
 		return fmt.Errorf("calculating local sha256 for %s: %w", localPath, err)
+	}
+
+	if opts.DryRun {
+		logger.Info(host, "DRY-RUN: would compare local sha256 %s for %s against %s", localHash, fileName, remotePath)
+		logger.Info(host, "DRY-RUN: would upload %s to %s if checksum differs (%.1f MB)", fileName, remotePath, float64(localInfo.Size())/1024/1024)
+		return nil
+	}
+	if client == nil {
+		return fmt.Errorf("ssh client is required")
 	}
 
 	remoteHash, err := calculateRemoteSHA256(client, remotePath)
