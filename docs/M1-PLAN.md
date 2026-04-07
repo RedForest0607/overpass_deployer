@@ -20,16 +20,16 @@
 
 아래 조건을 모두 만족해야 M1 완료입니다.
 
-- [~] `deploy vm --config deploy.yml` 명령이 실행된다
-- [~] `deploy vm --dry-run --config deploy.yml` 명령이 원격 변경 없이 예상 작업을 출력한다
-- [~] SSH Key 인증으로 VM에 접속된다
-- [~] `{base_dir}/bin|config|scripts|logs|run` 5개 디렉토리가 VM에 생성된다
-- [~] jar 파일이 bastion에서 VM으로 전송된다
-- [~] 동일한 jar 재전송 시 SHA256 비교 후 skip 된다
-- [~] `application.yml`, `logback.xml`이 VM에 배포된다
-- [~] `server.sh start|stop` 실행 모델을 따르는 서버 제어 스크립트가 템플릿으로부터 렌더링되어 VM에 배포된다
-- [~] 배포된 서버 제어 스크립트에 실행 권한(+x)이 부여된다
-- [~] 각 단계가 `HH:MM:SS LEVEL [host] message` 형식으로 로그 출력된다
+- [x] `deploy vm --config deploy.yml` 명령이 실행된다
+- [x] `deploy vm --dry-run --config deploy.yml` 명령이 원격 변경 없이 예상 작업을 출력한다
+- [x] SSH Key 인증으로 VM에 접속된다
+- [x] `{base_dir}/bin|config|scripts|logs|run` 5개 디렉토리가 VM에 생성된다
+- [x] jar 파일이 bastion에서 VM으로 전송된다
+- [x] 동일한 jar 재전송 시 SHA256 비교 후 skip 된다
+- [x] `application.yml`, `logback.xml`이 VM에 배포된다
+- [x] `server.sh start|stop` 실행 모델을 따르는 서버 제어 스크립트가 템플릿으로부터 렌더링되어 VM에 배포된다
+- [x] 배포된 서버 제어 스크립트에 실행 권한(+x)이 부여된다
+- [x] 각 단계가 `HH:MM:SS LEVEL [host] message` 형식으로 로그 출력된다
 
 ---
 
@@ -257,34 +257,35 @@ out, err = client.Run("ls /none")      // err != nil
 
 ## Phase 8 — 통합 검증
 
-- [ ] 로컬 SSH 테스트 서버 구동
+- [x] 로컬 SSH 테스트 서버 구동
   ```bash
-  docker run -d -p 2222:22 \
-    -e PUBLIC_KEY="$(cat ~/.ssh/id_rsa.pub)" \
-    lscr.io/linuxserver/openssh-server:latest
+  podman build -t localhost/amazonlinux-sshd-test -f TEST/amazonlinux/Dockerfile TEST
+  podman run -d --name amazonlinux-sshd-test -p 2222:2222 \
+    -v ~/.ssh/id_rsa.pub:/tmp/authorized_keys/id_rsa.pub:ro \
+    localhost/amazonlinux-sshd-test:latest
   ```
 
-- [ ] **시나리오 1 — 최초 실행**
-  - [ ] 5개 디렉토리 생성 확인
-  - [ ] jar 전송 확인
-  - [ ] 설정 파일 2개 배포 확인
-  - [ ] start.sh / stop.sh 생성 + 실행 권한 확인
-  - [ ] start.sh 변수 치환 값 확인
+- [x] **시나리오 1 — 최초 실행**
+  - [x] 5개 디렉토리 생성 확인
+  - [x] jar 전송 확인
+  - [x] 설정 파일 2개 배포 확인
+  - [x] start.sh / stop.sh 생성 + 실행 권한 확인
+  - [x] start.sh 변수 치환 값 확인
 
-- [ ] **시나리오 2 — 재실행**
-  - [ ] jar SKIP 로그 출력
-  - [ ] 설정 파일 SKIP 로그 출력
+- [x] **시나리오 2 — 재실행**
+  - [x] jar SKIP 로그 출력
+  - [x] 설정 파일 SKIP 로그 출력
 
-- [ ] **시나리오 3 — dry-run**
-  - [ ] SSH/SFTP 연결 없이 단계별 예정 작업 로그 출력
-  - [ ] bastion alias/known_hosts 예정 작업만 출력
-  - [ ] 스크립트 렌더링용 임시 파일이 생성되지 않음
+- [x] **시나리오 3 — dry-run**
+  - [x] SSH/SFTP 연결 없이 단계별 예정 작업 로그 출력
+  - [x] bastion alias/known_hosts 예정 작업만 출력
+  - [x] 스크립트 렌더링용 임시 파일이 생성되지 않음
 
-- [ ] **시나리오 4 — 유효성 검증 실패**
-  - [ ] 모든 오류 한 번에 출력 후 종료
+- [x] **시나리오 4 — 유효성 검증 실패**
+  - [x] 모든 오류 한 번에 출력 후 종료
 
-- [ ] **시나리오 5 — SSH 연결 실패**
-  - [ ] 명확한 오류 메시지 출력
+- [x] **시나리오 5 — SSH 연결 실패**
+  - [x] 명확한 오류 메시지 출력
 
 ---
 
@@ -299,8 +300,8 @@ out, err = client.Run("ls /none")      // err != nil
 ## M2로 넘어가기 전 최종 체크
 
 - [ ] Phase 0 ~ 8 모든 항목 완료
-- [ ] 통합 검증 시나리오 1 ~ 4 통과
-- [ ] dry-run 통합 검증 시나리오 통과
+- [x] 통합 검증 시나리오 1 ~ 4 통과
+- [x] dry-run 통합 검증 시나리오 통과
 - [x] 단위 테스트 전부 통과
 - [x] `go vet ./...` 경고 없음
 - [ ] `TODO(M2)` 주석이 코드에 적절히 표시됨
@@ -316,3 +317,4 @@ out, err = client.Run("ls /none")      // err != nil
 | 2026-04-06 | 핵심 배포 경로는 구현되었지만 통합 검증, 일부 CLI 요구사항, 일부 테스트가 남아 있음 | 진행 중 |
 | 2026-04-06 | `deploy docker` placeholder, 예시 설정 파일, 누락 테스트 2종을 추가함 | 진행 중 |
 | 2026-04-06 | `deploy vm --dry-run --config ...` 경로와 관련 테스트를 M1 범위로 반영함 | 진행 중 |
+| 2026-04-06 | Podman 기반 TEST 이미지로 통합 검증 재수행 | 시나리오 1~5 및 bastion alias/known_hosts 등록까지 확인 완료 |
