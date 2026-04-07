@@ -116,6 +116,17 @@ func ValidateAndApplyDefaults(cfg *Config) error {
 		if s.Host == "" {
 			errs = append(errs, prefix+".host is required")
 		}
+		if s.SSHPort == 0 {
+			cfg.Servers[i].SSHPort = cfg.SSH.Port
+		} else {
+			validatePort(s.SSHPort, prefix+".ssh_port", &errs)
+		}
+		checkUnresolvedEnv(s.BastionHost, prefix+".bastion_host")
+		if s.BastionSSHPort == 0 {
+			cfg.Servers[i].BastionSSHPort = cfg.Servers[i].SSHPort
+		} else {
+			validatePort(s.BastionSSHPort, prefix+".bastion_ssh_port", &errs)
+		}
 
 		checkUnresolvedEnv(s.App.Name, prefix+".app.name")
 		if s.App.Name == "" {

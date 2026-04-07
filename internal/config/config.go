@@ -29,9 +29,12 @@ type BastionConfig struct {
 }
 
 type ServerConfig struct {
-	Host string    `yaml:"host"`
-	Name string    `yaml:"name"`
-	App  AppConfig `yaml:"app"`
+	Host           string    `yaml:"host"`
+	Name           string    `yaml:"name"`
+	SSHPort        int       `yaml:"ssh_port"`
+	BastionHost    string    `yaml:"bastion_host"`
+	BastionSSHPort int       `yaml:"bastion_ssh_port"`
+	App            AppConfig `yaml:"app"`
 }
 
 type AppConfig struct {
@@ -118,4 +121,26 @@ func (c BastionConfig) SSHSettings(base SSHConfig) SSHConfig {
 	}
 
 	return sshCfg
+}
+
+func (c ServerConfig) SSHSettings(base SSHConfig) SSHConfig {
+	sshCfg := base
+	if c.SSHPort != 0 {
+		sshCfg.Port = c.SSHPort
+	}
+	return sshCfg
+}
+
+func (c ServerConfig) BastionTargetHost() string {
+	if c.BastionHost != "" {
+		return c.BastionHost
+	}
+	return c.Host
+}
+
+func (c ServerConfig) BastionTargetPort() int {
+	if c.BastionSSHPort != 0 {
+		return c.BastionSSHPort
+	}
+	return c.SSHPort
 }

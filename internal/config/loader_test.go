@@ -25,6 +25,9 @@ func TestLoadSubstitutesEnvAndAppliesDefaults(t *testing.T) {
 		"  key_path: ~/keys/id_rsa",
 		"servers:",
 		"  - host: app.example.com",
+		"    ssh_port: 2223",
+		"    bastion_host: sample-vm",
+		"    bastion_ssh_port: 22",
 		"    app:",
 		"      name: ${APP_NAME}",
 		"      base_dir: /opt/sample",
@@ -58,6 +61,15 @@ func TestLoadSubstitutesEnvAndAppliesDefaults(t *testing.T) {
 	}
 	if cfg.Servers[0].App.Name != "sample-app" {
 		t.Fatalf("expected app name substitution, got %q", cfg.Servers[0].App.Name)
+	}
+	if cfg.Servers[0].SSHPort != 2223 {
+		t.Fatalf("expected server ssh port override 2223, got %d", cfg.Servers[0].SSHPort)
+	}
+	if cfg.Servers[0].BastionHost != "sample-vm" {
+		t.Fatalf("expected bastion host override sample-vm, got %q", cfg.Servers[0].BastionHost)
+	}
+	if cfg.Servers[0].BastionSSHPort != 22 {
+		t.Fatalf("expected bastion ssh port override 22, got %d", cfg.Servers[0].BastionSSHPort)
 	}
 	if cfg.Servers[0].App.Jvm.MinHeap != DefaultJvmMin {
 		t.Fatalf("expected default min heap %q, got %q", DefaultJvmMin, cfg.Servers[0].App.Jvm.MinHeap)

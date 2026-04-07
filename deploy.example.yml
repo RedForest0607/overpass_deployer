@@ -20,7 +20,7 @@ servers:
         - --spring.profiles.active=prod
       jar:
         local_path: ./dist/sample-api.jar
-        remote_path: /opt/sample-api/bin/sample-api.jar
+        remote_path: /app/overpass/sample-api/bin/sample-api.jar
       jvm:
         min_heap: 256m
         max_heap: 1g
@@ -28,9 +28,9 @@ servers:
           - -Dfile.encoding=UTF-8
       config_files:
         - local: ./configs/application-prod.yml
-          remote: /opt/sample-api/config/application.yml
+          remote: /app/overpass/config/application.yml
         - local: ./configs/logback.xml
-          remote: /opt/sample-api/config/logback.xml
+          remote: /app/overpass/config/logback.xml
       script:
         template: ""
-        remote_dir: /opt/sample-api/scripts
+        remote_dir: /app/overpass/scripts

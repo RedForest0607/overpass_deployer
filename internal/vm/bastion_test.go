@@ -9,13 +9,13 @@ import (
 
 func TestRenderBastionSSHConfigBlockSortsAndBuildsAliases(t *testing.T) {
 	servers := []config.ServerConfig{
-		{Name: "zeta", Host: "10.0.0.12"},
-		{Name: "alpha", Host: "10.0.0.11"},
+		{Name: "zeta", Host: "10.0.0.12", SSHPort: 2202, BastionHost: "zeta-vm", BastionSSHPort: 22},
+		{Name: "alpha", Host: "10.0.0.11", SSHPort: 2201, BastionHost: "alpha-vm", BastionSSHPort: 22},
 	}
 
-	block := renderBastionSSHConfigBlock(servers, "ec2-user", 22)
+	block := renderBastionSSHConfigBlock(servers, "ec2-user")
 
-	if !strings.Contains(block, "Host alpha\n  HostName 10.0.0.11\n  User ec2-user\n  Port 22") {
+	if !strings.Contains(block, "Host alpha\n  HostName alpha-vm\n  User ec2-user\n  Port 22") {
 		t.Fatalf("expected block to contain alpha alias, got %q", block)
 	}
 	if strings.Index(block, "Host alpha") > strings.Index(block, "Host zeta") {
@@ -27,8 +27,9 @@ func TestBuildKnownHostRegistrationCommandTargetsExpectedPath(t *testing.T) {
 	command := buildKnownHostRegistrationCommand("10.0.0.10", 22, "~/.ssh/known_hosts")
 
 	for _, fragment := range []string{
-		"ssh-keygen -R '10.0.0.10' -f $HOME/'.ssh/known_hosts'",
-		"ssh-keyscan -H -p 22 '10.0.0.10' >> $HOME/'.ssh/known_hosts'",
+		`touch "$HOME/.ssh/known_hosts"`,
+		`ssh-keygen -R '10.0.0.10' -f "$HOME/.ssh/known_hosts"`,
+		`ssh-keyscan -H -p 22 '10.0.0.10' >> "$HOME/.ssh/known_hosts"`,
 	} {
 		if !strings.Contains(command, fragment) {
 			t.Fatalf("expected command to contain %q, got %q", fragment, command)
@@ -43,11 +44,27 @@ func TestUpsertManagedBlockCommandIncludesMarkers(t *testing.T) {
 		"awk -v start='# BEGIN overpass-deployer managed aliases'",
 		"-v end='# END overpass-deployer managed aliases'",
 		"printf '%s\\n' '# BEGIN overpass-deployer managed aliases",
-		"touch $HOME/'.ssh/config'",
+		`touch "$HOME/.ssh/config"`,
 	} {
 		if !strings.Contains(command, fragment) {
 			t.Fatalf("expected command to contain %q, got %q", fragment, command)
 		}
+	}
+}
+
+func TestUpsertManagedBlockCommandSkipsDirChmodWhenNotOwner(t *testing.T) {
+	command := upsertManagedBlockCommand("/tmp/overpass-test-ssh_config", bastionAliasBlockStart+"\nHost app\n"+bastionAliasBlockEnd)
+
+	if !strings.Contains(command, "{ [ ! -O '/tmp' ] || chmod 700 '/tmp'; }") {
+		t.Fatalf("expected command to conditionally chmod parent dir, got %q", command)
+	}
+}
+
+func TestBuildKnownHostRegistrationCommandSkipsDirChmodWhenNotOwner(t *testing.T) {
+	command := buildKnownHostRegistrationCommand("billing-vm", 2222, "/tmp/overpass-test-known_hosts")
+
+	if !strings.Contains(command, "{ [ ! -O '/tmp' ] || chmod 700 '/tmp'; }") {
+		t.Fatalf("expected command to conditionally chmod parent dir, got %q", command)
 	}
 }
 

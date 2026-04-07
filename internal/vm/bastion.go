@@ -29,7 +29,7 @@ func syncBastionWithOptions(cfg *config.Config, opts RunOptions) error {
 		logger.GlobalInfo("--- DRY-RUN bastion sync on %s ---", cfg.Bastion.Host)
 		logger.GlobalInfo("DRY-RUN: would update ssh config aliases at %s", cfg.Bastion.SSHConfigPath)
 		for _, server := range cfg.Servers {
-			logger.GlobalInfo("DRY-RUN: would register known_hosts entry for %s (%s)", server.Name, server.Host)
+			logger.GlobalInfo("DRY-RUN: would register known_hosts entry for %s (%s:%d)", server.Name, server.BastionTargetHost(), server.BastionTargetPort())
 		}
 		logger.GlobalInfo("--- Completed dry-run bastion sync on %s ---", cfg.Bastion.Host)
 		return nil
@@ -52,10 +52,10 @@ func syncBastionWithOptions(cfg *config.Config, opts RunOptions) error {
 	}
 	defer client.Close()
 
-	if err := syncBastionSSHConfig(client, cfg.Bastion, cfg.Servers, cfg.SSH.Port); err != nil {
+	if err := syncBastionSSHConfig(client, cfg.Bastion, cfg.Servers); err != nil {
 		return fmt.Errorf("sync bastion ssh config: %w", err)
 	}
-	if err := syncBastionKnownHosts(client, cfg.Bastion.TargetKnownHosts, cfg.Servers, cfg.SSH.Port); err != nil {
+	if err := syncBastionKnownHosts(client, cfg.Bastion.TargetKnownHosts, cfg.Servers); err != nil {
 		return fmt.Errorf("sync bastion known_hosts: %w", err)
 	}
 
@@ -81,8 +81,8 @@ func ensureServerKnowsBastion(client ssh.Runner, bastion config.BastionConfig, o
 	return runRemoteKnownHostRegistration(client, bastion.Host, port, bastion.Host, "~/.ssh/known_hosts")
 }
 
-func syncBastionSSHConfig(client ssh.Runner, bastion config.BastionConfig, servers []config.ServerConfig, targetPort int) error {
-	block := renderBastionSSHConfigBlock(servers, bastion.AliasUser, targetPort)
+func syncBastionSSHConfig(client ssh.Runner, bastion config.BastionConfig, servers []config.ServerConfig) error {
+	block := renderBastionSSHConfigBlock(servers, bastion.AliasUser)
 	command := upsertManagedBlockCommand(bastion.SSHConfigPath, block)
 	if _, err := client.Run(command); err != nil {
 		return err
@@ -90,16 +90,17 @@ func syncBastionSSHConfig(client ssh.Runner, bastion config.BastionConfig, serve
 	return nil
 }
 
-func syncBastionKnownHosts(client ssh.Runner, knownHostsPath string, servers []config.ServerConfig, port int) error {
+func syncBastionKnownHosts(client ssh.Runner, knownHostsPath string, servers []config.ServerConfig) error {
 	seenHosts := make(map[string]struct{}, len(servers))
 	for _, server := range servers {
-		if _, exists := seenHosts[server.Host]; exists {
+		hostPortKey := fmt.Sprintf("%s:%d", server.BastionTargetHost(), server.BastionTargetPort())
+		if _, exists := seenHosts[hostPortKey]; exists {
 			continue
 		}
-		seenHosts[server.Host] = struct{}{}
+		seenHosts[hostPortKey] = struct{}{}
 
-		if err := runRemoteKnownHostRegistration(client, server.Host, port, server.Name, knownHostsPath); err != nil {
-			return fmt.Errorf("%s: %w", server.Host, err)
+		if err := runRemoteKnownHostRegistration(client, server.BastionTargetHost(), server.BastionTargetPort(), server.Name, knownHostsPath); err != nil {
+			return fmt.Errorf("%s: %w", server.BastionTargetHost(), err)
 		}
 	}
 	return nil
@@ -113,7 +114,7 @@ func runRemoteKnownHostRegistration(client ssh.Runner, host string, port int, lo
 	return nil
 }
 
-func renderBastionSSHConfigBlock(servers []config.ServerConfig, aliasUser string, port int) string {
+func renderBastionSSHConfigBlock(servers []config.ServerConfig, aliasUser string) string {
 	entries := make([]config.ServerConfig, len(servers))
 	copy(entries, servers)
 	sort.Slice(entries, func(i, j int) bool {
@@ -124,9 +125,9 @@ func renderBastionSSHConfigBlock(servers []config.ServerConfig, aliasUser string
 	for _, server := range entries {
 		lines = append(lines,
 			"Host "+server.Name,
-			"  HostName "+server.Host,
+			"  HostName "+server.BastionTargetHost(),
 			"  User "+aliasUser,
-			fmt.Sprintf("  Port %d", port),
+			fmt.Sprintf("  Port %d", server.BastionTargetPort()),
 			"",
 		)
 	}
@@ -143,9 +144,10 @@ func upsertManagedBlockCommand(targetPath, block string) string {
 	quotedBlock := ssh.ShellQuote(block)
 
 	return fmt.Sprintf(
-		"mkdir -p %s && touch %s && chmod 700 %s && chmod 600 %s && tmp=$(mktemp) && awk -v start=%s -v end=%s 'BEGIN {skip=0} $0 == start {skip=1; next} $0 == end {skip=0; next} skip == 0 {print}' %s > \"$tmp\" && printf '%%s\\n' %s >> \"$tmp\" && mv \"$tmp\" %s",
+		"mkdir -p %s && touch %s && { [ ! -O %s ] || chmod 700 %s; } && chmod 600 %s && tmp=$(mktemp) && awk -v start=%s -v end=%s 'BEGIN {skip=0} $0 == start {skip=1; next} $0 == end {skip=0; next} skip == 0 {print}' %s > \"$tmp\" && printf '%%s\\n' %s >> \"$tmp\" && mv \"$tmp\" %s",
 		quotedDir,
 		quotedPath,
+		quotedDir,
 		quotedDir,
 		quotedPath,
 		quotedStart,
@@ -163,9 +165,10 @@ func buildKnownHostRegistrationCommand(host string, port int, knownHostsPath str
 	quotedHost := ssh.ShellQuote(host)
 
 	return fmt.Sprintf(
-		"mkdir -p %s && touch %s && chmod 700 %s && chmod 600 %s && ssh-keygen -R %s -f %s >/dev/null 2>&1 || true && ssh-keyscan -H -p %d %s >> %s",
+		"mkdir -p %s && touch %s && { [ ! -O %s ] || chmod 700 %s; } && chmod 600 %s && ssh-keygen -R %s -f %s >/dev/null 2>&1 || true && ssh-keyscan -H -p %d %s >> %s",
 		quotedDir,
 		quotedPath,
+		quotedDir,
 		quotedDir,
 		quotedPath,
 		quotedHost,
@@ -178,10 +181,20 @@ func buildKnownHostRegistrationCommand(host string, port int, knownHostsPath str
 
 func shellPath(path string) string {
 	if strings.HasPrefix(path, "~/") {
-		return "$HOME/" + ssh.ShellQuote(path[2:])
+		return "\"$HOME/" + escapeDoubleQuotedShellPath(path[2:]) + "\""
 	}
 	if path == "~" {
-		return "$HOME"
+		return "\"$HOME\""
 	}
 	return ssh.ShellQuote(path)
+}
+
+func escapeDoubleQuotedShellPath(value string) string {
+	replacer := strings.NewReplacer(
+		`\\`, `\\\\`,
+		`"`, `\"`,
+		`$`, `\$`,
+		"`", "\\`",
+	)
+	return replacer.Replace(value)
 }

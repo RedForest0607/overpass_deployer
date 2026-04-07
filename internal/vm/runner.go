@@ -29,7 +29,8 @@ func RunWithOptions(cfg *config.Config, opts RunOptions) error {
 	for _, server := range cfg.Servers {
 		logger.GlobalInfo("--- Starting %s for %s (%s) ---", phaseLabel(opts), server.Name, server.Host)
 
-		if err := runSingle(cfg.SSH, cfg.Bastion, server, opts); err != nil {
+		serverSSH := server.SSHSettings(cfg.SSH)
+		if err := runSingle(serverSSH, cfg.Bastion, server, opts); err != nil {
 			logger.Error(server.Host, "%s failed: %v", phaseTitle(opts), err)
 			return err
 		}
@@ -46,7 +47,7 @@ func RunWithOptions(cfg *config.Config, opts RunOptions) error {
 
 func runSingle(sshCfg config.SSHConfig, bastionCfg config.BastionConfig, server config.ServerConfig, opts RunOptions) error {
 	if opts.DryRun {
-		logger.Info(server.Host, "DRY-RUN: would connect via SSH as %s", sshCfg.User)
+		logger.Info(server.Host, "DRY-RUN: would connect via SSH as %s on port %d", sshCfg.User, sshCfg.Port)
 		if err := CreateDirectories(nil, &server.App, opts, server.Host); err != nil {
 			return fmt.Errorf("plan directories: %w", err)
 		}
@@ -65,7 +66,7 @@ func runSingle(sshCfg config.SSHConfig, bastionCfg config.BastionConfig, server 
 		return nil
 	}
 
-	logger.Info(server.Host, "Connecting via SSH...")
+	logger.Info(server.Host, "Connecting via SSH on port %d...", sshCfg.Port)
 	client, err := connectSSH(sshCfg, server.Host)
 	if err != nil {
 		return fmt.Errorf("ssh connect: %w", err)

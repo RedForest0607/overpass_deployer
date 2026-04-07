@@ -113,6 +113,12 @@ func TestValidateAndApplyDefaultsAppliesDefaults(t *testing.T) {
 	if cfg.Servers[0].Name != "app.example.com" {
 		t.Fatalf("expected server name to default to host, got %q", cfg.Servers[0].Name)
 	}
+	if cfg.Servers[0].SSHPort != DefaultSSHPort {
+		t.Fatalf("expected server ssh port to default to %d, got %d", DefaultSSHPort, cfg.Servers[0].SSHPort)
+	}
+	if cfg.Servers[0].BastionSSHPort != DefaultSSHPort {
+		t.Fatalf("expected server bastion ssh port to default to %d, got %d", DefaultSSHPort, cfg.Servers[0].BastionSSHPort)
+	}
 }
 
 func TestValidateAndApplyDefaultsStrictRequiresKnownHostsFile(t *testing.T) {
@@ -272,6 +278,72 @@ func TestValidateAndApplyDefaultsRejectsDuplicateServerNames(t *testing.T) {
 	err := ValidateAndApplyDefaults(cfg)
 	if err == nil || !strings.Contains(err.Error(), `server name "app" must be unique`) {
 		t.Fatalf("expected duplicate server name validation error, got %v", err)
+	}
+}
+
+func TestValidateAndApplyDefaultsRejectsInvalidServerSSHPort(t *testing.T) {
+	keyPath := writeTempFile(t, "id_rsa", "key")
+	jarPath := writeTempFile(t, "app.jar", "jar")
+
+	cfg := &Config{
+		SSH: SSHConfig{
+			User:    "deploy",
+			KeyPath: keyPath,
+		},
+		Servers: []ServerConfig{
+			{
+				Host:    "app.example.com",
+				SSHPort: 70000,
+				App: AppConfig{
+					Name:    "sample",
+					BaseDir: "/opt/sample",
+					Port:    8080,
+					Jar: JarConfig{
+						LocalPath:  jarPath,
+						RemotePath: "/opt/sample/bin/app.jar",
+					},
+				},
+			},
+		},
+	}
+
+	err := ValidateAndApplyDefaults(cfg)
+	if err == nil || !strings.Contains(err.Error(), "servers[0].ssh_port must be between 1 and 65535") {
+		t.Fatalf("expected invalid server ssh port error, got %v", err)
+	}
+}
+
+func TestValidateAndApplyDefaultsRejectsInvalidServerBastionSSHPort(t *testing.T) {
+	keyPath := writeTempFile(t, "id_rsa", "key")
+	jarPath := writeTempFile(t, "app.jar", "jar")
+
+	cfg := &Config{
+		SSH: SSHConfig{
+			User:    "deploy",
+			KeyPath: keyPath,
+		},
+		Servers: []ServerConfig{
+			{
+				Host:           "app.example.com",
+				SSHPort:        2222,
+				BastionHost:    "app-vm",
+				BastionSSHPort: 70000,
+				App: AppConfig{
+					Name:    "sample",
+					BaseDir: "/opt/sample",
+					Port:    8080,
+					Jar: JarConfig{
+						LocalPath:  jarPath,
+						RemotePath: "/opt/sample/bin/app.jar",
+					},
+				},
+			},
+		},
+	}
+
+	err := ValidateAndApplyDefaults(cfg)
+	if err == nil || !strings.Contains(err.Error(), "servers[0].bastion_ssh_port must be between 1 and 65535") {
+		t.Fatalf("expected invalid server bastion ssh port error, got %v", err)
 	}
 }
 
