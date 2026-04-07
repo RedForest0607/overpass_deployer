@@ -14,6 +14,8 @@ import (
 	"github.com/pkg/sftp"
 )
 
+const missingRemoteSHA256Marker = "__OVERPASS_REMOTE_FILE_MISSING__"
+
 func calculateLocalSHA256(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -29,14 +31,26 @@ func calculateLocalSHA256(path string) (string, error) {
 }
 
 func calculateRemoteSHA256(runner ssh.Runner, path string) (string, error) {
-	out, err := runner.Run(fmt.Sprintf("sha256sum %s", ssh.ShellQuote(path)))
+	command := fmt.Sprintf(
+		"sh -lc %s",
+		ssh.ShellQuote(
+			fmt.Sprintf("if [ -f %s ]; then sha256sum %s; else echo %s; fi",
+				ssh.ShellQuote(path),
+				ssh.ShellQuote(path),
+				missingRemoteSHA256Marker,
+			),
+		),
+	)
+
+	out, err := runner.Run(command)
 	if err != nil {
-		// Only ignore if the file genuinely does not exist
-		if strings.Contains(out, "No such file") {
-			return "", nil
-		}
 		return "", fmt.Errorf("remote sha256sum failed (out: %s): %w", out, err)
 	}
+
+	if out == missingRemoteSHA256Marker+"\n" || out == missingRemoteSHA256Marker {
+		return "", nil
+	}
+
 	parts := strings.Fields(out)
 	if len(parts) > 0 {
 		return parts[0], nil

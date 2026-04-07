@@ -3,6 +3,7 @@ package vm
 import (
 	"fmt"
 	"path/filepath"
+	"strings"
 
 	"go-deployer/internal/config"
 	"go-deployer/internal/ssh"
@@ -13,8 +14,7 @@ func CreateDirectories(runner ssh.Runner, app *config.AppConfig, opts RunOptions
 	host = runnerHost(runner, host)
 	logger.Info(host, "%s directories in %s...", actionLabel(opts, "creating"), app.BaseDir)
 
-	baseDir := ssh.ShellQuote(app.BaseDir)
-	setupCmd := fmt.Sprintf("mkdir -p %s && chown -R $(whoami) %s", baseDir, baseDir)
+	setupCmd := buildPrivilegedDirectorySetupCommand(app.BaseDir)
 	if opts.DryRun {
 		logger.Info(host, "DRY-RUN: would try sudo setup command: %s", setupCmd)
 	} else if _, err := runner.RunSudo(setupCmd); err != nil {
@@ -42,4 +42,18 @@ func CreateDirectories(runner ssh.Runner, app *config.AppConfig, opts RunOptions
 
 	logger.Ok(host, "%s directories", resultLabel(opts, "created", "planned"))
 	return nil
+}
+
+func buildPrivilegedDirectorySetupCommand(baseDir string) string {
+	quotedBaseDir := ssh.ShellQuote(baseDir)
+	innerCommand := strings.Join([]string{
+		"set -eu",
+		fmt.Sprintf("base_dir=%s", quotedBaseDir),
+		`owner_name="${SUDO_USER:-$(id -un)}"`,
+		`owner_group="$(id -gn "${owner_name}")"`,
+		`mkdir -p "${base_dir}"`,
+		`chown -R "${owner_name}:${owner_group}" "${base_dir}"`,
+	}, "; ")
+
+	return "sh -lc " + ssh.ShellQuote(innerCommand)
 }
