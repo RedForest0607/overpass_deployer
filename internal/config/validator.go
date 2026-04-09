@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	templatepkg "go-deployer/internal/template"
 )
 
 const (
@@ -194,7 +196,24 @@ func ValidateAndApplyDefaults(cfg *Config) error {
 
 		if s.App.Script.Template != "" {
 			checkUnresolvedEnv(s.App.Script.Template, prefix+".app.script.template")
-			validateExistingFile(s.App.Script.Template, prefix+".app.script.template", &errs)
+			if strings.HasPrefix(s.App.Script.Template, "~/") {
+				cfg.Servers[i].App.Script.Template = expandHome(s.App.Script.Template)
+			}
+			if strings.HasPrefix(cfg.Servers[i].App.Script.Template, "embedded:") {
+				if err := templatepkg.ValidateEmbeddedTemplateRef(cfg.Servers[i].App.Script.Template); err != nil {
+					errs = append(errs, fmt.Sprintf("%s is invalid: %v", prefix+".app.script.template", err))
+				}
+			} else {
+				validateExistingFile(cfg.Servers[i].App.Script.Template, prefix+".app.script.template", &errs)
+			}
+		}
+
+		if s.App.Script.ValuesFile != "" {
+			checkUnresolvedEnv(s.App.Script.ValuesFile, prefix+".app.script.values_file")
+			if strings.HasPrefix(s.App.Script.ValuesFile, "~/") {
+				cfg.Servers[i].App.Script.ValuesFile = expandHome(s.App.Script.ValuesFile)
+			}
+			validateExistingFile(cfg.Servers[i].App.Script.ValuesFile, prefix+".app.script.values_file", &errs)
 		}
 
 		if s.App.Script.RemoteDir == "" {

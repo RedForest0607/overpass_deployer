@@ -20,6 +20,14 @@ resource "aws_security_group" "bastion" {
     cidr_blocks = var.allowed_ssh_cidrs
   }
 
+  ingress {
+    description = "SSH from the bastion itself for self-hosted smoke-test sync"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    self        = true
+  }
+
   egress {
     description = "Allow outbound traffic for package mirrors and target SSH"
     from_port   = 0
@@ -31,6 +39,16 @@ resource "aws_security_group" "bastion" {
   tags = merge(local.common_tags, {
     Name = "${var.project_name}-bastion-sg"
   })
+}
+
+resource "aws_security_group_rule" "bastion_ssh_from_target" {
+  type                     = "ingress"
+  description              = "Allow target instances to scan the bastion host key during smoke tests."
+  from_port                = 22
+  to_port                  = 22
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.bastion.id
+  source_security_group_id = aws_security_group.target.id
 }
 
 resource "aws_security_group" "target" {

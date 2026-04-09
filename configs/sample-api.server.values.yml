@@ -1,0 +1,12 @@
+AppName: sample-api
+BaseDir: /opt/sample-api
+JarPath: /app/overpass/sample-api/bin/sample-api.jar
+Port: 8080
+JvmMin: 256m
+JvmMax: 1g
+JavaOpts:
+  - -Dfile.encoding=UTF-8
+ExtraOpts:
+  - --spring.profiles.active=prod
+ActiveProfile: prod
+ContextPath: ""

@@ -31,6 +31,7 @@ Imported network resources use `prevent_destroy` and `ignore_changes = all` so t
 - 1 private target EC2 instance per imported private subnet
 - 1 EC2 key pair from your local public key
 - 2 security groups for bastion and target SSH access
+- Bastion SSH allowances for bastion self-sync and target-side `ssh-keyscan` during smoke tests
 
 ## Defaults
 
@@ -74,6 +75,7 @@ After apply, use the outputs:
 
 ```bash
 terraform output bastion_ssh_command
+terraform output bastion_private_ip
 terraform output target_private_ips
 terraform output deploy_yml_hint
 ```
@@ -90,7 +92,7 @@ ssh:
   port: 22
 
 bastion:
-  host: <bastion_public_ip>
+  host: <bastion_private_ip>
   user: ec2-user
   alias_user: ec2-user
 
@@ -101,5 +103,7 @@ servers:
     bastion_host: <target_private_ip>
     bastion_ssh_port: 22
 ```
+
+Use the bastion public IP only for your initial workstation-to-bastion SSH/SCP step. When the `deploy` binary runs on the bastion itself, `bastion.host` should be the bastion private IP so the post-deploy bastion sync can SSH back into the bastion and target VMs can register the bastion host key.
 
 Destroy only the test resources when testing is done. Because this directory imports existing network resources, review any destroy plan carefully before approving it.

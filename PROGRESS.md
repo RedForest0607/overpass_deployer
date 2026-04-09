@@ -1,0 +1,58 @@
+# Progress
+
+## Completed
+- M1 핵심 골격 구현: `deploy vm --config ...` 진입점, 설정 로드, 순차 VM 배포 러너 연결
+- `deploy docker` placeholder 경로 추가
+- M1 배포 단계 구현: SSH 연결, 디렉토리 생성, jar 전송, 설정 파일 배포, 스크립트 배포, 실행 권한 부여
+- jar/config/script 전송 시 SHA256 비교 기반 skip 로직 구현
+- 내장 `server.sh` 템플릿 렌더링 및 임시 파일 기반 배포 구현
+- 설정 기본값/필수값/파일 존재/포트 범위 검증 구현
+- `extra_opts`를 안전한 배열 인자 방식으로 변경하고 문자열/배열 YAML 입력 모두 지원
+- 설정 파싱 및 SSH quoting 관련 기본 테스트 추가
+- `config/loader_test.go` 추가: 환경변수 치환, 기본값, `~/` 확장 검증
+- `template/renderer_test.go` 추가: 내장 템플릿 변수 치환, 사용자 템플릿 우선 적용 검증
+- `deploy.example.yml` 추가: 민감정보 없는 예시 설정 제공
+- 로컬 캐시 기준 `go test ./...`, `go vet ./...` 통과
+- SSH 호스트 키 검증을 `known_hosts` 기반으로 강화
+- SSH 호스트 키 검증 모드화: `strict`, `accept-new`, `insecure`
+- 원격 명령 경로 quoting 공통화로 셸 주입/공백 경로 오동작 방지
+- 설정 선검증 강화: 포트 범위, 로컬 파일 존재, 템플릿 존재, `known_hosts` 확인
+- `bastion` 설정 추가: VM 이름 기반 SSH alias(`~/.ssh/config`) 자동 생성
+- bastion과 각 EC2의 `known_hosts` 동기화 로직 추가
+- bastion alias/known_hosts 생성 로직 테스트 추가
+- `deploy vm --dry-run --config ...` 추가: SSH/SFTP 및 원격 파일 변경 없이 서버별 예정 작업 로그 출력
+- dry-run 경계 테스트 추가: CLI 옵션 라우팅, VM runner, SCP 전송, bastion host-key 등록
+- M1 통합 검증 중 재현된 세 결함 수정: privileged 디렉토리 생성, 원격 파일 미존재 시 SHA 비교 우회, bastion `~/` 경로 렌더링 보정
+- 관련 회귀 테스트 추가: `internal/vm/dirs_test.go`, `internal/scp/transfer_test.go`, `internal/vm/bastion_test.go`
+- 2026-04-06 기준 Podman 통합 검증에서 최초 실행 happy path가 bastion 직전까지 통과하고, 원격 파일 미존재 상태에서도 jar/config/script 자동 전송이 동작함을 확인
+- TEST Amazon Linux 이미지에 `openssh-clients`를 추가해 `ssh-keyscan`을 포함시킴
+- 2026-04-06 기준 Podman 통합 검증에서 최초 실행 happy path, 원격 파일 미존재 시 자동 전송, bastion alias/known_hosts 등록까지 모두 완주
+- `servers[].ssh_port` 설정 추가: 동일 호스트에 여러 테스트 VM을 포트로 구분해 연결 가능
+- 서버별 SSH 포트를 VM 연결 및 bastion alias/known_hosts 동기화 로직에 반영
+- TEST 환경을 two-container/multi-port 구조로 전환: auth `127.0.0.1:2222`, billing `127.0.0.1:2223`
+- 2026-04-06 기준 multi-port 배포 검증에서 auth는 2222, billing은 2223으로 분리 접속되는 것을 확인
+- TEST Amazon Linux entrypoint에서 `ec2-user` 계정을 테스트 전용으로 unlock 하도록 보완해 공개키 인증 실패를 제거
+- 로컬 TEST 설정을 사용자 `~/.ssh/config`, `~/.ssh/known_hosts`와 분리: `/tmp/overpass-test-ssh_config`, `/tmp/overpass-test-known_hosts` 사용
+- Podman 로컬 테스트용 bastion 대상 주소를 `host.containers.internal` + published port 방식으로 정리
+- bastion sync가 `/tmp/...` 경로를 사용할 때 부모 디렉터리 권한 변경으로 실패하지 않도록 조건부 `chmod` 처리 추가
+- `internal/vm/bastion_test.go`에 `/tmp` 기반 bastion sync 회귀 테스트 추가
+- 2026-04-06 기준 로컬 Podman two-container 테스트에서 `go run ../cmd/deploy vm --config ./deploy.yml`가 두 컨테이너 배포와 bastion sync까지 완주
+- AWS EC2/Bastion 스테이징 검증용 Terraform 구조 추가: `infra/aws-test`에 기존 `default-vpc` 네트워크 import, public bastion 1대, AZ별 private target EC2, 보안그룹, 출력값 문서화
+- AWS EC2 smoke test 자산 추가: `TEST/aws-smoke`에 mock jar/config와 bastion 실행용 `deploy.aws-test.yml` 템플릿 추가
+- AWS smoke test runbook 추가: `docs/aws-test-smoke.md`에 Terraform apply, bastion 스테이징, dry-run/실배포, 원격 파일 검증, cleanup 절차 문서화
+- `infra/aws-test` 보강: bastion self-SSH/target `ssh-keyscan` 허용 규칙과 `bastion_private_ip` output 추가
+- 2026-04-09 기준 실제 AWS smoke test 완주: `infra/aws-test` apply, bastion 스테이징, `deploy vm --dry-run`, 실배포, 원격 파일/SHA 검증, 재실행 skip 동작까지 확인
+- 운영 샘플 `TEST/script-sample.sh`를 반영해 기본 `server.sh` 템플릿을 고도화: `restart/status/log`, PID 기반 상태 확인, startup 대기, 로그 tail 흐름 추가
+- `script.values_file` 설정 추가: 실행 스크립트 템플릿 데이터도 외부 YAML 파일에서 읽고, 기본 앱 값 위에 템플릿별 override를 적용하도록 리팩토링
+- `script.template`에 `embedded:server.sh.tmpl` 같은 선언형 참조를 지원하고, TEST/AWS smoke 샘플 설정을 새 구조로 갱신
+
+## Next To-Do
+- `.gitignore`를 M1 체크리스트 기대 항목과 맞추거나 기준 자체를 현실화
+- 실제 원격 환경에서 `deploy vm --config deploy.yml`, `deploy vm --dry-run --config deploy.yml` 실행 검증
+- TEST 가이드에 Podman 기준 실행 순서와 `/tmp/overpass-test-*` 정리 방법 문서화
+- `infra/aws-test`를 실제 AWS 계정에서 `terraform plan/apply`로 검증한 뒤 운영 전제 조건 정리
+- bastion에서 `docs/aws-test-smoke.md` 절차대로 실제 dry-run/실배포/재실행(skip)까지 완주 검증
+- smoke test cleanup 절차를 실행한 뒤 destroy plan이 test resources만 포함하는지 재확인
+- 실제 검증에 사용한 AWS test 리소스와 bastion 스테이징 파일을 정리할지 결정하고 destroy 실행
+- 샘플 운영 스크립트에서 아직 설정 스키마로 일반화되지 않은 항목(예: context path, 별도 healthcheck path, Java agent 전용 옵션)을 템플릿 입력으로 승격할지 검토
+- `deploy.example.yml`과 함께 제공할 템플릿 value 파일 샘플을 저장소 표준 위치로 정리할지 결정

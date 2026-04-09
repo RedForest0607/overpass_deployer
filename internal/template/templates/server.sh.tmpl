@@ -1,0 +1,263 @@
+#!/bin/bash
+
+# =================================================================
+# 1. 애플리케이션 설정 (이 부분의 값만 수정하세요)
+# =================================================================
+APP_NAME="{{ .AppName }}"                                # 앱 이름
+APP_PORT={{ .Port }}
+CONTEXT_PATH="${CONTEXT_PATH:-{{ .ContextPath }}}"      # 컨텍스트 경로 (헬스체크용)
+BASE_DIR="{{ .BaseDir }}"                               # 앱 루트 경로
+JAR_FILE="{{ .JarPath }}"                               # JAR 파일 경로
+ACTIVE_PROFILE="${ACTIVE_PROFILE:-{{ .ActiveProfile }}}" # 실행 프로필 (dev, prod 등)
+
+# 메모리 설정
+JAVA_MS="{{ .JvmMin }}"
+JAVA_MX="{{ .JvmMax }}"
+
+# 추가 Spring 옵션
+SPRING_OPTS=""
+{{- range .ExtraOpts }}
+SPRING_OPTS+=" {{ . }}"
+{{- end }}
+
+# =================================================================
+# 2. 시스템 환경 설정 (자동 설정)
+# =================================================================
+PID_PATH="${BASE_DIR}/app.pid"
+LOG_DIR="${BASE_DIR}/logs"
+LOG_FILE="${LOG_DIR}/${APP_NAME}.log"
+CONF_DIR="${BASE_DIR}/config"
+
+# Java 실행 경로 확인
+if [ -n "$JAVA_HOME" ]; then
+    JAVA_BIN="${JAVA_HOME}/bin/java"
+else
+    JAVA_BIN="$(command -v java)"
+fi
+
+# JVM 옵션 구성
+JAVA_OPTS="-Xms${JAVA_MS} -Xmx${JAVA_MX} "
+JAVA_OPTS+="-Dserver.port=${APP_PORT} "
+if [ -n "${ACTIVE_PROFILE}" ]; then
+    JAVA_OPTS+="-Dspring.profiles.active=${ACTIVE_PROFILE} "
+fi
+JAVA_OPTS+="-XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=${LOG_DIR}/${APP_NAME}-%p.hprof "
+JAVA_OPTS+="-Djava.awt.headless=true -Dsun.misc.URLClassPath.disableJarChecking=true "
+JAVA_OPTS+="-Djava.net.preferIPv4Stack=true -Djava.security.egd=file:/dev/./urandom "
+JAVA_OPTS+="-Dfile.encoding=UTF-8 -DAPP_NAME=${APP_NAME} -Dhttp.maxConnections=1000 "
+JAVA_OPTS+="--add-opens java.base/jdk.internal.misc=ALL-UNNAMED "
+JAVA_OPTS+="--add-opens java.base/java.lang=ALL-UNNAMED "
+JAVA_OPTS+="--enable-native-access=ALL-UNNAMED "
+JAVA_OPTS+="-verbose:gc -Xlog:gc*,safepoint:${LOG_DIR}/gc.log:time,uptime:filecount=10,filesize=20m "
+{{- range .JavaOpts }}
+JAVA_OPTS+="{{ . }} "
+{{- end }}
+
+
+#hamonica
+HAMONICA_HOME="${HAMONICA_HOME:-/app/software/hamonica2-agent}"
+HAMONICA_JAVA_AGENT="${HAMONICA_JAVA_AGENT:-}"
+HAMONICA_CONFIG_FILE="${HAMONICA_CONFIG_FILE:-}"
+if [ -n "${HAMONICA_JAVA_AGENT}" ] && [ -n "${HAMONICA_CONFIG_FILE}" ]; then
+    JAVA_OPTS+="-javaagent:${HAMONICA_HOME}/lib/${HAMONICA_JAVA_AGENT} "
+    JAVA_OPTS+="-Dotel.javaagent.configuration-file=${HAMONICA_HOME}/${HAMONICA_CONFIG_FILE} "
+    JAVA_OPTS+="-Dio.opentelemetry.javaagent.slf4j.simpleLogger.defaultLogLevel=warn "
+    JAVA_OPTS+="-Xshare:off "
+fi
+
+
+# Logging 설정 추가
+SPRING_OPTS+=" --logging.config=file:${CONF_DIR}/logback.xml"
+SPRING_OPTS+=" --spring.config.additional-location=file:${CONF_DIR}/application.yml"
+
+# =================================================================
+# 3. 핵심 로직 함수
+# =================================================================
+
+# 프로세스 ID 확인
+check_pid() {
+    if [ -f "$PID_PATH" ]; then
+        local pid
+        pid="$(cat "$PID_PATH")"
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            echo "$pid"
+            return 0
+        fi
+    fi
+
+    pgrep -f "java.*${APP_NAME}" 2>/dev/null | head -n 1
+}
+
+# 기동 대기 및 확인
+wait_for_startup() {
+    local start_line=$1
+    local timeout=240
+    local count=0
+    local res_code=""
+    local check_url="http://127.0.0.1:${APP_PORT}"
+
+    if [ -n "${CONTEXT_PATH}" ]; then
+        check_url="${check_url}/${CONTEXT_PATH}"
+    else
+        check_url="${check_url}/"
+    fi
+
+    echo -n "[${APP_NAME}] 기동 확인 중 (제한시간: ${timeout}초) "
+
+    while [ $count -lt $timeout ]; do
+        # 1. 로그에서 완료 문구 확인
+        if [ -f "$LOG_FILE" ] && tail --lines=+${start_line} "${LOG_FILE}" | grep -q 'Started'; then
+            echo " [성공]"
+            return 0
+        fi
+
+        # 2. 프로세스 생존 여부 확인
+        if ! check_pid > /dev/null; then
+            echo " [실패] 프로세스가 비정상 종료되었습니다."
+            return 1
+        fi
+
+        # 3. 루프 중 HTTP 응답 확인
+        if command -v curl >/dev/null 2>&1; then
+            res_code=$(curl -s -o /dev/null -I -w "%{http_code}" --max-time 2 "$check_url" || true)
+            case "$res_code" in
+                200|204|301|302|307|308|401|403|404)
+                    echo " [성공: HTTP ${res_code}]"
+                    return 0
+                    ;;
+            esac
+        fi
+
+        echo -n "."
+        sleep 1
+        ((count++))
+    done
+
+    echo
+    echo "시간 초과. HTTP 호출로 상태를 다시 확인합니다..."
+
+    if command -v curl >/dev/null 2>&1; then
+        res_code=$(curl -s -o /dev/null -I -w "%{http_code}" --max-time 3 "$check_url" || true)
+        case "$res_code" in
+            200|204|301|302|307|308|401|403|404)
+                echo "헬스체크 성공으로 간주 (응답코드: $res_code)"
+                return 0
+                ;;
+            *)
+                echo "헬스체크 실패 (응답코드: ${res_code:-N/A})"
+                return 1
+                ;;
+        esac
+    fi
+
+    echo "curl 명령이 없어 헬스체크를 건너뜁니다."
+    return 0
+}
+
+# 시작 함수
+start() {
+    local pid
+    pid="$(check_pid)"
+    if [ -n "$pid" ]; then
+        echo "경고: ${APP_NAME}(이)가 이미 실행 중입니다. (PID: $pid)"
+        return 1
+    fi
+
+    mkdir -p "${LOG_DIR}"
+    local current_log_lines=0
+    [ -f "$LOG_FILE" ] && current_log_lines=$(wc -l < "$LOG_FILE")
+    ((current_log_lines++))
+
+    echo "실행 명령: $JAVA_BIN -jar $JAR_FILE"
+    nohup "$JAVA_BIN" $JAVA_OPTS -jar "$JAR_FILE" $SPRING_OPTS >> "$LOG_FILE" 2>&1 &
+
+    echo $! > "$PID_PATH"
+
+    if wait_for_startup $current_log_lines; then
+        echo "알림: ${APP_NAME} 애플리케이션이 정상적으로 시작되었습니다."
+        return 0
+    else
+        echo "에러: 기동에 실패했습니다. 로그를 확인하세요."
+        stop_force # 실패 시 비정상 프로세스 정리
+        return 1   # 실패 상태를 함수 밖으로 전달
+    fi
+}
+
+# 중지 함수
+stop() {
+    local pid
+    pid="$(check_pid)"
+    if [ -z "$pid" ]; then
+        echo "알림: 실행 중인 프로세스가 없습니다."
+        [ -f "$PID_PATH" ] && rm -f "$PID_PATH"
+        return 0
+    fi
+
+    echo -n "종료 중: ${APP_NAME} (PID: $pid) "
+    kill -15 "$pid"
+
+    local timeout=60
+    while [ $timeout -gt 0 ]; do
+        if ! check_pid > /dev/null; then
+            echo " [완료]"
+            rm -f "$PID_PATH"
+            return 0
+        fi
+        sleep 1
+        echo -n "."
+        ((timeout--))
+    done
+
+    echo " [강제 종료]"
+    kill -9 "$pid"
+    rm -f "$PID_PATH"
+}
+
+# 강제 종료 함수 (기동 실패 시 사용)
+stop_force() {
+    local pid
+    pid="$(check_pid)"
+    [ -n "$pid" ] && kill -9 "$pid"
+    [ -f "$PID_PATH" ] && rm -f "$PID_PATH"
+}
+
+# 상태 확인 함수
+status() {
+    local pid
+    pid="$(check_pid)"
+    if [ -n "$pid" ]; then
+        echo "상태: ${APP_NAME}(이)가 실행 중입니다. (PID: $pid)"
+        ps -fp "$pid"
+    else
+        echo "상태: ${APP_NAME}(이)가 정지된 상태입니다."
+    fi
+}
+
+# =================================================================
+# 4. 명령어 실행
+# =================================================================
+case "$1" in
+    start)
+        start || exit 1  # start 함수가 1을 반환하면 스크립트 전체가 1로 종료됨
+        ;;
+    stop)
+        stop || exit 1
+        ;;
+    restart)
+        stop
+        sleep 2
+        start || exit 1
+        ;;
+    status)
+        status
+        ;;
+    log)
+        mkdir -p "${LOG_DIR}"
+        touch "${LOG_FILE}"
+        tail -f "$LOG_FILE"
+        ;;
+    *)
+        echo "사용법: $0 {start|stop|restart|status|log}"
+        exit 1
+        ;;
+esac

@@ -12,6 +12,7 @@ func TestValidateAndApplyDefaultsRejectsInvalidInputs(t *testing.T) {
 	jarPath := writeTempFile(t, "app.jar", "jar")
 	configPath := writeTempFile(t, "application.yml", "server:\n  port: 8080\n")
 	templatePath := writeTempFile(t, "start.sh.tmpl", "#!/bin/bash\n")
+	valuesPath := writeTempFile(t, "start.values.yml", "AppName: sample\n")
 
 	cfg := &Config{
 		SSH: SSHConfig{
@@ -37,7 +38,8 @@ func TestValidateAndApplyDefaultsRejectsInvalidInputs(t *testing.T) {
 						{Local: configPath, Remote: "/opt/sample/config/application.yml"},
 					},
 					Script: ScriptConfig{
-						Template: templatePath,
+						Template:   templatePath,
+						ValuesFile: valuesPath,
 					},
 				},
 			},
@@ -57,6 +59,75 @@ func TestValidateAndApplyDefaultsRejectsInvalidInputs(t *testing.T) {
 		if !strings.Contains(err.Error(), fragment) {
 			t.Fatalf("expected error to contain %q, got %v", fragment, err)
 		}
+	}
+}
+
+func TestValidateAndApplyDefaultsAcceptsEmbeddedTemplateReference(t *testing.T) {
+	keyPath := writeTempFile(t, "id_rsa", "key")
+	jarPath := writeTempFile(t, "app.jar", "jar")
+	valuesPath := writeTempFile(t, "server.values.yml", "ActiveProfile: prod\n")
+
+	cfg := &Config{
+		SSH: SSHConfig{
+			User:    "deploy",
+			KeyPath: keyPath,
+		},
+		Servers: []ServerConfig{
+			{
+				Host: "app.example.com",
+				App: AppConfig{
+					Name:    "sample",
+					BaseDir: "/opt/sample",
+					Port:    8080,
+					Jar: JarConfig{
+						LocalPath:  jarPath,
+						RemotePath: "/opt/sample/bin/app.jar",
+					},
+					Script: ScriptConfig{
+						Template:   "embedded:server.sh.tmpl",
+						ValuesFile: valuesPath,
+					},
+				},
+			},
+		},
+	}
+
+	if err := ValidateAndApplyDefaults(cfg); err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+}
+
+func TestValidateAndApplyDefaultsRejectsUnknownEmbeddedTemplateReference(t *testing.T) {
+	keyPath := writeTempFile(t, "id_rsa", "key")
+	jarPath := writeTempFile(t, "app.jar", "jar")
+
+	cfg := &Config{
+		SSH: SSHConfig{
+			User:    "deploy",
+			KeyPath: keyPath,
+		},
+		Servers: []ServerConfig{
+			{
+				Host: "app.example.com",
+				App: AppConfig{
+					Name:    "sample",
+					BaseDir: "/opt/sample",
+					Port:    8080,
+					Jar: JarConfig{
+						LocalPath:  jarPath,
+						RemotePath: "/opt/sample/bin/app.jar",
+					},
+					Script: ScriptConfig{
+						Template: "embedded:missing-template.tmpl",
+					},
+				},
+			},
+		},
+	}
+
+	err := ValidateAndApplyDefaults(cfg)
+	if err == nil || !strings.Contains(err.Error(), "servers[0].app.script.template is invalid") {
+		t.Fatalf("expected invalid embedded template error, got %v", err)
 	}
 }
 

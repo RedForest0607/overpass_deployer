@@ -32,5 +32,6 @@ servers:
         - local: ./configs/logback.xml
           remote: /app/overpass/config/logback.xml
       script:
-        template: ""
+        template: embedded:server.sh.tmpl
+        values_file: ./configs/sample-api.server.values.yml
         remote_dir: /app/overpass/scripts

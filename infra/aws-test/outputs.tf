@@ -3,6 +3,11 @@ output "bastion_public_ip" {
   value       = aws_instance.bastion.public_ip
 }
 
+output "bastion_private_ip" {
+  description = "Private IP address to use as bastion.host when deploy runs on the bastion itself."
+  value       = aws_instance.bastion.private_ip
+}
+
 output "bastion_ssh_command" {
   description = "SSH command for the test bastion."
   value       = "ssh -i ${trimsuffix(var.public_key_path, ".pub")} ec2-user@${aws_instance.bastion.public_ip}"

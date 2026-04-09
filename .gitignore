@@ -69,4 +69,14 @@ AGENTS.md
 PROGRESS.md
 
 # 테스트 관련 파일
-TEST
+!TEST/amazonlinux/
+!TEST/amazonlinux/**
+!TEST/config/
+!TEST/config/**
+!TEST/dist/
+!TEST/dist/**
+!TEST/docker-compose.yml
+!TEST/deploy.yml
+!TEST/aws-smoke/
+!TEST/aws-smoke/**
+internal/.DS_Store

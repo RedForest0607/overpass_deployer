@@ -34,51 +34,55 @@ func DeployConfigFiles(client *ssh.Client, app *config.AppConfig, opts RunOption
 
 func DeployScripts(client *ssh.Client, app *config.AppConfig, opts RunOptions, host string) error {
 	host = runnerHost(client, host)
-	scriptData := app.ToScriptData()
+	scriptData, err := resolveScriptTemplateData(app)
+	if err != nil {
+		return fmt.Errorf("resolving script template data: %w", err)
+	}
 
-	startPath := filepath.ToSlash(filepath.Join(app.Script.RemoteDir, "start.sh"))
-	stopPath := filepath.ToSlash(filepath.Join(app.Script.RemoteDir, "stop.sh"))
+	serverPath := filepath.ToSlash(filepath.Join(app.Script.RemoteDir, "server.sh"))
 
 	if opts.DryRun {
-		startTemplate := app.Script.Template
-		if startTemplate == "" {
-			startTemplate = "embedded:start.sh.tmpl"
+		serverTemplate := app.Script.Template
+		if serverTemplate == "" {
+			serverTemplate = "embedded:server.sh.tmpl"
 		}
-		logger.Info(host, "DRY-RUN: would render %s to %s", startTemplate, startPath)
-		logger.Info(host, "DRY-RUN: would render embedded:stop.sh.tmpl to %s", stopPath)
-		logger.Info(host, "DRY-RUN: would chmod +x %s %s", startPath, stopPath)
+		logger.Info(host, "DRY-RUN: would render %s to %s", serverTemplate, serverPath)
+		logger.Info(host, "DRY-RUN: would chmod +x %s", serverPath)
 		return nil
 	}
 
-	startLocal, err := template.Render(app.Script.Template, "start.sh", scriptData)
+	serverLocal, err := template.Render(app.Script.Template, "server.sh", scriptData)
 	if err != nil {
-		return fmt.Errorf("rendering start.sh: %w", err)
+		return fmt.Errorf("rendering server.sh: %w", err)
 	}
-	defer os.Remove(startLocal)
+	defer os.Remove(serverLocal)
 
-	if err := scp.Transfer(client, startLocal, startPath, scp.TransferOptions{}); err != nil {
-		return fmt.Errorf("transferring start.sh: %w", err)
-	}
-
-	// Always use embedded template for stop.sh in M1
-	stopLocal, err := template.Render("", "stop.sh", scriptData)
-	if err != nil {
-		return fmt.Errorf("rendering stop.sh: %w", err)
-	}
-	defer os.Remove(stopLocal)
-
-	if err := scp.Transfer(client, stopLocal, stopPath, scp.TransferOptions{}); err != nil {
-		return fmt.Errorf("transferring stop.sh: %w", err)
+	if err := scp.Transfer(client, serverLocal, serverPath, scp.TransferOptions{}); err != nil {
+		return fmt.Errorf("transferring server.sh: %w", err)
 	}
 
 	logger.Info(host, "Making scripts executable...")
-	cmd := fmt.Sprintf("chmod +x %s %s", ssh.ShellQuote(startPath), ssh.ShellQuote(stopPath))
+	cmd := fmt.Sprintf("chmod +x %s", ssh.ShellQuote(serverPath))
 	if _, err := client.Run(cmd); err != nil {
 		return fmt.Errorf("chmod scripts: %w", err)
 	}
 	logger.Ok(host, "Scripts deployed")
 
 	return nil
+}
+
+func resolveScriptTemplateData(app *config.AppConfig) (map[string]any, error) {
+	baseData := app.ToTemplateData()
+	if app.Script.ValuesFile == "" {
+		return baseData, nil
+	}
+
+	overrideData, err := template.LoadTemplateData(app.Script.ValuesFile)
+	if err != nil {
+		return nil, err
+	}
+
+	return template.MergeTemplateData(baseData, overrideData), nil
 }
 
 func runnerHost(runner ssh.Runner, fallback string) string {
