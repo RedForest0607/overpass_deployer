@@ -7,11 +7,30 @@ ssh:
 
 bastion:
   host: bastion.example.com
+  # servers[].name 을 bastion SSH alias 의 로그인 사용자와 함께 사용합니다.
   alias_user: ec2-user
+
+bootstrap:
+  packages:
+    - unzip
+    - procps-ng
+  jdk:
+    vendor: corretto
+    major: 21
+    headless: true
+  os_update:
+    enabled: false
 
 servers:
   - host: 10.0.1.10
+    # 사용자가 정하는 논리 이름입니다.
+    # bastion.host 가 설정되면 bastion 의 ssh config 에 `Host app-prod-a` alias 로 생성됩니다.
     name: app-prod-a
+    bootstrap:
+      packages:
+        - git
+      jdk:
+        major: 17
     app:
       name: sample-api
       base_dir: /opt/sample-api
@@ -27,11 +46,33 @@ servers:
         java_opts:
           - -Dfile.encoding=UTF-8
       config_files:
-        - local: ./configs/application-prod.yml
-          remote: /app/overpass/config/application.yml
-        - local: ./configs/logback.xml
-          remote: /app/overpass/config/logback.xml
+        - local_path: ./configs/application-prod.yml
+          remote_path: /app/overpass/config/application.yml
+        - local_path: ./configs/logback.xml
+          remote_path: /app/overpass/config/logback.xml
+      extra_files:
+        - local_path: ./scripts/setEnv.sh
+          remote_path: /app/overpass/scripts/setEnv.sh
+          chmod: "774"
       script:
+        mode: template
         template: embedded:server.sh.tmpl
         values_file: ./configs/sample-api.server.values.yml
-        remote_dir: /app/overpass/scripts
+        remote_path: /app/overpass/scripts/server.sh
+
+  - host: 10.0.1.11
+    name: app-prod-b
+    app:
+      name: sample-api-copy-script
+      base_dir: /opt/sample-api-copy-script
+      port: 8081
+      jar:
+        local_path: ./dist/sample-api-copy-script.jar
+        remote_path: /app/overpass/sample-api-copy-script/bin/sample-api-copy-script.jar
+      config_files:
+        - local_path: ./configs/application-prod.yml
+          remote_path: /app/overpass/sample-api-copy-script/config/application.yml
+      script:
+        mode: local-file
+        local_path: ./scripts/server.sh
+        remote_path: /app/overpass/sample-api-copy-script/bin/server.sh
