@@ -47,15 +47,31 @@ func TestCalculateRemoteSHA256ParsesHashOutput(t *testing.T) {
 	t.Helper()
 
 	runner := &stubRunner{
-		output: "abc123  /remote/app.jar\n",
+		output: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  /remote/app.jar\n",
 	}
 
 	hash, err := calculateRemoteSHA256(runner, "/remote/app.jar")
 	if err != nil {
 		t.Fatalf("expected checksum parsing to succeed, got %v", err)
 	}
-	if hash != "abc123" {
-		t.Fatalf("expected parsed hash abc123, got %q", hash)
+	if hash != "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" {
+		t.Fatalf("expected parsed hash to match sha256 output, got %q", hash)
+	}
+}
+
+func TestCalculateRemoteSHA256IgnoresNoiseBeforeHash(t *testing.T) {
+	t.Helper()
+
+	runner := &stubRunner{
+		output: "warning: pseudo-terminal will not be allocated because stdin is not a terminal\nabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd  /remote/app.jar\n",
+	}
+
+	hash, err := calculateRemoteSHA256(runner, "/remote/app.jar")
+	if err != nil {
+		t.Fatalf("expected noisy checksum parsing to succeed, got %v", err)
+	}
+	if hash != "abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd" {
+		t.Fatalf("expected parser to ignore leading noise, got %q", hash)
 	}
 }
 

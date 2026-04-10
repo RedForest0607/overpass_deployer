@@ -68,6 +68,11 @@
 - 설정 키 정리: `config_files`와 `script`도 `local_path` / `remote_path` 기준으로 통일하고 기존 `local` / `remote` / `remote_dir`는 하위 호환 alias로 유지
 - `servers[].extra_files[]` 설정 추가: app 밖에서도 tgz/보조 파일을 서버 단위로 전송 가능하도록 validator/VM runner/샘플 초안 확장
 - `server.sh.tmpl`의 Hamonica 블록을 generic values merge 기반으로 정리: 코드 전용 필드 없이 `values_file`의 같은 이름 키(`HAMONICA_JAVA_AGENT`, `HAMONICA_CONFIG_FILE`)만 템플릿에 반영되도록 수정
+- `TEST/stock_company/PLAN.md`에 실제 AWS test EC2 2대를 순환 사용하는 stock-company 전용 rotating smoke test 계획 추가: wave 분할, mock 자산 구조, IP 매핑, 검증 체크리스트 정리
+- `TEST/stock_company/aws-rotating-smoke` 추가: wave별 `deploy.yml` 초안과 stock-company 경로 규칙을 따르는 mock jar/config/script/values/agent 자산 스캐폴딩 작성
+- 2026-04-10 기준 AWS bastion에서 stock-company rotating smoke wave 1, wave 2 실행 완료: dry-run, 실배포, 재실행 skip, 원격 SHA256/권한, bastion alias/known_hosts 검증 및 보고서 작성
+- 2026-04-10 기준 stock-company rotating smoke wave 3 실행 완료, wave 4 dry-run 완료: 교차 배치 재현성과 bootstrap-only 설정 유효성 검증 및 보고서 작성
+- wave 1/wave 3의 간헐적 재전송 원인 분석 완료: 현재 원격 파일 hash는 모두 local과 일치했고, `internal/scp/transfer.go`의 remote checksum 파서를 stdout/stderr noise tolerant 하게 보강하고 회귀 테스트를 추가
 
 ## Next To-Do
 - 실제 저장소 owner/repo에 맞는 `RELEASE_OWNER`, `RELEASE_REPO` CI 주입값 확정
@@ -86,6 +91,10 @@
 - apt 기반 Ubuntu/Debian bootstrap 지원과 package manager 자동 감지 확장 여부 결정
 - `deploy.example.yml`와 운영 문서에 `servers[].apps` 예시 추가
 - `TEST/stock_company/PLAN.md` 기준 `devwas`용 실제 multi-app `deploy.yml` 샘플 작성
+- `TEST/stock_company/PLAN.md` 기준 rotating smoke test 자산 디렉토리와 wave별 `deploy.yml` 초안 생성
+- `aws-rotating-smoke` 자산 기준으로 bastion 업로드/placeholder 치환 후 실제 dry-run 및 wave별 smoke 실행 검증
+- wave 3 교차 분산 smoke 실행 및 wave 4 bootstrap dry-run 결과 문서화
+- 수정된 checksum 파서로 bastion 재배포 후 wave 1/wave 3 재실행 시 false-positive 재전송이 사라지는지 재검증
 - 초안 YAML의 `TBD.server.values.yml`, Hamonica agent 배포 규칙, devapm/devapp/devdb 반영 방식 확정
 - 운영 샘플/문서에서 `script.mode: local-file`를 어디에 적용할지 결정
 - devdb PostgreSQL 17 실제 패키지명/리포지토리/서비스 enable 절차 확정

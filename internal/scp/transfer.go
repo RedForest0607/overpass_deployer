@@ -60,11 +60,47 @@ func calculateRemoteSHA256(runner ssh.Runner, path string) (string, error) {
 		return "", nil
 	}
 
-	parts := strings.Fields(out)
-	if len(parts) > 0 {
-		return parts[0], nil
+	return parseRemoteSHA256Output(out), nil
+}
+
+func parseRemoteSHA256Output(out string) string {
+	for _, line := range strings.Split(out, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if trimmed == missingRemoteSHA256Marker {
+			return ""
+		}
+
+		fields := strings.Fields(trimmed)
+		if len(fields) == 0 {
+			continue
+		}
+		if isSHA256Hex(fields[0]) {
+			return strings.ToLower(fields[0])
+		}
 	}
-	return "", nil
+
+	return ""
+}
+
+func isSHA256Hex(value string) bool {
+	if len(value) != sha256.Size*2 {
+		return false
+	}
+
+	for _, r := range value {
+		switch {
+		case '0' <= r && r <= '9':
+		case 'a' <= r && r <= 'f':
+		case 'A' <= r && r <= 'F':
+		default:
+			return false
+		}
+	}
+
+	return true
 }
 
 type progressWriter struct {
