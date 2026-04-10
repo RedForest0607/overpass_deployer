@@ -47,18 +47,18 @@ terraform -chdir=infra/aws-test output -json target_private_ips
 
 ## 2. Stage Deployer And Smoke-Test Assets Onto The Bastion
 
-Build the binary locally:
+Build the binary locally for the bastion's Linux/x86_64 runtime:
 
 ```bash
-go build -o /tmp/overpass-deploy ./cmd/deploy
+GOOS=linux GOARCH=amd64 go build -o /tmp/overpass-deploy ./cmd/deploy
 ```
 
-Copy the binary, smoke-test assets, and the test-only private key to the bastion:
+Copy the binary, smoke-test assets, and the matching test-only private key to the bastion:
 
 ```bash
-scp -i ~/.ssh/overpass-deployer-aws-smoke.pem /tmp/overpass-deploy ec2-user@<bastion_public_ip>:~/overpass-aws-test/deploy
-scp -i ~/.ssh/overpass-deployer-aws-smoke.pem -r TEST/aws-smoke ec2-user@<bastion_public_ip>:~/overpass-aws-test/
-scp -i ~/.ssh/overpass-deployer-aws-smoke.pem ~/.ssh/overpass-deployer-aws-smoke.pem ec2-user@<bastion_public_ip>:~/.ssh/overpass-aws-test.pem
+scp -i ~/.ssh/<matching-private-key>.pem /tmp/overpass-deploy ec2-user@<bastion_public_ip>:~/overpass-aws-test/deploy
+scp -i ~/.ssh/<matching-private-key>.pem -r TEST/aws-smoke ec2-user@<bastion_public_ip>:~/overpass-aws-test/
+scp -i ~/.ssh/<matching-private-key>.pem ~/.ssh/<matching-private-key>.pem ec2-user@<bastion_public_ip>:~/.ssh/overpass-aws-test.pem
 ```
 
 On the bastion:
@@ -122,11 +122,11 @@ ssh -i ~/.ssh/overpass-aws-test.pem ec2-user@<target_private_ip>
 Verify file existence:
 
 ```bash
-test -f /app/overpass/mock-app/bin/mock-app.jar
-test -f /app/overpass/mock-app/config/application.yml
-test -f /app/overpass/mock-app/config/logback.xml
-test -f /app/overpass/mock-app/scripts/server.sh
-test -x /app/overpass/mock-app/scripts/server.sh
+test -f /app/overpass/mock-app/lib/mock-app.jar
+test -f /app/overpass/mock-app/conf/application.yml
+test -f /app/overpass/mock-app/conf/logback.xml
+test -f /app/overpass/mock-app/bin/server.sh
+test -x /app/overpass/mock-app/bin/server.sh
 ```
 
 Verify SHA256 values from the bastion staging directory:
@@ -134,7 +134,7 @@ Verify SHA256 values from the bastion staging directory:
 ```bash
 sha256sum ./dist/mock-app.jar ./config/application-smoke.yml ./config/logback-smoke.xml
 ssh -i ~/.ssh/overpass-aws-test.pem ec2-user@<target_private_ip> \
-  "sha256sum /app/overpass/mock-app/bin/mock-app.jar /app/overpass/mock-app/config/application.yml /app/overpass/mock-app/config/logback.xml"
+  "sha256sum /app/overpass/mock-app/lib/mock-app.jar /app/overpass/mock-app/conf/application.yml /app/overpass/mock-app/conf/logback.xml"
 ```
 
 ## 6. Re-Run For Skip Verification
@@ -177,3 +177,4 @@ Review destroy carefully. `infra/aws-test` imports shared default VPC resources 
 
 - The smoke-test jar is intentionally a plain mock file, not a runnable Java archive.
 - Bastion security rules in `infra/aws-test` allow target-to-bastion `ssh-keyscan` and bastion self-SSH so the current M1 bastion sync flow can complete without code changes.
+- If your workstation is macOS, the default `go build` output is not runnable on the Amazon Linux bastion. Use the Linux cross-build command above.

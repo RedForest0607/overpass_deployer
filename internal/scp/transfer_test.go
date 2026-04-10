@@ -3,7 +3,9 @@ package scp
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 
 	"go-deployer/internal/ssh"
 )
@@ -54,6 +56,82 @@ func TestCalculateRemoteSHA256ParsesHashOutput(t *testing.T) {
 	}
 	if hash != "abc123" {
 		t.Fatalf("expected parsed hash abc123, got %q", hash)
+	}
+}
+
+func TestFormatProgressLineIncludesPercentAndBar(t *testing.T) {
+	t.Helper()
+
+	line := formatProgressLine(progressState{
+		host:       "app-01",
+		fileName:   "auth-service.jar",
+		totalBytes: 200,
+		written:    100,
+	})
+
+	if !strings.Contains(line, "[app-01] auth-service.jar") {
+		t.Fatalf("expected host and file name in progress line, got %q", line)
+	}
+	if !strings.Contains(line, "50.0%") {
+		t.Fatalf("expected percentage in progress line, got %q", line)
+	}
+	if !strings.Contains(line, "[##############--------------]") {
+		t.Fatalf("expected progress bar in progress line, got %q", line)
+	}
+}
+
+func TestProgressBarClampsAtHundredPercent(t *testing.T) {
+	t.Helper()
+
+	bar := progressBar(150, 100)
+	if bar != "[############################]" {
+		t.Fatalf("expected full bar for overshoot, got %q", bar)
+	}
+
+	if got := progressPercent(150, 100); got != 100 {
+		t.Fatalf("expected percent to clamp at 100, got %d", got)
+	}
+}
+
+func TestProgressWriterNonInteractiveReportsByTenPercentSteps(t *testing.T) {
+	t.Helper()
+
+	renderCount := 0
+	pw := newProgressWriter("app-01", "config.yml", 100)
+	pw.isInteractive = false
+	pw.render = func(state progressState) {
+		renderCount++
+	}
+	pw.finishLine = func(state progressState) {}
+
+	pw.Write(make([]byte, 5))
+	pw.Write(make([]byte, 5))
+	pw.Write(make([]byte, 9))
+	pw.Write(make([]byte, 1))
+
+	if renderCount != 2 {
+		t.Fatalf("expected renders at 10%% and 20%% boundaries, got %d", renderCount)
+	}
+}
+
+func TestProgressWriterInteractiveReportsAfterInterval(t *testing.T) {
+	t.Helper()
+
+	renderCount := 0
+	pw := newProgressWriter("app-01", "config.yml", 100)
+	pw.isInteractive = true
+	pw.render = func(state progressState) {
+		renderCount++
+	}
+	pw.finishLine = func(state progressState) {}
+
+	pw.Write(make([]byte, 5))
+	pw.Write(make([]byte, 5))
+	pw.lastRenderAt = time.Now().Add(-progressUpdateEvery)
+	pw.Write(make([]byte, 5))
+
+	if renderCount != 2 {
+		t.Fatalf("expected initial render and interval-based render, got %d", renderCount)
 	}
 }
 

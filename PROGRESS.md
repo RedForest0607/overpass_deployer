@@ -45,6 +45,8 @@
 - 운영 샘플 `TEST/script-sample.sh`를 반영해 기본 `server.sh` 템플릿을 고도화: `restart/status/log`, PID 기반 상태 확인, startup 대기, 로그 tail 흐름 추가
 - `script.values_file` 설정 추가: 실행 스크립트 템플릿 데이터도 외부 YAML 파일에서 읽고, 기본 앱 값 위에 템플릿별 override를 적용하도록 리팩토링
 - `script.template`에 `embedded:server.sh.tmpl` 같은 선언형 참조를 지원하고, TEST/AWS smoke 샘플 설정을 새 구조로 갱신
+- `.jar` 및 기타 업로드 파일에 대해 SFTP 전송률을 progress bar + 퍼센트로 표시하도록 개선하고, non-TTY 로그 환경에서도 10% 단위 진행 상태가 보이도록 보완
+- 2026-04-10 기준 실제 AWS smoke test 재검증 완료: Linux/amd64 바이너리로 bastion에서 dry-run, 실배포, 재실행 skip, 원격 SHA256 일치와 progress 출력까지 확인하고 `docs/aws-test-smoke.md`를 최신 경로/빌드 절차에 맞게 보정
 
 ## Next To-Do
 - `.gitignore`를 M1 체크리스트 기대 항목과 맞추거나 기준 자체를 현실화
@@ -56,3 +58,4 @@
 - 실제 검증에 사용한 AWS test 리소스와 bastion 스테이징 파일을 정리할지 결정하고 destroy 실행
 - 샘플 운영 스크립트에서 아직 설정 스키마로 일반화되지 않은 항목(예: context path, 별도 healthcheck path, Java agent 전용 옵션)을 템플릿 입력으로 승격할지 검토
 - `deploy.example.yml`과 함께 제공할 템플릿 value 파일 샘플을 저장소 표준 위치로 정리할지 결정
+- 실제 bastion/VM 환경에서 대용량 `.jar` 전송 시 progress bar 출력이 운영 터미널에서도 자연스럽게 갱신되는지 확인
