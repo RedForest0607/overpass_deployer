@@ -26,6 +26,9 @@ servers:
     # 사용자가 정하는 논리 이름입니다.
     # bastion.host 가 설정되면 bastion 의 ssh config 에 `Host app-prod-a` alias 로 생성됩니다.
     name: app-prod-a
+    extra_files:
+      - local_path: ./artifacts/hazelcast.tgz
+        remote_path: /home/ec2-user/software/hazelcast/hazelcast.tgz
     bootstrap:
       packages:
         - git

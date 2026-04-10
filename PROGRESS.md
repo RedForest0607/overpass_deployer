@@ -66,6 +66,8 @@
 - `extra_files[]` 설정 추가: `setEnv.sh` 같은 추가 스크립트/일반 파일을 앱별로 전송하고 선택적으로 chmod 적용 가능
 - `extra_files[]` validator, dry-run, chmod helper, 배포 순서 테스트 및 예시 설정 추가
 - 설정 키 정리: `config_files`와 `script`도 `local_path` / `remote_path` 기준으로 통일하고 기존 `local` / `remote` / `remote_dir`는 하위 호환 alias로 유지
+- `servers[].extra_files[]` 설정 추가: app 밖에서도 tgz/보조 파일을 서버 단위로 전송 가능하도록 validator/VM runner/샘플 초안 확장
+- `server.sh.tmpl`의 Hamonica 블록을 기본값 + 최소 템플릿 값 기반으로 정리: `HamonicaHome` 기본값 제공, app별 draft YAML에서는 과도한 `java_opts` 대신 `script.values_file`로 agent 파일명만 넘기도록 정리
 
 ## Next To-Do
 - 실제 저장소 owner/repo에 맞는 `RELEASE_OWNER`, `RELEASE_REPO` CI 주입값 확정
@@ -88,3 +90,4 @@
 - 운영 샘플/문서에서 `script.mode: local-file`를 어디에 적용할지 결정
 - devdb PostgreSQL 17 실제 패키지명/리포지토리/서비스 enable 절차 확정
 - `TEST/stock_company` 초안에서 app별 `extra_files[]`로 배포할 보조 스크립트/agent 파일 목록 정리
+- 서버 단위 `extra_files[]`를 사용할 운영 케이스에서 압축 해제/설치 후속 단계가 필요한지 결정
