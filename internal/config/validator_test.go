@@ -766,6 +766,33 @@ func TestValidateAndApplyDefaultsAllowsBootstrapOnlyServerWithDirectories(t *tes
 	}
 }
 
+func TestValidateAndApplyDefaultsAllowsBootstrapOnlyServerWithServerExtraFiles(t *testing.T) {
+	keyPath := writeTempFile(t, "id_rsa", "key")
+	tgzPath := writeTempFile(t, "hazelcast.tgz", "archive")
+
+	cfg := &Config{
+		SSH: SSHConfig{
+			User:    "deploy",
+			KeyPath: keyPath,
+		},
+		Servers: []ServerConfig{
+			{
+				Host: "infra.example.com",
+				ExtraFiles: []ExtraFile{
+					{
+						LocalPath:  tgzPath,
+						RemotePath: "/home/ec2-user/software/hazelcast/hazelcast.tgz",
+					},
+				},
+			},
+		},
+	}
+
+	if err := ValidateAndApplyDefaults(cfg); err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+}
+
 func TestValidateAndApplyDefaultsSupportsExtraFiles(t *testing.T) {
 	keyPath := writeTempFile(t, "id_rsa", "key")
 	jarPath := writeTempFile(t, "app.jar", "jar")

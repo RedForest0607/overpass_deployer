@@ -8,16 +8,19 @@ import (
 
 func TestRenderUsesEmbeddedTemplateAndSubstitutesVariables(t *testing.T) {
 	tmpFile, err := Render("embedded:server.sh.tmpl", "server.sh", map[string]any{
-		"AppName":       "sample-app",
-		"BaseDir":       "/opt/sample",
-		"JarPath":       "/opt/sample/bin/app.jar",
-		"Port":          8080,
-		"JvmMin":        "256m",
-		"JvmMax":        "1g",
-		"JavaOpts":      []string{"-Dspring.profiles.active=prod"},
-		"ExtraOpts":     []string{"--debug"},
-		"ActiveProfile": "prod",
-		"ContextPath":   "health",
+		"AppName":        "sample-app",
+		"BaseDir":        "/opt/sample",
+		"JarPath":        "/opt/sample/bin/app.jar",
+		"Port":           8080,
+		"JvmMin":         "256m",
+		"JvmMax":         "1g",
+		"JavaOpts":       []string{"-Dspring.profiles.active=prod"},
+		"ExtraOpts":      []string{"--debug"},
+		"ActiveProfile":  "prod",
+		"ContextPath":    "health",
+		"HamonicaHome":   "/app/software/hamonica2-agent",
+		"HamonicaAgent":  "",
+		"HamonicaConfig": "",
 	})
 	if err != nil {
 		t.Fatalf("render failed: %v", err)
@@ -37,6 +40,7 @@ func TestRenderUsesEmbeddedTemplateAndSubstitutesVariables(t *testing.T) {
 		`CONTEXT_PATH="${CONTEXT_PATH:-health}"`,
 		`ACTIVE_PROFILE="${ACTIVE_PROFILE:-prod}"`,
 		`#hamonica`,
+		`HAMONICA_HOME="${HAMONICA_HOME:-/app/software/hamonica2-agent}"`,
 		`JAVA_OPTS+="-Dspring.profiles.active=prod "`,
 		`SPRING_OPTS+=" --debug"`,
 		`status() {`,

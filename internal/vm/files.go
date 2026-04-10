@@ -33,8 +33,16 @@ func DeployConfigFiles(client *ssh.Client, app *config.AppConfig, opts RunOption
 }
 
 func DeployExtraFiles(client *ssh.Client, app *config.AppConfig, opts RunOptions, host string) error {
+	return deployExtraFiles(client, app.ExtraFiles, opts, host)
+}
+
+func DeployServerExtraFiles(client *ssh.Client, extraFiles []config.ExtraFile, opts RunOptions, host string) error {
+	return deployExtraFiles(client, extraFiles, opts, host)
+}
+
+func deployExtraFiles(client *ssh.Client, extraFiles []config.ExtraFile, opts RunOptions, host string) error {
 	host = runnerHost(client, host)
-	for _, ef := range app.ExtraFiles {
+	for _, ef := range extraFiles {
 		if err := scp.Transfer(client, ef.LocalPath, ef.RemotePath, scp.TransferOptions{
 			DryRun: opts.DryRun,
 			Host:   host,

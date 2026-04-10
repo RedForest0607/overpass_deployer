@@ -16,6 +16,7 @@ func TestRunWithOptionsDryRunSkipsSSHConnect(t *testing.T) {
 	originalConnect := connectSSH
 	originalBootstrap := bootstrapHostStep
 	originalCreateServerDirs := createServerDirsStep
+	originalDeployServerFiles := deployServerFilesStep
 	originalCreateDirectories := createDirectoriesStep
 	originalDeployJar := deployJarStep
 	originalDeployConfigs := deployConfigFilesStep
@@ -25,6 +26,7 @@ func TestRunWithOptionsDryRunSkipsSSHConnect(t *testing.T) {
 		connectSSH = originalConnect
 		bootstrapHostStep = originalBootstrap
 		createServerDirsStep = originalCreateServerDirs
+		deployServerFilesStep = originalDeployServerFiles
 		createDirectoriesStep = originalCreateDirectories
 		deployJarStep = originalDeployJar
 		deployConfigFilesStep = originalDeployConfigs
@@ -41,6 +43,9 @@ func TestRunWithOptionsDryRunSkipsSSHConnect(t *testing.T) {
 		return nil
 	}
 	createServerDirsStep = func(runner ssh.Runner, directories []string, opts RunOptions, host string) error {
+		return nil
+	}
+	deployServerFilesStep = func(client *ssh.Client, extraFiles []config.ExtraFile, opts RunOptions, host string) error {
 		return nil
 	}
 	createDirectoriesStep = func(runner ssh.Runner, app *config.AppConfig, opts RunOptions, host string) error {
@@ -106,6 +111,7 @@ func TestRunWithOptionsDryRunBootstrapsBeforeOtherSteps(t *testing.T) {
 
 	originalBootstrap := bootstrapHostStep
 	originalCreateServerDirs := createServerDirsStep
+	originalDeployServerFiles := deployServerFilesStep
 	originalCreateDirectories := createDirectoriesStep
 	originalDeployJar := deployJarStep
 	originalDeployConfigs := deployConfigFilesStep
@@ -114,6 +120,7 @@ func TestRunWithOptionsDryRunBootstrapsBeforeOtherSteps(t *testing.T) {
 	t.Cleanup(func() {
 		bootstrapHostStep = originalBootstrap
 		createServerDirsStep = originalCreateServerDirs
+		deployServerFilesStep = originalDeployServerFiles
 		createDirectoriesStep = originalCreateDirectories
 		deployJarStep = originalDeployJar
 		deployConfigFilesStep = originalDeployConfigs
@@ -128,6 +135,10 @@ func TestRunWithOptionsDryRunBootstrapsBeforeOtherSteps(t *testing.T) {
 	}
 	createServerDirsStep = func(runner ssh.Runner, directories []string, opts RunOptions, host string) error {
 		order = append(order, "server-dirs")
+		return nil
+	}
+	deployServerFilesStep = func(client *ssh.Client, extraFiles []config.ExtraFile, opts RunOptions, host string) error {
+		order = append(order, "server-extra-files")
 		return nil
 	}
 	createDirectoriesStep = func(runner ssh.Runner, app *config.AppConfig, opts RunOptions, host string) error {
@@ -186,10 +197,12 @@ func TestRunWithOptionsStopsWhenBootstrapFails(t *testing.T) {
 
 	originalBootstrap := bootstrapHostStep
 	originalCreateServerDirs := createServerDirsStep
+	originalDeployServerFiles := deployServerFilesStep
 	originalCreateDirectories := createDirectoriesStep
 	t.Cleanup(func() {
 		bootstrapHostStep = originalBootstrap
 		createServerDirsStep = originalCreateServerDirs
+		deployServerFilesStep = originalDeployServerFiles
 		createDirectoriesStep = originalCreateDirectories
 	})
 
@@ -197,6 +210,9 @@ func TestRunWithOptionsStopsWhenBootstrapFails(t *testing.T) {
 		return fmt.Errorf("bootstrap failed")
 	}
 	createServerDirsStep = func(runner ssh.Runner, directories []string, opts RunOptions, host string) error {
+		return nil
+	}
+	deployServerFilesStep = func(client *ssh.Client, extraFiles []config.ExtraFile, opts RunOptions, host string) error {
 		return nil
 	}
 	createCalled := false
@@ -239,6 +255,7 @@ func TestRunWithOptionsDryRunDeploysEachAppOnServer(t *testing.T) {
 
 	originalBootstrap := bootstrapHostStep
 	originalCreateServerDirs := createServerDirsStep
+	originalDeployServerFiles := deployServerFilesStep
 	originalCreateDirectories := createDirectoriesStep
 	originalDeployJar := deployJarStep
 	originalDeployConfigs := deployConfigFilesStep
@@ -247,6 +264,7 @@ func TestRunWithOptionsDryRunDeploysEachAppOnServer(t *testing.T) {
 	t.Cleanup(func() {
 		bootstrapHostStep = originalBootstrap
 		createServerDirsStep = originalCreateServerDirs
+		deployServerFilesStep = originalDeployServerFiles
 		createDirectoriesStep = originalCreateDirectories
 		deployJarStep = originalDeployJar
 		deployConfigFilesStep = originalDeployConfigs
@@ -261,6 +279,10 @@ func TestRunWithOptionsDryRunDeploysEachAppOnServer(t *testing.T) {
 	}
 	createServerDirsStep = func(runner ssh.Runner, directories []string, opts RunOptions, host string) error {
 		order = append(order, "server-dirs")
+		return nil
+	}
+	deployServerFilesStep = func(client *ssh.Client, extraFiles []config.ExtraFile, opts RunOptions, host string) error {
+		order = append(order, "server-extra-files")
 		return nil
 	}
 	createDirectoriesStep = func(runner ssh.Runner, app *config.AppConfig, opts RunOptions, host string) error {
@@ -334,9 +356,11 @@ func TestRunWithOptionsDryRunSupportsBootstrapOnlyServer(t *testing.T) {
 
 	originalBootstrap := bootstrapHostStep
 	originalCreateServerDirs := createServerDirsStep
+	originalDeployServerFiles := deployServerFilesStep
 	t.Cleanup(func() {
 		bootstrapHostStep = originalBootstrap
 		createServerDirsStep = originalCreateServerDirs
+		deployServerFilesStep = originalDeployServerFiles
 	})
 
 	var order []string
@@ -346,6 +370,10 @@ func TestRunWithOptionsDryRunSupportsBootstrapOnlyServer(t *testing.T) {
 	}
 	createServerDirsStep = func(runner ssh.Runner, directories []string, opts RunOptions, host string) error {
 		order = append(order, "server-dirs:"+directories[0])
+		return nil
+	}
+	deployServerFilesStep = func(client *ssh.Client, extraFiles []config.ExtraFile, opts RunOptions, host string) error {
+		order = append(order, "server-extra-files")
 		return nil
 	}
 
@@ -373,6 +401,61 @@ func TestRunWithOptionsDryRunSupportsBootstrapOnlyServer(t *testing.T) {
 	want := []string{"bootstrap", "server-dirs:/app/elasticsearch"}
 	if !reflect.DeepEqual(order, want) {
 		t.Fatalf("unexpected bootstrap-only step order: got %v want %v", order, want)
+	}
+}
+
+func TestRunWithOptionsDryRunSupportsServerExtraFiles(t *testing.T) {
+	t.Helper()
+
+	originalBootstrap := bootstrapHostStep
+	originalCreateServerDirs := createServerDirsStep
+	originalDeployServerFiles := deployServerFilesStep
+	t.Cleanup(func() {
+		bootstrapHostStep = originalBootstrap
+		createServerDirsStep = originalCreateServerDirs
+		deployServerFilesStep = originalDeployServerFiles
+	})
+
+	var order []string
+	bootstrapHostStep = func(runner ssh.Runner, bootstrap config.BootstrapConfig, opts RunOptions, host string) error {
+		order = append(order, "bootstrap")
+		return nil
+	}
+	createServerDirsStep = func(runner ssh.Runner, directories []string, opts RunOptions, host string) error {
+		order = append(order, "server-dirs")
+		return nil
+	}
+	deployServerFilesStep = func(client *ssh.Client, extraFiles []config.ExtraFile, opts RunOptions, host string) error {
+		order = append(order, "server-extra-files:"+extraFiles[0].RemotePath)
+		return nil
+	}
+
+	cfg := &config.Config{
+		SSH: config.SSHConfig{
+			User:    "ubuntu",
+			KeyPath: "/tmp/id_rsa",
+		},
+		Servers: []config.ServerConfig{
+			{
+				Name: "devapm1",
+				Host: "10.0.0.30",
+				ExtraFiles: []config.ExtraFile{
+					{
+						LocalPath:  tempFile(t, "hazelcast.tgz"),
+						RemotePath: "/home/ec2-user/software/hazelcast/hazelcast.tgz",
+					},
+				},
+			},
+		},
+	}
+
+	if err := RunWithOptions(cfg, RunOptions{DryRun: true}); err != nil {
+		t.Fatalf("expected server extra files dry-run to succeed, got %v", err)
+	}
+
+	want := []string{"bootstrap", "server-extra-files:/home/ec2-user/software/hazelcast/hazelcast.tgz"}
+	if !reflect.DeepEqual(order, want) {
+		t.Fatalf("unexpected server extra file order: got %v want %v", order, want)
 	}
 }
 

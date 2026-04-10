@@ -55,12 +55,12 @@ JAVA_OPTS+="{{ . }} "
 
 
 #hamonica
-HAMONICA_HOME="${HAMONICA_HOME:-/app/software/hamonica2-agent}"
-HAMONICA_JAVA_AGENT="${HAMONICA_JAVA_AGENT:-}"
-HAMONICA_CONFIG_FILE="${HAMONICA_CONFIG_FILE:-}"
+HAMONICA_HOME="${HAMONICA_HOME:-{{ .HamonicaHome }}}"
+HAMONICA_JAVA_AGENT="${HAMONICA_JAVA_AGENT:-{{ .HamonicaAgent }}}"
+HAMONICA_CONFIG_FILE="${HAMONICA_CONFIG_FILE:-{{ .HamonicaConfig }}}"
 if [ -n "${HAMONICA_JAVA_AGENT}" ] && [ -n "${HAMONICA_CONFIG_FILE}" ]; then
     JAVA_OPTS+="-javaagent:${HAMONICA_HOME}/lib/${HAMONICA_JAVA_AGENT} "
-    JAVA_OPTS+="-Dotel.javaagent.configuration-file=${HAMONICA_HOME}/${HAMONICA_CONFIG_FILE} "
+    JAVA_OPTS+="-Dotel.javaagent.configuration-file=${HAMONICA_HOME}/conf/${HAMONICA_CONFIG_FILE} "
     JAVA_OPTS+="-Dio.opentelemetry.javaagent.slf4j.simpleLogger.defaultLogLevel=warn "
     JAVA_OPTS+="-Xshare:off "
 fi

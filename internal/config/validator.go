@@ -133,12 +133,13 @@ func ValidateAndApplyDefaults(cfg *Config) error {
 		}
 		validateBootstrapConfig(&cfg.Servers[i].Bootstrap, prefix+".bootstrap", &errs, checkUnresolvedEnv)
 		validateDirectories(&cfg.Servers[i].Directories, prefix+".directories", &errs, checkUnresolvedEnv)
+		validateExtraFiles(&cfg.Servers[i].ExtraFiles, prefix+".extra_files", &errs, checkUnresolvedEnv)
 
 		if s.UsesLegacyApp() && len(s.Apps) > 0 {
 			errs = append(errs, prefix+" cannot define both app and apps")
 		}
-		if !s.UsesLegacyApp() && len(s.Apps) == 0 && len(cfg.Servers[i].Directories) == 0 && !hasBootstrapSettings(cfg.Servers[i].Bootstrap) {
-			errs = append(errs, prefix+" must define app, apps, directories, or bootstrap settings")
+		if !s.UsesLegacyApp() && len(s.Apps) == 0 && len(cfg.Servers[i].Directories) == 0 && len(cfg.Servers[i].ExtraFiles) == 0 && !hasBootstrapSettings(cfg.Servers[i].Bootstrap) {
+			errs = append(errs, prefix+" must define app, apps, directories, extra_files, or bootstrap settings")
 		}
 
 		if s.UsesLegacyApp() {
@@ -185,6 +186,38 @@ func validateDirectories(directories *[]string, prefix string, errs *[]string, c
 			continue
 		}
 		(*directories)[i] = filepath.ToSlash(strings.TrimSpace(dir))
+	}
+}
+
+func validateExtraFiles(extraFiles *[]ExtraFile, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
+	if extraFiles == nil {
+		return
+	}
+
+	for i := range *extraFiles {
+		ef := &(*extraFiles)[i]
+		fieldPrefix := fmt.Sprintf("%s[%d]", prefix, i)
+		checkUnresolvedEnv(ef.LocalPath, fieldPrefix+".local_path")
+		if ef.LocalPath == "" {
+			*errs = append(*errs, fieldPrefix+".local_path is required")
+		} else {
+			if strings.HasPrefix(ef.LocalPath, "~/") {
+				ef.LocalPath = expandHome(ef.LocalPath)
+			}
+			validateExistingFile(ef.LocalPath, fieldPrefix+".local_path", errs)
+		}
+
+		checkUnresolvedEnv(ef.RemotePath, fieldPrefix+".remote_path")
+		if ef.RemotePath == "" {
+			*errs = append(*errs, fieldPrefix+".remote_path is required")
+		}
+
+		if ef.Chmod != "" {
+			ef.Chmod = strings.TrimSpace(ef.Chmod)
+			if !fileModePattern.MatchString(ef.Chmod) {
+				*errs = append(*errs, fieldPrefix+".chmod must be a 3 or 4 digit octal mode")
+			}
+		}
 	}
 }
 
@@ -268,31 +301,7 @@ func validateAppConfig(app *AppConfig, prefix string, errs *[]string, checkUnres
 		}
 	}
 
-	for j := range app.ExtraFiles {
-		ef := &app.ExtraFiles[j]
-		efPrefix := fmt.Sprintf("%s.extra_files[%d]", prefix, j)
-		checkUnresolvedEnv(ef.LocalPath, efPrefix+".local_path")
-		if ef.LocalPath == "" {
-			*errs = append(*errs, efPrefix+".local_path is required")
-		} else {
-			if strings.HasPrefix(ef.LocalPath, "~/") {
-				ef.LocalPath = expandHome(ef.LocalPath)
-			}
-			validateExistingFile(ef.LocalPath, efPrefix+".local_path", errs)
-		}
-
-		checkUnresolvedEnv(ef.RemotePath, efPrefix+".remote_path")
-		if ef.RemotePath == "" {
-			*errs = append(*errs, efPrefix+".remote_path is required")
-		}
-
-		if ef.Chmod != "" {
-			ef.Chmod = strings.TrimSpace(ef.Chmod)
-			if !fileModePattern.MatchString(ef.Chmod) {
-				*errs = append(*errs, efPrefix+".chmod must be a 3 or 4 digit octal mode")
-			}
-		}
-	}
+	validateExtraFiles(&app.ExtraFiles, prefix+".extra_files", errs, checkUnresolvedEnv)
 
 	validateScriptConfig(app, prefix, errs, checkUnresolvedEnv)
 }

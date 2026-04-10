@@ -23,6 +23,7 @@ var connectSSH = func(sshCfg config.SSHConfig, host string) (*ssh.Client, error)
 var (
 	bootstrapHostStep     = BootstrapHost
 	createServerDirsStep  = CreateServerDirectories
+	deployServerFilesStep = DeployServerExtraFiles
 	createDirectoriesStep = CreateDirectories
 	deployJarStep         = DeployJar
 	deployConfigFilesStep = DeployConfigFiles
@@ -67,6 +68,11 @@ func runSingle(sshCfg config.SSHConfig, bastionCfg config.BastionConfig, server 
 				return fmt.Errorf("plan server directories: %w", err)
 			}
 		}
+		if len(server.ExtraFiles) > 0 {
+			if err := deployServerFilesStep(nil, server.ExtraFiles, opts, server.Host); err != nil {
+				return fmt.Errorf("plan server extra files: %w", err)
+			}
+		}
 		for i := range apps {
 			app := &apps[i]
 			logger.Info(server.Host, "DRY-RUN: would deploy app %s", app.Name)
@@ -106,6 +112,11 @@ func runSingle(sshCfg config.SSHConfig, bastionCfg config.BastionConfig, server 
 	if len(server.Directories) > 0 {
 		if err := createServerDirsStep(client, server.Directories, opts, server.Host); err != nil {
 			return fmt.Errorf("create server directories: %w", err)
+		}
+	}
+	if len(server.ExtraFiles) > 0 {
+		if err := deployServerFilesStep(client, server.ExtraFiles, opts, server.Host); err != nil {
+			return fmt.Errorf("deploy server extra files: %w", err)
 		}
 	}
 
