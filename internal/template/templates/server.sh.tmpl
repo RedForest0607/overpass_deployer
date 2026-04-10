@@ -55,9 +55,9 @@ JAVA_OPTS+="{{ . }} "
 
 
 #hamonica
-HAMONICA_HOME="${HAMONICA_HOME:-{{ .HamonicaHome }}}"
-HAMONICA_JAVA_AGENT="${HAMONICA_JAVA_AGENT:-{{ .HamonicaAgent }}}"
-HAMONICA_CONFIG_FILE="${HAMONICA_CONFIG_FILE:-{{ .HamonicaConfig }}}"
+HAMONICA_HOME="${HAMONICA_HOME:-{{ defaultString (lookup . "HAMONICA_HOME") "/app/software/hamonica2-agent" }}}"
+HAMONICA_JAVA_AGENT="${HAMONICA_JAVA_AGENT:-{{ defaultString (lookup . "HAMONICA_JAVA_AGENT") "" }}}"
+HAMONICA_CONFIG_FILE="${HAMONICA_CONFIG_FILE:-{{ defaultString (lookup . "HAMONICA_CONFIG_FILE") "" }}}"
 if [ -n "${HAMONICA_JAVA_AGENT}" ] && [ -n "${HAMONICA_CONFIG_FILE}" ]; then
     JAVA_OPTS+="-javaagent:${HAMONICA_HOME}/lib/${HAMONICA_JAVA_AGENT} "
     JAVA_OPTS+="-Dotel.javaagent.configuration-file=${HAMONICA_HOME}/conf/${HAMONICA_CONFIG_FILE} "

@@ -21,7 +21,13 @@ func Render(tmplPath string, defaultName string, data any) (string, error) {
 		return "", err
 	}
 
-	t, err := template.New(defaultName).Option("missingkey=error").Parse(string(tmplContent))
+	t, err := template.New(defaultName).
+		Funcs(template.FuncMap{
+			"lookup":        lookupValue,
+			"defaultString": defaultString,
+		}).
+		Option("missingkey=error").
+		Parse(string(tmplContent))
 	if err != nil {
 		return "", fmt.Errorf("parsing template: %w", err)
 	}
@@ -80,4 +86,25 @@ func readEmbeddedTemplate(name string) ([]byte, error) {
 		return nil, fmt.Errorf("reading embedded template %s: %w", name, err)
 	}
 	return content, nil
+}
+
+func lookupValue(data any, key string) any {
+	values, ok := data.(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	value, exists := values[key]
+	if !exists {
+		return nil
+	}
+	return value
+}
+
+func defaultString(value any, fallback string) string {
+	text, ok := value.(string)
+	if !ok || text == "" {
+		return fallback
+	}
+	return text
 }

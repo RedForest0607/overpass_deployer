@@ -8,19 +8,16 @@ import (
 
 func TestRenderUsesEmbeddedTemplateAndSubstitutesVariables(t *testing.T) {
 	tmpFile, err := Render("embedded:server.sh.tmpl", "server.sh", map[string]any{
-		"AppName":        "sample-app",
-		"BaseDir":        "/opt/sample",
-		"JarPath":        "/opt/sample/bin/app.jar",
-		"Port":           8080,
-		"JvmMin":         "256m",
-		"JvmMax":         "1g",
-		"JavaOpts":       []string{"-Dspring.profiles.active=prod"},
-		"ExtraOpts":      []string{"--debug"},
-		"ActiveProfile":  "prod",
-		"ContextPath":    "health",
-		"HamonicaHome":   "/app/software/hamonica2-agent",
-		"HamonicaAgent":  "",
-		"HamonicaConfig": "",
+		"AppName":       "sample-app",
+		"BaseDir":       "/opt/sample",
+		"JarPath":       "/opt/sample/bin/app.jar",
+		"Port":          8080,
+		"JvmMin":        "256m",
+		"JvmMax":        "1g",
+		"JavaOpts":      []string{"-Dspring.profiles.active=prod"},
+		"ExtraOpts":     []string{"--debug"},
+		"ActiveProfile": "prod",
+		"ContextPath":   "health",
 	})
 	if err != nil {
 		t.Fatalf("render failed: %v", err)
@@ -41,12 +38,52 @@ func TestRenderUsesEmbeddedTemplateAndSubstitutesVariables(t *testing.T) {
 		`ACTIVE_PROFILE="${ACTIVE_PROFILE:-prod}"`,
 		`#hamonica`,
 		`HAMONICA_HOME="${HAMONICA_HOME:-/app/software/hamonica2-agent}"`,
+		`HAMONICA_JAVA_AGENT="${HAMONICA_JAVA_AGENT:-}"`,
+		`HAMONICA_CONFIG_FILE="${HAMONICA_CONFIG_FILE:-}"`,
 		`JAVA_OPTS+="-Dspring.profiles.active=prod "`,
 		`SPRING_OPTS+=" --debug"`,
 		`status() {`,
 		`tail -f "$LOG_FILE"`,
 		`restart)`,
 		`사용법: $0 {start|stop|restart|status|log}`,
+	} {
+		if !strings.Contains(rendered, fragment) {
+			t.Fatalf("expected rendered template to contain %q, got:\n%s", fragment, rendered)
+		}
+	}
+}
+
+func TestRenderUsesTemplateValuesForHamonicaVariables(t *testing.T) {
+	tmpFile, err := Render("embedded:server.sh.tmpl", "server.sh", map[string]any{
+		"AppName":              "sample-app",
+		"BaseDir":              "/opt/sample",
+		"JarPath":              "/opt/sample/bin/app.jar",
+		"Port":                 8080,
+		"JvmMin":               "256m",
+		"JvmMax":               "1g",
+		"JavaOpts":             []string{},
+		"ExtraOpts":            []string{},
+		"ActiveProfile":        "",
+		"ContextPath":          "",
+		"HAMONICA_JAVA_AGENT":  "otel-javaagent-hamonica-2.0.0-SNAPSHOT.jar",
+		"HAMONICA_CONFIG_FILE": "hamonica2-otel.sample-app.config.properties",
+		"HAMONICA_HOME":        "/opt/hamonica-agent",
+	})
+	if err != nil {
+		t.Fatalf("render failed: %v", err)
+	}
+	defer os.Remove(tmpFile)
+
+	content, err := os.ReadFile(tmpFile)
+	if err != nil {
+		t.Fatalf("reading rendered file: %v", err)
+	}
+
+	rendered := string(content)
+	for _, fragment := range []string{
+		`HAMONICA_HOME="${HAMONICA_HOME:-/opt/hamonica-agent}"`,
+		`HAMONICA_JAVA_AGENT="${HAMONICA_JAVA_AGENT:-otel-javaagent-hamonica-2.0.0-SNAPSHOT.jar}"`,
+		`HAMONICA_CONFIG_FILE="${HAMONICA_CONFIG_FILE:-hamonica2-otel.sample-app.config.properties}"`,
 	} {
 		if !strings.Contains(rendered, fragment) {
 			t.Fatalf("expected rendered template to contain %q, got:\n%s", fragment, rendered)

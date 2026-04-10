@@ -107,36 +107,30 @@ type ScriptConfig struct {
 
 // ScriptData is used to render start/stop templates.
 type ScriptData struct {
-	AppName        string
-	BaseDir        string
-	JarPath        string
-	Port           int
-	JvmMin         string
-	JvmMax         string
-	JavaOpts       []string
-	ExtraOpts      []string
-	ActiveProfile  string
-	ContextPath    string
-	HamonicaHome   string
-	HamonicaAgent  string
-	HamonicaConfig string
+	AppName       string
+	BaseDir       string
+	JarPath       string
+	Port          int
+	JvmMin        string
+	JvmMax        string
+	JavaOpts      []string
+	ExtraOpts     []string
+	ActiveProfile string
+	ContextPath   string
 }
 
 func (c *AppConfig) ToScriptData() ScriptData {
 	return ScriptData{
-		AppName:        c.Name,
-		BaseDir:        c.BaseDir,
-		JarPath:        c.Jar.RemotePath,
-		Port:           c.Port,
-		JvmMin:         c.Jvm.MinHeap,
-		JvmMax:         c.Jvm.MaxHeap,
-		JavaOpts:       c.Jvm.JavaOpts,
-		ExtraOpts:      c.ExtraOpts,
-		ActiveProfile:  "",
-		ContextPath:    "",
-		HamonicaHome:   "/app/software/hamonica2-agent",
-		HamonicaAgent:  "",
-		HamonicaConfig: "",
+		AppName:       c.Name,
+		BaseDir:       c.BaseDir,
+		JarPath:       c.Jar.RemotePath,
+		Port:          c.Port,
+		JvmMin:        c.Jvm.MinHeap,
+		JvmMax:        c.Jvm.MaxHeap,
+		JavaOpts:      c.Jvm.JavaOpts,
+		ExtraOpts:     c.ExtraOpts,
+		ActiveProfile: "",
+		ContextPath:   "",
 	}
 }
 
@@ -144,19 +138,16 @@ func (c *AppConfig) ToTemplateData() map[string]any {
 	data := c.ToScriptData()
 
 	return map[string]any{
-		"AppName":        data.AppName,
-		"BaseDir":        data.BaseDir,
-		"JarPath":        data.JarPath,
-		"Port":           data.Port,
-		"JvmMin":         data.JvmMin,
-		"JvmMax":         data.JvmMax,
-		"JavaOpts":       data.JavaOpts,
-		"ExtraOpts":      data.ExtraOpts,
-		"ActiveProfile":  data.ActiveProfile,
-		"ContextPath":    data.ContextPath,
-		"HamonicaHome":   data.HamonicaHome,
-		"HamonicaAgent":  data.HamonicaAgent,
-		"HamonicaConfig": data.HamonicaConfig,
+		"AppName":       data.AppName,
+		"BaseDir":       data.BaseDir,
+		"JarPath":       data.JarPath,
+		"Port":          data.Port,
+		"JvmMin":        data.JvmMin,
+		"JvmMax":        data.JvmMax,
+		"JavaOpts":      data.JavaOpts,
+		"ExtraOpts":     data.ExtraOpts,
+		"ActiveProfile": data.ActiveProfile,
+		"ContextPath":   data.ContextPath,
 	}
 }
 

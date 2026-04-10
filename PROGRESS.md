@@ -67,7 +67,7 @@
 - `extra_files[]` validator, dry-run, chmod helper, 배포 순서 테스트 및 예시 설정 추가
 - 설정 키 정리: `config_files`와 `script`도 `local_path` / `remote_path` 기준으로 통일하고 기존 `local` / `remote` / `remote_dir`는 하위 호환 alias로 유지
 - `servers[].extra_files[]` 설정 추가: app 밖에서도 tgz/보조 파일을 서버 단위로 전송 가능하도록 validator/VM runner/샘플 초안 확장
-- `server.sh.tmpl`의 Hamonica 블록을 기본값 + 최소 템플릿 값 기반으로 정리: `HamonicaHome` 기본값 제공, app별 draft YAML에서는 과도한 `java_opts` 대신 `script.values_file`로 agent 파일명만 넘기도록 정리
+- `server.sh.tmpl`의 Hamonica 블록을 generic values merge 기반으로 정리: 코드 전용 필드 없이 `values_file`의 같은 이름 키(`HAMONICA_JAVA_AGENT`, `HAMONICA_CONFIG_FILE`)만 템플릿에 반영되도록 수정
 
 ## Next To-Do
 - 실제 저장소 owner/repo에 맞는 `RELEASE_OWNER`, `RELEASE_REPO` CI 주입값 확정
