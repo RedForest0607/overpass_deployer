@@ -1,0 +1,39 @@
+version: 2
+
+project_name: deploy
+
+builds:
+  - id: deploy
+    main: ./cmd/deploy
+    binary: deploy
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - >-
+        -s -w
+        -X go-deployer/internal/buildinfo.Version={{ .Version }}
+        -X go-deployer/internal/buildinfo.Commit={{ .Commit }}
+        -X go-deployer/internal/buildinfo.Date={{ .Date }}
+        -X go-deployer/internal/buildinfo.BuiltBy=goreleaser
+        -X go-deployer/internal/buildinfo.RepoOwner={{ .Env.RELEASE_OWNER }}
+        -X go-deployer/internal/buildinfo.RepoName={{ .Env.RELEASE_REPO }}
+        -X go-deployer/internal/buildinfo.GitHubAPIBase={{ .Env.DEPLOY_GITHUB_API_URL }}
+
+archives:
+  - id: deploy-archive
+    ids:
+      - deploy
+    formats:
+      - tar.gz
+    name_template: "deploy_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - docs/release-install.md
+
+checksum:
+  name_template: checksums.txt

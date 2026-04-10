@@ -1,5 +1,5 @@
 # =========================
-# macOS
+# OS metadata
 # =========================
 .DS_Store
 .AppleDouble
@@ -10,7 +10,7 @@ Icon
 .Trashes
 
 # =========================
-# Visual Studio Code
+# Editor / IDE
 # =========================
 .vscode/*
 !.vscode/settings.json
@@ -21,62 +21,63 @@ Icon
 .history/
 
 # =========================
-# Environment Variables & Secrets
-# (Codex API 키 등 보안 정보 보호)
+# Environment variables / secrets
 # =========================
 .env
 .env.local
 .env.*.local
 *.pem
 secrets.json
+*.tfvars
+*.tfvars.json
 
 # =========================
-# Go
+# Go build outputs
 # =========================
-# 빌드된 바이너리 및 라이브러리
 *.exe
 *.exe~
 *.dll
 *.so
 *.dylib
-bin/
-
-# 테스트 바이너리, 프로파일링 및 커버리지 결과물
 *.test
 *.out
 *.prof
 *.cov
 coverage.out
 coverage.html
+/bin/
+/deploy
+/dist/
 
-# CGO 생성 파일
+# =========================
+# CGO generated files
+# =========================
 _obj/
 _cgo_defun.c
 _cgo_gotypes.go
 _cgo_export.*
 
-# Go 워크스페이스 로컬 설정 파일
+# =========================
+# Go workspace / caches
+# =========================
 go.work
 go.work.sum
+.gocache/
+.cache/
 
-# 캐시
-.gocache
-.cache
+# =========================
+# Terraform local state
+# =========================
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
 
-# 빌드 및 codex
-deploy
-AGENTS.md
-PROGRESS.md
-
-# 테스트 관련 파일
-!TEST/amazonlinux/
-!TEST/amazonlinux/**
-!TEST/config/
-!TEST/config/**
-!TEST/dist/
-!TEST/dist/**
-!TEST/docker-compose.yml
-!TEST/deploy.yml
-!TEST/aws-smoke/
-!TEST/aws-smoke/**
+# =========================
+# Local metadata
+# =========================
 internal/.DS_Store
