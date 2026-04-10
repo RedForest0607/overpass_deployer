@@ -11,16 +11,6 @@ import (
 )
 
 func CreateDirectories(runner ssh.Runner, app *config.AppConfig, opts RunOptions, host string) error {
-	host = runnerHost(runner, host)
-	logger.Info(host, "%s directories in %s...", actionLabel(opts, "creating"), app.BaseDir)
-
-	setupCmd := buildPrivilegedDirectorySetupCommand(app.BaseDir)
-	if opts.DryRun {
-		logger.Info(host, "DRY-RUN: would try sudo setup command: %s", setupCmd)
-	} else if _, err := runner.RunSudo(setupCmd); err != nil {
-		logger.Warn(host, "Failed to run sudo mkdir, falling back to normal mkdir: %v", err)
-	}
-
 	dirs := []string{
 		filepath.ToSlash(filepath.Join(app.BaseDir, "bin")),
 		filepath.ToSlash(filepath.Join(app.BaseDir, "config")),
@@ -29,7 +19,38 @@ func CreateDirectories(runner ssh.Runner, app *config.AppConfig, opts RunOptions
 		filepath.ToSlash(filepath.Join(app.BaseDir, "run")),
 	}
 
-	for _, dir := range dirs {
+	return createDirectoryPaths(runner, dirs, opts, host, app.BaseDir)
+}
+
+func CreateServerDirectories(runner ssh.Runner, directories []string, opts RunOptions, host string) error {
+	host = runnerHost(runner, host)
+	if len(directories) == 0 {
+		logger.Skip(host, "No server directories configured")
+		return nil
+	}
+
+	logger.Info(host, "%s server directories...", actionLabel(opts, "creating"))
+	for _, dir := range directories {
+		if err := createDirectoryPaths(runner, []string{dir}, opts, host, dir); err != nil {
+			return err
+		}
+	}
+	logger.Ok(host, "%s server directories", resultLabel(opts, "created", "planned"))
+	return nil
+}
+
+func createDirectoryPaths(runner ssh.Runner, directories []string, opts RunOptions, host string, ownerBase string) error {
+	host = runnerHost(runner, host)
+	logger.Info(host, "%s directories in %s...", actionLabel(opts, "creating"), ownerBase)
+
+	setupCmd := buildPrivilegedDirectorySetupCommand(ownerBase)
+	if opts.DryRun {
+		logger.Info(host, "DRY-RUN: would try sudo setup command: %s", setupCmd)
+	} else if _, err := runner.RunSudo(setupCmd); err != nil {
+		logger.Warn(host, "Failed to run sudo mkdir, falling back to normal mkdir: %v", err)
+	}
+
+	for _, dir := range directories {
 		cmd := fmt.Sprintf("mkdir -p %s", ssh.ShellQuote(dir))
 		if opts.DryRun {
 			logger.Info(host, "DRY-RUN: would run %s", cmd)

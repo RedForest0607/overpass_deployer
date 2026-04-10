@@ -3,7 +3,6 @@ package vm
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"go-deployer/internal/config"
@@ -22,42 +21,68 @@ func DeployJar(client *ssh.Client, app *config.AppConfig, opts RunOptions, host 
 
 func DeployConfigFiles(client *ssh.Client, app *config.AppConfig, opts RunOptions, host string) error {
 	for _, cf := range app.ConfigFiles {
-		if err := scp.Transfer(client, cf.Local, cf.Remote, scp.TransferOptions{
+		cf.Normalize()
+		if err := scp.Transfer(client, cf.LocalPath, cf.RemotePath, scp.TransferOptions{
 			DryRun: opts.DryRun,
 			Host:   runnerHost(client, host),
 		}); err != nil {
-			return fmt.Errorf("transferring config file %s: %w", cf.Local, err)
+			return fmt.Errorf("transferring config file %s: %w", cf.LocalPath, err)
 		}
 	}
 	return nil
 }
 
+func DeployExtraFiles(client *ssh.Client, app *config.AppConfig, opts RunOptions, host string) error {
+	host = runnerHost(client, host)
+	for _, ef := range app.ExtraFiles {
+		if err := scp.Transfer(client, ef.LocalPath, ef.RemotePath, scp.TransferOptions{
+			DryRun: opts.DryRun,
+			Host:   host,
+		}); err != nil {
+			return fmt.Errorf("transferring extra file %s: %w", ef.LocalPath, err)
+		}
+
+		if ef.Chmod == "" {
+			continue
+		}
+
+		if opts.DryRun {
+			logger.Info(host, "DRY-RUN: would chmod %s %s", ef.Chmod, ef.RemotePath)
+			continue
+		}
+
+		if err := applyRemoteFileMode(client, ef.RemotePath, ef.Chmod); err != nil {
+			return fmt.Errorf("chmod extra file %s: %w", ef.RemotePath, err)
+		}
+	}
+	return nil
+}
+
+func applyRemoteFileMode(runner ssh.Runner, remotePath string, mode string) error {
+	cmd := fmt.Sprintf("chmod %s %s", ssh.ShellQuote(mode), ssh.ShellQuote(remotePath))
+	_, err := runner.Run(cmd)
+	return err
+}
+
 func DeployScripts(client *ssh.Client, app *config.AppConfig, opts RunOptions, host string) error {
 	host = runnerHost(client, host)
-	scriptData, err := resolveScriptTemplateData(app)
+	app.Script.Normalize(app.BaseDir)
+	serverPath := app.Script.RemotePath
+	scriptSource, description, cleanup, err := prepareScriptSource(app)
 	if err != nil {
-		return fmt.Errorf("resolving script template data: %w", err)
+		return err
+	}
+	if cleanup != nil {
+		defer cleanup()
 	}
 
-	serverPath := filepath.ToSlash(filepath.Join(app.Script.RemoteDir, "server.sh"))
-
 	if opts.DryRun {
-		serverTemplate := app.Script.Template
-		if serverTemplate == "" {
-			serverTemplate = "embedded:server.sh.tmpl"
-		}
-		logger.Info(host, "DRY-RUN: would render %s to %s", serverTemplate, serverPath)
+		logger.Info(host, "DRY-RUN: would deploy %s to %s", description, serverPath)
 		logger.Info(host, "DRY-RUN: would chmod +x %s", serverPath)
 		return nil
 	}
 
-	serverLocal, err := template.Render(app.Script.Template, "server.sh", scriptData)
-	if err != nil {
-		return fmt.Errorf("rendering server.sh: %w", err)
-	}
-	defer os.Remove(serverLocal)
-
-	if err := scp.Transfer(client, serverLocal, serverPath, scp.TransferOptions{}); err != nil {
+	if err := scp.Transfer(client, scriptSource, serverPath, scp.TransferOptions{}); err != nil {
 		return fmt.Errorf("transferring server.sh: %w", err)
 	}
 
@@ -69,6 +94,35 @@ func DeployScripts(client *ssh.Client, app *config.AppConfig, opts RunOptions, h
 	logger.Ok(host, "Scripts deployed")
 
 	return nil
+}
+
+func prepareScriptSource(app *config.AppConfig) (localPath string, description string, cleanup func(), err error) {
+	switch app.Script.Mode {
+	case "", config.ScriptModeTemplate:
+		scriptData, renderErr := resolveScriptTemplateData(app)
+		if renderErr != nil {
+			return "", "", nil, fmt.Errorf("resolving script template data: %w", renderErr)
+		}
+
+		rendered, renderErr := template.Render(app.Script.Template, "server.sh", scriptData)
+		if renderErr != nil {
+			return "", "", nil, fmt.Errorf("rendering server.sh: %w", renderErr)
+		}
+
+		description = app.Script.Template
+		if description == "" {
+			description = "embedded:server.sh.tmpl"
+		}
+		return rendered, description, func() {
+			_ = os.Remove(rendered)
+		}, nil
+
+	case config.ScriptModeLocalFile:
+		return app.Script.LocalPath, app.Script.LocalPath, nil, nil
+
+	default:
+		return "", "", nil, fmt.Errorf("unsupported script mode %q", app.Script.Mode)
+	}
 }
 
 func resolveScriptTemplateData(app *config.AppConfig) (map[string]any, error) {

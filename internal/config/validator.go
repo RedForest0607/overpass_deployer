@@ -15,6 +15,7 @@ const (
 	DefaultJvmMin     = "256m"
 	DefaultJvmMax     = "1g"
 	DefaultSSHPort    = 22
+	DefaultJDKVendor  = "corretto"
 	HostKeyStrict     = "strict"
 	HostKeyAcceptNew  = "accept-new"
 	HostKeyInsecure   = "insecure"
@@ -107,6 +108,7 @@ func ValidateAndApplyDefaults(cfg *Config) error {
 
 	// 1.1 Bastion Config
 	validateBastionConfig(cfg, &errs, checkUnresolvedEnv)
+	validateBootstrapConfig(&cfg.Bootstrap, "bootstrap", &errs, checkUnresolvedEnv)
 
 	// 2. Server Configs
 	if len(cfg.Servers) == 0 {
@@ -129,95 +131,21 @@ func ValidateAndApplyDefaults(cfg *Config) error {
 		} else {
 			validatePort(s.BastionSSHPort, prefix+".bastion_ssh_port", &errs)
 		}
+		validateBootstrapConfig(&cfg.Servers[i].Bootstrap, prefix+".bootstrap", &errs, checkUnresolvedEnv)
+		validateDirectories(&cfg.Servers[i].Directories, prefix+".directories", &errs, checkUnresolvedEnv)
 
-		checkUnresolvedEnv(s.App.Name, prefix+".app.name")
-		if s.App.Name == "" {
-			errs = append(errs, prefix+".app.name is required")
+		if s.UsesLegacyApp() && len(s.Apps) > 0 {
+			errs = append(errs, prefix+" cannot define both app and apps")
 		}
-
-		checkUnresolvedEnv(s.App.BaseDir, prefix+".app.base_dir")
-		if s.App.BaseDir == "" {
-			errs = append(errs, prefix+".app.base_dir is required")
-		}
-
-		checkUnresolvedEnv(s.App.Jar.LocalPath, prefix+".app.jar.local_path")
-		if s.App.Jar.LocalPath == "" {
-			errs = append(errs, prefix+".app.jar.local_path is required")
-		} else {
-			validateExistingFile(s.App.Jar.LocalPath, prefix+".app.jar.local_path", &errs)
+		if !s.UsesLegacyApp() && len(s.Apps) == 0 && len(cfg.Servers[i].Directories) == 0 && !hasBootstrapSettings(cfg.Servers[i].Bootstrap) {
+			errs = append(errs, prefix+" must define app, apps, directories, or bootstrap settings")
 		}
 
-		checkUnresolvedEnv(s.App.Jar.RemotePath, prefix+".app.jar.remote_path")
-		if s.App.Jar.RemotePath == "" {
-			errs = append(errs, prefix+".app.jar.remote_path is required")
+		if s.UsesLegacyApp() {
+			validateAppConfig(&cfg.Servers[i].App, prefix+".app", &errs, checkUnresolvedEnv)
 		}
-
-		if s.App.Jvm.MinHeap == "" {
-			cfg.Servers[i].App.Jvm.MinHeap = DefaultJvmMin
-		}
-		if s.App.Jvm.MaxHeap == "" {
-			cfg.Servers[i].App.Jvm.MaxHeap = DefaultJvmMax
-		}
-		for j, opt := range s.App.Jvm.JavaOpts {
-			optField := fmt.Sprintf("%s.app.jvm.java_opts[%d]", prefix, j)
-			checkUnresolvedEnv(opt, optField)
-			if strings.TrimSpace(opt) == "" {
-				errs = append(errs, optField+" must not be empty")
-			}
-		}
-
-		if s.App.Port == 0 {
-			errs = append(errs, prefix+".app.port is required")
-		} else {
-			validatePort(s.App.Port, prefix+".app.port", &errs)
-		}
-
-		for j, opt := range s.App.ExtraOpts {
-			optField := fmt.Sprintf("%s.app.extra_opts[%d]", prefix, j)
-			checkUnresolvedEnv(opt, optField)
-			if strings.TrimSpace(opt) == "" {
-				errs = append(errs, optField+" must not be empty")
-			}
-		}
-
-		for j, cf := range s.App.ConfigFiles {
-			cfPrefix := fmt.Sprintf("%s.app.config_files[%d]", prefix, j)
-			checkUnresolvedEnv(cf.Local, cfPrefix+".local")
-			if cf.Local == "" {
-				errs = append(errs, cfPrefix+".local is required")
-			} else {
-				validateExistingFile(cf.Local, cfPrefix+".local", &errs)
-			}
-			checkUnresolvedEnv(cf.Remote, cfPrefix+".remote")
-			if cf.Remote == "" {
-				errs = append(errs, cfPrefix+".remote is required")
-			}
-		}
-
-		if s.App.Script.Template != "" {
-			checkUnresolvedEnv(s.App.Script.Template, prefix+".app.script.template")
-			if strings.HasPrefix(s.App.Script.Template, "~/") {
-				cfg.Servers[i].App.Script.Template = expandHome(s.App.Script.Template)
-			}
-			if strings.HasPrefix(cfg.Servers[i].App.Script.Template, "embedded:") {
-				if err := templatepkg.ValidateEmbeddedTemplateRef(cfg.Servers[i].App.Script.Template); err != nil {
-					errs = append(errs, fmt.Sprintf("%s is invalid: %v", prefix+".app.script.template", err))
-				}
-			} else {
-				validateExistingFile(cfg.Servers[i].App.Script.Template, prefix+".app.script.template", &errs)
-			}
-		}
-
-		if s.App.Script.ValuesFile != "" {
-			checkUnresolvedEnv(s.App.Script.ValuesFile, prefix+".app.script.values_file")
-			if strings.HasPrefix(s.App.Script.ValuesFile, "~/") {
-				cfg.Servers[i].App.Script.ValuesFile = expandHome(s.App.Script.ValuesFile)
-			}
-			validateExistingFile(cfg.Servers[i].App.Script.ValuesFile, prefix+".app.script.values_file", &errs)
-		}
-
-		if s.App.Script.RemoteDir == "" {
-			cfg.Servers[i].App.Script.RemoteDir = filepath.ToSlash(filepath.Join(s.App.BaseDir, "scripts"))
+		for j := range cfg.Servers[i].Apps {
+			validateAppConfig(&cfg.Servers[i].Apps[j], fmt.Sprintf("%s.apps[%d]", prefix, j), &errs, checkUnresolvedEnv)
 		}
 
 		// If Name is not given, default it to Host to help logging
@@ -228,6 +156,7 @@ func ValidateAndApplyDefaults(cfg *Config) error {
 			errs = append(errs, prefix+".name must contain only letters, numbers, dots, hyphens, or underscores")
 		}
 		aliasNames[cfg.Servers[i].Name]++
+		cfg.Servers[i].Bootstrap = cfg.Servers[i].EffectiveBootstrap(cfg.Bootstrap)
 	}
 
 	for alias, count := range aliasNames {
@@ -243,7 +172,240 @@ func ValidateAndApplyDefaults(cfg *Config) error {
 	return nil
 }
 
+func validateDirectories(directories *[]string, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
+	if directories == nil {
+		return
+	}
+
+	for i, dir := range *directories {
+		field := fmt.Sprintf("%s[%d]", prefix, i)
+		checkUnresolvedEnv(dir, field)
+		if strings.TrimSpace(dir) == "" {
+			*errs = append(*errs, field+" must not be empty")
+			continue
+		}
+		(*directories)[i] = filepath.ToSlash(strings.TrimSpace(dir))
+	}
+}
+
+func hasBootstrapSettings(bootstrap BootstrapConfig) bool {
+	if len(bootstrap.Packages) > 0 {
+		return true
+	}
+	if bootstrap.JDK.Vendor != "" || bootstrap.JDK.Major != 0 || bootstrap.JDK.Headless != nil {
+		return true
+	}
+	return bootstrap.OSUpdate.Enabled != nil && *bootstrap.OSUpdate.Enabled
+}
+
+func validateAppConfig(app *AppConfig, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
+	checkUnresolvedEnv(app.Name, prefix+".name")
+	if app.Name == "" {
+		*errs = append(*errs, prefix+".name is required")
+	}
+
+	checkUnresolvedEnv(app.BaseDir, prefix+".base_dir")
+	if app.BaseDir == "" {
+		*errs = append(*errs, prefix+".base_dir is required")
+	}
+
+	checkUnresolvedEnv(app.Jar.LocalPath, prefix+".jar.local_path")
+	if app.Jar.LocalPath == "" {
+		*errs = append(*errs, prefix+".jar.local_path is required")
+	} else {
+		validateExistingFile(app.Jar.LocalPath, prefix+".jar.local_path", errs)
+	}
+
+	checkUnresolvedEnv(app.Jar.RemotePath, prefix+".jar.remote_path")
+	if app.Jar.RemotePath == "" {
+		*errs = append(*errs, prefix+".jar.remote_path is required")
+	}
+
+	if app.Jvm.MinHeap == "" {
+		app.Jvm.MinHeap = DefaultJvmMin
+	}
+	if app.Jvm.MaxHeap == "" {
+		app.Jvm.MaxHeap = DefaultJvmMax
+	}
+	for j, opt := range app.Jvm.JavaOpts {
+		optField := fmt.Sprintf("%s.jvm.java_opts[%d]", prefix, j)
+		checkUnresolvedEnv(opt, optField)
+		if strings.TrimSpace(opt) == "" {
+			*errs = append(*errs, optField+" must not be empty")
+		}
+	}
+
+	if app.Port == 0 {
+		*errs = append(*errs, prefix+".port is required")
+	} else {
+		validatePort(app.Port, prefix+".port", errs)
+	}
+
+	for j, opt := range app.ExtraOpts {
+		optField := fmt.Sprintf("%s.extra_opts[%d]", prefix, j)
+		checkUnresolvedEnv(opt, optField)
+		if strings.TrimSpace(opt) == "" {
+			*errs = append(*errs, optField+" must not be empty")
+		}
+	}
+
+	for j := range app.ConfigFiles {
+		cf := &app.ConfigFiles[j]
+		cf.Normalize()
+		cfPrefix := fmt.Sprintf("%s.config_files[%d]", prefix, j)
+		checkUnresolvedEnv(cf.LocalPath, cfPrefix+".local_path")
+		if cf.LocalPath == "" {
+			*errs = append(*errs, cfPrefix+".local_path is required")
+		} else {
+			if strings.HasPrefix(cf.LocalPath, "~/") {
+				cf.LocalPath = expandHome(cf.LocalPath)
+			}
+			validateExistingFile(cf.LocalPath, cfPrefix+".local_path", errs)
+		}
+		checkUnresolvedEnv(cf.RemotePath, cfPrefix+".remote_path")
+		if cf.RemotePath == "" {
+			*errs = append(*errs, cfPrefix+".remote_path is required")
+		}
+	}
+
+	for j := range app.ExtraFiles {
+		ef := &app.ExtraFiles[j]
+		efPrefix := fmt.Sprintf("%s.extra_files[%d]", prefix, j)
+		checkUnresolvedEnv(ef.LocalPath, efPrefix+".local_path")
+		if ef.LocalPath == "" {
+			*errs = append(*errs, efPrefix+".local_path is required")
+		} else {
+			if strings.HasPrefix(ef.LocalPath, "~/") {
+				ef.LocalPath = expandHome(ef.LocalPath)
+			}
+			validateExistingFile(ef.LocalPath, efPrefix+".local_path", errs)
+		}
+
+		checkUnresolvedEnv(ef.RemotePath, efPrefix+".remote_path")
+		if ef.RemotePath == "" {
+			*errs = append(*errs, efPrefix+".remote_path is required")
+		}
+
+		if ef.Chmod != "" {
+			ef.Chmod = strings.TrimSpace(ef.Chmod)
+			if !fileModePattern.MatchString(ef.Chmod) {
+				*errs = append(*errs, efPrefix+".chmod must be a 3 or 4 digit octal mode")
+			}
+		}
+	}
+
+	validateScriptConfig(app, prefix, errs, checkUnresolvedEnv)
+}
+
+func validateScriptConfig(app *AppConfig, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
+	mode := strings.ToLower(strings.TrimSpace(app.Script.Mode))
+	if mode == "" {
+		mode = ScriptModeTemplate
+	}
+
+	switch mode {
+	case ScriptModeTemplate, ScriptModeLocalFile:
+		app.Script.Mode = mode
+	default:
+		*errs = append(*errs, fmt.Sprintf("%s.script.mode must be %q or %q", prefix, ScriptModeTemplate, ScriptModeLocalFile))
+		return
+	}
+
+	app.Script.Normalize(app.BaseDir)
+
+	switch app.Script.Mode {
+	case ScriptModeTemplate:
+		if app.Script.LocalPath != "" {
+			checkUnresolvedEnv(app.Script.LocalPath, prefix+".script.local_path")
+			if strings.HasPrefix(app.Script.LocalPath, "~/") {
+				app.Script.LocalPath = expandHome(app.Script.LocalPath)
+			}
+		}
+
+		if app.Script.Template != "" {
+			checkUnresolvedEnv(app.Script.Template, prefix+".script.template")
+			if strings.HasPrefix(app.Script.Template, "~/") {
+				app.Script.Template = expandHome(app.Script.Template)
+			}
+			if strings.HasPrefix(app.Script.Template, "embedded:") {
+				if err := templatepkg.ValidateEmbeddedTemplateRef(app.Script.Template); err != nil {
+					*errs = append(*errs, fmt.Sprintf("%s is invalid: %v", prefix+".script.template", err))
+				}
+			} else {
+				validateExistingFile(app.Script.Template, prefix+".script.template", errs)
+			}
+		}
+
+		if app.Script.ValuesFile != "" {
+			checkUnresolvedEnv(app.Script.ValuesFile, prefix+".script.values_file")
+			if strings.HasPrefix(app.Script.ValuesFile, "~/") {
+				app.Script.ValuesFile = expandHome(app.Script.ValuesFile)
+			}
+			validateExistingFile(app.Script.ValuesFile, prefix+".script.values_file", errs)
+		}
+
+	case ScriptModeLocalFile:
+		checkUnresolvedEnv(app.Script.LocalPath, prefix+".script.local_path")
+		if app.Script.LocalPath == "" {
+			*errs = append(*errs, prefix+".script.local_path is required when script.mode is local-file")
+		} else {
+			if strings.HasPrefix(app.Script.LocalPath, "~/") {
+				app.Script.LocalPath = expandHome(app.Script.LocalPath)
+			}
+			validateExistingFile(app.Script.LocalPath, prefix+".script.local_path", errs)
+		}
+
+		if app.Script.Template != "" {
+			*errs = append(*errs, prefix+".script.template cannot be used when script.mode is local-file")
+		}
+		if app.Script.ValuesFile != "" {
+			*errs = append(*errs, prefix+".script.values_file cannot be used when script.mode is local-file")
+		}
+	}
+}
+
+func validateBootstrapConfig(cfg *BootstrapConfig, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
+	if cfg == nil {
+		return
+	}
+
+	for i, pkg := range cfg.Packages {
+		field := fmt.Sprintf("%s.packages[%d]", prefix, i)
+		checkUnresolvedEnv(pkg, field)
+		if strings.TrimSpace(pkg) == "" {
+			*errs = append(*errs, field+" must not be empty")
+			continue
+		}
+		cfg.Packages[i] = strings.TrimSpace(pkg)
+	}
+
+	if cfg.JDK.Vendor != "" {
+		cfg.JDK.Vendor = strings.ToLower(strings.TrimSpace(cfg.JDK.Vendor))
+		checkUnresolvedEnv(cfg.JDK.Vendor, prefix+".jdk.vendor")
+		if cfg.JDK.Vendor != DefaultJDKVendor {
+			*errs = append(*errs, fmt.Sprintf("%s.vendor must be %q", prefix+".jdk", DefaultJDKVendor))
+		}
+	}
+
+	if cfg.JDK.Major < 0 {
+		*errs = append(*errs, prefix+".jdk.major must be greater than zero")
+	}
+	if cfg.JDK.Vendor != "" && cfg.JDK.Major == 0 {
+		*errs = append(*errs, prefix+".jdk.major is required when "+prefix+".jdk.vendor is set")
+	}
+	if cfg.JDK.Major > 0 && cfg.JDK.Vendor == "" {
+		cfg.JDK.Vendor = DefaultJDKVendor
+	}
+	if cfg.JDK.Headless == nil && (cfg.JDK.Vendor != "" || cfg.JDK.Major > 0) {
+		cfg.JDK.Headless = boolPtr(true)
+	}
+	if cfg.OSUpdate.Enabled == nil {
+		cfg.OSUpdate.Enabled = boolPtr(false)
+	}
+}
+
 var bastionAliasPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
+var fileModePattern = regexp.MustCompile(`^[0-7]{3,4}$`)
 
 func isValidBastionAlias(value string) bool {
 	return bastionAliasPattern.MatchString(strings.TrimSpace(value))

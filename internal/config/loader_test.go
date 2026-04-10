@@ -36,8 +36,8 @@ func TestLoadSubstitutesEnvAndAppliesDefaults(t *testing.T) {
 		"        local_path: " + jarPath,
 		"        remote_path: /opt/sample/bin/app.jar",
 		"      config_files:",
-		"        - local: " + configPath,
-		"          remote: /opt/sample/config/application.yml",
+		"        - local_path: " + configPath,
+		"          remote_path: /opt/sample/config/application.yml",
 	}, "\n")
 
 	path := writeTempFile(t, "deploy.yml", configYAML)
@@ -110,6 +110,67 @@ func TestLoadReportsUnresolvedEnvironmentVariables(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "contains unresolved environment variable") {
 		t.Fatalf("expected unresolved env error, got %v", err)
+	}
+}
+
+func TestLoadSupportsMultipleAppsPerServer(t *testing.T) {
+	homeDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+
+	keyPath := filepath.Join(homeDir, "keys", "id_rsa")
+	writeFile(t, keyPath, "key")
+
+	jarA := writeTempFile(t, "app-a.jar", "jar-a")
+	jarB := writeTempFile(t, "app-b.jar", "jar-b")
+	configA := writeTempFile(t, "application-a.yml", "server:\n  port: 8081\n")
+	configB := writeTempFile(t, "application-b.yml", "server:\n  port: 8082\n")
+
+	configYAML := strings.Join([]string{
+		"ssh:",
+		"  user: deploy",
+		"  key_path: ~/keys/id_rsa",
+		"servers:",
+		"  - host: app.example.com",
+		"    name: devwas",
+		"    apps:",
+		"      - name: sample-a",
+		"        base_dir: /opt/sample-a",
+		"        port: 8081",
+		"        jar:",
+		"          local_path: " + jarA,
+		"          remote_path: /opt/sample-a/lib/app.jar",
+		"        config_files:",
+		"          - local_path: " + configA,
+		"            remote_path: /opt/sample-a/conf/application.yml",
+		"      - name: sample-b",
+		"        base_dir: /opt/sample-b",
+		"        port: 8082",
+		"        jar:",
+		"          local_path: " + jarB,
+		"          remote_path: /opt/sample-b/lib/app.jar",
+		"        config_files:",
+		"          - local_path: " + configB,
+		"            remote_path: /opt/sample-b/conf/application.yml",
+	}, "\n")
+
+	path := writeTempFile(t, "deploy-apps.yml", configYAML)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load failed: %v", err)
+	}
+
+	if len(cfg.Servers) != 1 {
+		t.Fatalf("expected 1 server, got %d", len(cfg.Servers))
+	}
+	if len(cfg.Servers[0].Apps) != 2 {
+		t.Fatalf("expected 2 apps, got %d", len(cfg.Servers[0].Apps))
+	}
+	if cfg.Servers[0].Apps[0].Name != "sample-a" {
+		t.Fatalf("expected first app name sample-a, got %q", cfg.Servers[0].Apps[0].Name)
+	}
+	if cfg.Servers[0].Apps[1].Script.RemotePath != "/opt/sample-b/scripts/server.sh" {
+		t.Fatalf("expected default script remote path for second app, got %q", cfg.Servers[0].Apps[1].Script.RemotePath)
 	}
 }
 
