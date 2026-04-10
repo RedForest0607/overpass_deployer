@@ -40,6 +40,7 @@
 - AWS EC2/Bastion 스테이징 검증용 Terraform 구조 추가: `infra/aws-test`에 기존 `default-vpc` 네트워크 import, public bastion 1대, AZ별 private target EC2, 보안그룹, 출력값 문서화
 - AWS EC2 smoke test 자산 추가: `TEST/aws-smoke`에 mock jar/config와 bastion 실행용 `deploy.aws-test.yml` 템플릿 추가
 - AWS smoke test runbook 추가: `docs/aws-test-smoke.md`에 Terraform apply, bastion 스테이징, dry-run/실배포, 원격 파일 검증, cleanup 절차 문서화
+- 통합 테스트 실행 가이드 추가: `docs/test-deployment-guide.md`에 로컬 Docker 테스트와 AWS smoke test 절차를 한 문서로 정리
 - `infra/aws-test` 보강: bastion self-SSH/target `ssh-keyscan` 허용 규칙과 `bastion_private_ip` output 추가
 - 2026-04-09 기준 실제 AWS smoke test 완주: `infra/aws-test` apply, bastion 스테이징, `deploy vm --dry-run`, 실배포, 원격 파일/SHA 검증, 재실행 skip 동작까지 확인
 - 운영 샘플 `TEST/script-sample.sh`를 반영해 기본 `server.sh` 템플릿을 고도화: `restart/status/log`, PID 기반 상태 확인, startup 대기, 로그 tail 흐름 추가
@@ -47,8 +48,29 @@
 - `script.template`에 `embedded:server.sh.tmpl` 같은 선언형 참조를 지원하고, TEST/AWS smoke 샘플 설정을 새 구조로 갱신
 - `.jar` 및 기타 업로드 파일에 대해 SFTP 전송률을 progress bar + 퍼센트로 표시하도록 개선하고, non-TTY 로그 환경에서도 10% 단위 진행 상태가 보이도록 보완
 - 2026-04-10 기준 실제 AWS smoke test 재검증 완료: Linux/amd64 바이너리로 bastion에서 dry-run, 실배포, 재실행 skip, 원격 SHA256 일치와 progress 출력까지 확인하고 `docs/aws-test-smoke.md`를 최신 경로/빌드 절차에 맞게 보정
+- 선언형 bootstrap 단계 추가: 전역 `bootstrap` + 서버별 override merge, dnf 기반 패키지 설치, Corretto JDK 설치, opt-in `dnf update` dry-run/실행 흐름과 검증 테스트 구현
+- 릴리스 배포 구조 추가: `.goreleaser.yml`, `deploy version`, `deploy update`, `internal/buildinfo`, `internal/update` 도입
+- GitHub Releases 기반 self-update 구현: latest/특정 태그 조회, 플랫폼별 asset 선택, checksum 검증, 현재 실행 파일 원자적 교체
+- 릴리스/설치 문서 추가: `docs/release-distribution.md`, `docs/release-install.md`
+- 릴리스 및 self-update 회귀 테스트 추가: CLI 라우팅, GitHub release 파싱, checksum 검증, 바이너리 교체 실패 케이스 검증
+- `servers[].apps` 설정 지원 추가: 한 서버에서 여러 앱을 순차 배포할 수 있도록 스키마/validator/VM runner 확장
+- 기존 `servers[].app` 설정과의 하위 호환 유지, `app`과 `apps` 동시 사용 시 검증 오류 처리 추가
+- 다중 앱 설정 로드/검증/배포 순서 회귀 테스트 추가
+- `TEST/stock_company/deploy.stock-company.dev.draft.yml` 초안 추가: `devwas` multi-app 배포 기준 샘플 작성
+- `TEST/stock_company/deploy.stock-company.dev.draft.yml`에 `devapm1`, `devapm2` multi-app 초안 추가
+- `script.mode` 확장 추가: `template` 기본 동작 유지 + `local-file` 모드에서 로컬 `server.sh`를 그대로 원격으로 복사 지원
+- `script.local_path` 검증 및 스크립트 소스 선택 테스트 추가
+- bootstrap-only 서버 지원 추가: `servers[].directories`와 서버 단위 bootstrap만으로도 유효한 설정 허용
+- `TEST/stock_company/deploy.stock-company.dev.draft.yml`에 `devapp1`(디렉토리 생성), `devapp2`(Docker/Compose), `devdb`(PostgreSQL) 초안 추가
+- `devdb` PostgreSQL 17 bootstrap 패키지 목록을 Amazon Linux 2023 실검증 값으로 구체화
+- `extra_files[]` 설정 추가: `setEnv.sh` 같은 추가 스크립트/일반 파일을 앱별로 전송하고 선택적으로 chmod 적용 가능
+- `extra_files[]` validator, dry-run, chmod helper, 배포 순서 테스트 및 예시 설정 추가
+- 설정 키 정리: `config_files`와 `script`도 `local_path` / `remote_path` 기준으로 통일하고 기존 `local` / `remote` / `remote_dir`는 하위 호환 alias로 유지
 
 ## Next To-Do
+- 실제 저장소 owner/repo에 맞는 `RELEASE_OWNER`, `RELEASE_REPO` CI 주입값 확정
+- 실제 GitHub Release 태그 기준으로 `goreleaser release --clean` 한 번 검증
+- GitLab Release asset 또는 Package Registry 업로드 CI 단계를 별도로 정리
 - `.gitignore`를 M1 체크리스트 기대 항목과 맞추거나 기준 자체를 현실화
 - 실제 원격 환경에서 `deploy vm --config deploy.yml`, `deploy vm --dry-run --config deploy.yml` 실행 검증
 - TEST 가이드에 Podman 기준 실행 순서와 `/tmp/overpass-test-*` 정리 방법 문서화
@@ -59,3 +81,10 @@
 - 샘플 운영 스크립트에서 아직 설정 스키마로 일반화되지 않은 항목(예: context path, 별도 healthcheck path, Java agent 전용 옵션)을 템플릿 입력으로 승격할지 검토
 - `deploy.example.yml`과 함께 제공할 템플릿 value 파일 샘플을 저장소 표준 위치로 정리할지 결정
 - 실제 bastion/VM 환경에서 대용량 `.jar` 전송 시 progress bar 출력이 운영 터미널에서도 자연스럽게 갱신되는지 확인
+- apt 기반 Ubuntu/Debian bootstrap 지원과 package manager 자동 감지 확장 여부 결정
+- `deploy.example.yml`와 운영 문서에 `servers[].apps` 예시 추가
+- `TEST/stock_company/PLAN.md` 기준 `devwas`용 실제 multi-app `deploy.yml` 샘플 작성
+- 초안 YAML의 `TBD.server.values.yml`, Hamonica agent 배포 규칙, devapm/devapp/devdb 반영 방식 확정
+- 운영 샘플/문서에서 `script.mode: local-file`를 어디에 적용할지 결정
+- devdb PostgreSQL 17 실제 패키지명/리포지토리/서비스 enable 절차 확정
+- `TEST/stock_company` 초안에서 app별 `extra_files[]`로 배포할 보조 스크립트/agent 파일 목록 정리
