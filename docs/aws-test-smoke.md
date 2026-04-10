@@ -16,6 +16,23 @@
 - `allowed_ssh_cidrs` includes your current public IP and does not include `0.0.0.0/0`
 - Terraform apply has completed successfully for `infra/aws-test`
 
+Optional bootstrap example for Amazon Linux targets:
+
+```yaml
+bootstrap:
+  packages:
+    - unzip
+    - procps-ng
+  jdk:
+    vendor: corretto
+    major: 21
+    headless: true
+  os_update:
+    enabled: false
+```
+
+`os_update.enabled` is opt-in because `dnf update -y` can change package state between runs.
+
 ## 1. Provision Or Refresh The AWS Test Stack
 
 From the repository root, prepare `infra/aws-test/terraform.tfvars`:

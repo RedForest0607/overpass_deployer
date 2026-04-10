@@ -181,7 +181,7 @@ pkg/logger     ───────→  동일한 로그 형식
 | 디렉토리 존재 확인 후 skip | 정상 경로 우선 | M2 |
 | JVM 프로세스 실행 중 확인 | 동일 | M2 |
 | OS 판별 (Ubuntu/CentOS) | Ubuntu 전제 허용 | M2 |
-| JDK 자동 설치 | Java 설치 전제 | M2 |
+| JDK 자동 설치 | 1차는 dnf + Corretto 선언형 bootstrap만 지원, apt/고급 bootstrap은 후속 | M2 |
 | 유틸 서비스 설정 (`utils[]`) | 코어 안정화 후 | M2 |
 | 병렬 실행 | 단일 서버 검증 우선 | M4 |
 | `--dry-run` / `--target` | UX는 코어 이후 | M4 |
