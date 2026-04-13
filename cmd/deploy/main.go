@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 
 	"go-deployer/internal/buildinfo"
 	"go-deployer/internal/config"
@@ -62,6 +63,8 @@ func runVM(args []string, deps dependencies) int {
 
 	configPath := vmCmd.String("config", "deploy.yml", "Path to deploy.yml configuration file")
 	dryRun := vmCmd.Bool("dry-run", false, "Print planned actions without making remote changes")
+	serverTags := vmCmd.String("server-tag", "", "Deploy only servers matching any provided tags (comma-separated)")
+	appTags := vmCmd.String("app-tag", "", "Deploy only apps matching any provided tags (comma-separated)")
 
 	if err := vmCmd.Parse(args); err != nil {
 		return 1
@@ -73,7 +76,11 @@ func runVM(args []string, deps dependencies) int {
 		return 1
 	}
 
-	if err := deps.runVM(cfg, vm.RunOptions{DryRun: *dryRun}); err != nil {
+	if err := deps.runVM(cfg, vm.RunOptions{
+		DryRun:     *dryRun,
+		ServerTags: parseTagFilter(*serverTags),
+		AppTags:    parseTagFilter(*appTags),
+	}); err != nil {
 		fmt.Fprintf(deps.stderr, "Deployment failed: %v\n", err)
 		return 1
 	}
@@ -149,7 +156,35 @@ func printUsage(w io.Writer) {
 	fmt.Fprintf(w, "Flags for 'vm':\n")
 	fmt.Fprintf(w, "  --config string   Path to configuration file (default: deploy.yml)\n")
 	fmt.Fprintf(w, "  --dry-run         Print planned actions without remote changes\n")
+	fmt.Fprintf(w, "  --server-tag      Deploy only servers matching any provided tags (comma-separated)\n")
+	fmt.Fprintf(w, "  --app-tag         Deploy only apps matching any provided tags (comma-separated)\n")
 	fmt.Fprintf(w, "\nFlags for 'update':\n")
 	fmt.Fprintf(w, "  --check           Check for updates without replacing the current binary\n")
 	fmt.Fprintf(w, "  --version string  Install a specific release tag\n")
+}
+
+func parseTagFilter(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+
+	seen := make(map[string]struct{})
+	tags := make([]string, 0)
+	for _, part := range strings.Split(raw, ",") {
+		tag := strings.ToLower(strings.TrimSpace(part))
+		if tag == "" {
+			continue
+		}
+		if _, ok := seen[tag]; ok {
+			continue
+		}
+		seen[tag] = struct{}{}
+		tags = append(tags, tag)
+	}
+
+	if len(tags) == 0 {
+		return nil
+	}
+
+	return tags
 }

@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -575,6 +576,85 @@ func TestValidateAndApplyDefaultsSupportsAppsList(t *testing.T) {
 	}
 	if cfg.Servers[0].Apps[1].Script.RemotePath != "/opt/sample-b/scripts/server.sh" {
 		t.Fatalf("expected default remote path for second app, got %q", cfg.Servers[0].Apps[1].Script.RemotePath)
+	}
+}
+
+func TestValidateAndApplyDefaultsNormalizesTags(t *testing.T) {
+	keyPath := writeTempFile(t, "id_rsa", "key")
+	jarPath := writeTempFile(t, "app.jar", "jar")
+
+	cfg := &Config{
+		SSH: SSHConfig{
+			User:    "deploy",
+			KeyPath: keyPath,
+		},
+		Servers: []ServerConfig{
+			{
+				Host: "app.example.com",
+				Tags: []string{" Wave1 ", "apm", "wave1"},
+				App: AppConfig{
+					Name:    "sample",
+					Tags:    []string{" API ", "api"},
+					BaseDir: "/opt/sample",
+					Port:    8080,
+					Jar: JarConfig{
+						LocalPath:  jarPath,
+						RemotePath: "/opt/sample/lib/app.jar",
+					},
+				},
+			},
+		},
+	}
+
+	if err := ValidateAndApplyDefaults(cfg); err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+	if !reflect.DeepEqual(cfg.Servers[0].Tags, []string{"wave1", "apm"}) {
+		t.Fatalf("expected normalized server tags, got %v", cfg.Servers[0].Tags)
+	}
+	if !reflect.DeepEqual(cfg.Servers[0].App.Tags, []string{"api"}) {
+		t.Fatalf("expected normalized app tags, got %v", cfg.Servers[0].App.Tags)
+	}
+}
+
+func TestValidateAndApplyDefaultsRejectsInvalidTags(t *testing.T) {
+	keyPath := writeTempFile(t, "id_rsa", "key")
+	jarPath := writeTempFile(t, "app.jar", "jar")
+
+	cfg := &Config{
+		SSH: SSHConfig{
+			User:    "deploy",
+			KeyPath: keyPath,
+		},
+		Servers: []ServerConfig{
+			{
+				Host: "app.example.com",
+				Tags: []string{"bad tag"},
+				App: AppConfig{
+					Name:    "sample",
+					Tags:    []string{"ok", ""},
+					BaseDir: "/opt/sample",
+					Port:    8080,
+					Jar: JarConfig{
+						LocalPath:  jarPath,
+						RemotePath: "/opt/sample/lib/app.jar",
+					},
+				},
+			},
+		},
+	}
+
+	err := ValidateAndApplyDefaults(cfg)
+	if err == nil {
+		t.Fatal("expected invalid tag validation error")
+	}
+	for _, fragment := range []string{
+		"servers[0].tags[0] must contain only letters, numbers, dots, hyphens, or underscores",
+		"servers[0].app.tags[1] must not be empty",
+	} {
+		if !strings.Contains(err.Error(), fragment) {
+			t.Fatalf("expected error to contain %q, got %v", fragment, err)
+		}
 	}
 }
 

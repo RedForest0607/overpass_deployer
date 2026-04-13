@@ -37,11 +37,16 @@ func Run(cfg *config.Config) error {
 }
 
 func RunWithOptions(cfg *config.Config, opts RunOptions) error {
-	for _, server := range cfg.Servers {
+	filteredCfg, err := filterConfig(cfg, opts)
+	if err != nil {
+		return err
+	}
+
+	for _, server := range filteredCfg.Servers {
 		logger.GlobalInfo("--- Starting %s for %s (%s) ---", phaseLabel(opts), server.Name, server.Host)
 
-		serverSSH := server.SSHSettings(cfg.SSH)
-		if err := runSingle(serverSSH, cfg.Bastion, server, opts); err != nil {
+		serverSSH := server.SSHSettings(filteredCfg.SSH)
+		if err := runSingle(serverSSH, filteredCfg.Bastion, server, opts); err != nil {
 			logger.Error(server.Host, "%s failed: %v", phaseTitle(opts), err)
 			return err
 		}
@@ -49,7 +54,7 @@ func RunWithOptions(cfg *config.Config, opts RunOptions) error {
 		logger.GlobalInfo("--- Completed %s for %s (%s) ---", phaseLabel(opts), server.Name, server.Host)
 	}
 
-	if err := syncBastionWithOptions(cfg, opts); err != nil {
+	if err := syncBastionWithOptions(filteredCfg, opts); err != nil {
 		return err
 	}
 

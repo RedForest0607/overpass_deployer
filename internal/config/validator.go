@@ -120,6 +120,7 @@ func ValidateAndApplyDefaults(cfg *Config) error {
 		if s.Host == "" {
 			errs = append(errs, prefix+".host is required")
 		}
+		validateTags(&cfg.Servers[i].Tags, prefix+".tags", &errs, checkUnresolvedEnv)
 		if s.SSHPort == 0 {
 			cfg.Servers[i].SSHPort = cfg.SSH.Port
 		} else {
@@ -236,6 +237,7 @@ func validateAppConfig(app *AppConfig, prefix string, errs *[]string, checkUnres
 	if app.Name == "" {
 		*errs = append(*errs, prefix+".name is required")
 	}
+	validateTags(&app.Tags, prefix+".tags", errs, checkUnresolvedEnv)
 
 	checkUnresolvedEnv(app.BaseDir, prefix+".base_dir")
 	if app.BaseDir == "" {
@@ -413,10 +415,49 @@ func validateBootstrapConfig(cfg *BootstrapConfig, prefix string, errs *[]string
 	}
 }
 
+func validateTags(tags *[]string, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
+	if tags == nil {
+		return
+	}
+
+	seen := make(map[string]struct{}, len(*tags))
+	normalized := make([]string, 0, len(*tags))
+
+	for i, tag := range *tags {
+		field := fmt.Sprintf("%s[%d]", prefix, i)
+		checkUnresolvedEnv(tag, field)
+
+		tag = normalizeTag(tag)
+		if tag == "" {
+			*errs = append(*errs, field+" must not be empty")
+			continue
+		}
+		if !isValidTag(tag) {
+			*errs = append(*errs, field+" must contain only letters, numbers, dots, hyphens, or underscores")
+			continue
+		}
+		if _, ok := seen[tag]; ok {
+			continue
+		}
+		seen[tag] = struct{}{}
+		normalized = append(normalized, tag)
+	}
+
+	*tags = normalized
+}
+
+func normalizeTag(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
 var bastionAliasPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 var fileModePattern = regexp.MustCompile(`^[0-7]{3,4}$`)
 
 func isValidBastionAlias(value string) bool {
+	return bastionAliasPattern.MatchString(strings.TrimSpace(value))
+}
+
+func isValidTag(value string) bool {
 	return bastionAliasPattern.MatchString(strings.TrimSpace(value))
 }
 

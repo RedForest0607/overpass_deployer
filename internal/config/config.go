@@ -34,6 +34,7 @@ type BastionConfig struct {
 type ServerConfig struct {
 	Host           string          `yaml:"host"`
 	Name           string          `yaml:"name"`
+	Tags           []string        `yaml:"tags"`
 	SSHPort        int             `yaml:"ssh_port"`
 	BastionHost    string          `yaml:"bastion_host"`
 	BastionSSHPort int             `yaml:"bastion_ssh_port"`
@@ -62,6 +63,7 @@ type OSUpdateConfig struct {
 
 type AppConfig struct {
 	Name        string       `yaml:"name"`
+	Tags        []string     `yaml:"tags"`
 	BaseDir     string       `yaml:"base_dir"`
 	Jar         JarConfig    `yaml:"jar"`
 	Jvm         JvmConfig    `yaml:"jvm"`

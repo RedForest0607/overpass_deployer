@@ -1,5 +1,7 @@
 package vm
 
 type RunOptions struct {
-	DryRun bool
+	DryRun     bool
+	ServerTags []string
+	AppTags    []string
 }
