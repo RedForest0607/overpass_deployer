@@ -73,6 +73,7 @@
 - 2026-04-10 기준 AWS bastion에서 stock-company rotating smoke wave 1, wave 2 실행 완료: dry-run, 실배포, 재실행 skip, 원격 SHA256/권한, bastion alias/known_hosts 검증 및 보고서 작성
 - 2026-04-10 기준 stock-company rotating smoke wave 3 실행 완료, wave 4 dry-run 완료: 교차 배치 재현성과 bootstrap-only 설정 유효성 검증 및 보고서 작성
 - wave 1/wave 3의 간헐적 재전송 원인 분석 완료: 현재 원격 파일 hash는 모두 local과 일치했고, `internal/scp/transfer.go`의 remote checksum 파서를 stdout/stderr noise tolerant 하게 보강하고 회귀 테스트를 추가
+- 선택 배포용 tag 필터 추가: `servers[].tags`, `apps[].tags`, CLI `--server-tag`, `--app-tag` 지원과 태그 기반 서버/앱 subset 배포 로직 및 회귀 테스트 구현
 
 ## Next To-Do
 - 실제 저장소 owner/repo에 맞는 `RELEASE_OWNER`, `RELEASE_REPO` CI 주입값 확정
@@ -95,6 +96,7 @@
 - `aws-rotating-smoke` 자산 기준으로 bastion 업로드/placeholder 치환 후 실제 dry-run 및 wave별 smoke 실행 검증
 - wave 3 교차 분산 smoke 실행 및 wave 4 bootstrap dry-run 결과 문서화
 - 수정된 checksum 파서로 bastion 재배포 후 wave 1/wave 3 재실행 시 false-positive 재전송이 사라지는지 재검증
+- `deploy.example.yml` 또는 운영 문서에 `tags` / `--server-tag` / `--app-tag` 사용 예시 추가
 - 초안 YAML의 `TBD.server.values.yml`, Hamonica agent 배포 규칙, devapm/devapp/devdb 반영 방식 확정
 - 운영 샘플/문서에서 `script.mode: local-file`를 어디에 적용할지 결정
 - devdb PostgreSQL 17 실제 패키지명/리포지토리/서비스 enable 절차 확정

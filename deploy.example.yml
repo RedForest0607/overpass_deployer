@@ -26,6 +26,7 @@ servers:
     # 사용자가 정하는 논리 이름입니다.
     # bastion.host 가 설정되면 bastion 의 ssh config 에 `Host app-prod-a` alias 로 생성됩니다.
     name: app-prod-a
+    tags: [example, prod, primary]
     extra_files:
       - local_path: ./artifacts/hazelcast.tgz
         remote_path: /home/ec2-user/software/hazelcast/hazelcast.tgz
@@ -36,6 +37,7 @@ servers:
         major: 17
     app:
       name: sample-api
+      tags: [api, sample, template]
       base_dir: /opt/sample-api
       port: 8080
       extra_opts:
@@ -65,8 +67,10 @@ servers:
 
   - host: 10.0.1.11
     name: app-prod-b
+    tags: [example, prod, secondary]
     app:
       name: sample-api-copy-script
+      tags: [api, sample, local-file]
       base_dir: /opt/sample-api-copy-script
       port: 8081
       jar:
