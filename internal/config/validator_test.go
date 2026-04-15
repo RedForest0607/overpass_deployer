@@ -379,6 +379,9 @@ func TestValidateAndApplyDefaultsAppliesBastionDefaults(t *testing.T) {
 	if cfg.Bastion.SSHConfigPath == "" {
 		t.Fatal("expected bastion ssh config path to be defaulted")
 	}
+	if cfg.Bastion.ShellAliasesPath == "" {
+		t.Fatal("expected bastion shell aliases path to be defaulted")
+	}
 	if cfg.Bastion.TargetKnownHosts == "" {
 		t.Fatal("expected bastion target known_hosts path to be defaulted")
 	}

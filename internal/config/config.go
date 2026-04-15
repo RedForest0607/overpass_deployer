@@ -28,6 +28,7 @@ type BastionConfig struct {
 	TimeoutSec       int    `yaml:"timeout_sec"`
 	AliasUser        string `yaml:"alias_user"`
 	SSHConfigPath    string `yaml:"ssh_config_path"`
+	ShellAliasesPath string `yaml:"shell_aliases_path"`
 	TargetKnownHosts string `yaml:"target_known_hosts_path"`
 }
 

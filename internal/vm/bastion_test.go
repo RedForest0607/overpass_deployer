@@ -13,13 +13,50 @@ func TestRenderBastionSSHConfigBlockSortsAndBuildsAliases(t *testing.T) {
 		{Name: "alpha", Host: "10.0.0.11", SSHPort: 2201, BastionHost: "alpha-vm", BastionSSHPort: 22},
 	}
 
-	block := renderBastionSSHConfigBlock(servers, "ec2-user")
+	block := renderBastionSSHConfigBlock(servers, "ec2-user", "~/.ssh/overpass.pem", "accept-new", "~/.overpass-smoke/ssh/target_known_hosts")
 
-	if !strings.Contains(block, "Host alpha\n  HostName alpha-vm\n  User ec2-user\n  Port 22") {
+	if !strings.Contains(block, "Host alpha\n  HostName alpha-vm\n  User ec2-user\n  Port 22\n  IdentityFile ~/.ssh/overpass.pem\n  IdentitiesOnly yes\n  StrictHostKeyChecking accept-new\n  UserKnownHostsFile ~/.overpass-smoke/ssh/target_known_hosts") {
 		t.Fatalf("expected block to contain alpha alias, got %q", block)
 	}
 	if strings.Index(block, "Host alpha") > strings.Index(block, "Host zeta") {
 		t.Fatalf("expected aliases to be sorted by name, got %q", block)
+	}
+}
+
+func TestHostKeyConfigLinesSupportsModes(t *testing.T) {
+	tests := []struct {
+		name string
+		mode string
+		want string
+	}{
+		{name: "accept-new", mode: "accept-new", want: "  StrictHostKeyChecking accept-new\n  UserKnownHostsFile ~/.ssh/known_hosts"},
+		{name: "strict", mode: "strict", want: "  StrictHostKeyChecking yes\n  UserKnownHostsFile ~/.ssh/known_hosts"},
+		{name: "insecure", mode: "insecure", want: "  StrictHostKeyChecking no\n  UserKnownHostsFile /dev/null"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := strings.Join(hostKeyConfigLines(tc.mode, "~/.ssh/known_hosts"), "\n")
+			if got != tc.want {
+				t.Fatalf("unexpected host key config lines: got %q want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRenderBastionShellAliasBlockSortsAndBuildsAliases(t *testing.T) {
+	servers := []config.ServerConfig{
+		{Name: "zeta"},
+		{Name: "alpha"},
+	}
+
+	block := renderBastionShellAliasBlock(servers, "~/.overpass-smoke/ssh/config")
+
+	if !strings.Contains(block, "alias alpha='ssh -F ~/.overpass-smoke/ssh/config alpha'") {
+		t.Fatalf("expected block to contain alpha shell alias, got %q", block)
+	}
+	if strings.Index(block, "alias alpha=") > strings.Index(block, "alias zeta=") {
+		t.Fatalf("expected shell aliases to be sorted by name, got %q", block)
 	}
 }
 
@@ -45,6 +82,21 @@ func TestUpsertManagedBlockCommandIncludesMarkers(t *testing.T) {
 		"-v end='# END overpass-deployer managed aliases'",
 		"printf '%s\\n' '# BEGIN overpass-deployer managed aliases",
 		`touch "$HOME/.ssh/config"`,
+	} {
+		if !strings.Contains(command, fragment) {
+			t.Fatalf("expected command to contain %q, got %q", fragment, command)
+		}
+	}
+}
+
+func TestUpsertManagedBlockCommandWithCustomMarkersIncludesMarkers(t *testing.T) {
+	command := upsertManagedBlockCommandWithMarkers("~/.bashrc", bastionShellBlockStart+"\nalias app='ssh app'\n"+bastionShellBlockEnd, bastionShellBlockStart, bastionShellBlockEnd)
+
+	for _, fragment := range []string{
+		"awk -v start='# BEGIN overpass-deployer managed shell aliases'",
+		"-v end='# END overpass-deployer managed shell aliases'",
+		"printf '%s\\n' '# BEGIN overpass-deployer managed shell aliases",
+		`touch "$HOME/.bashrc"`,
 	} {
 		if !strings.Contains(command, fragment) {
 			t.Fatalf("expected command to contain %q, got %q", fragment, command)

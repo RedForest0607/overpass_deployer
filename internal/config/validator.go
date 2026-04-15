@@ -474,6 +474,7 @@ func validateBastionConfig(cfg *Config, errs *[]string, checkUnresolvedEnv func(
 			{name: "bastion.known_hosts_path", value: bastion.KnownHosts},
 			{name: "bastion.alias_user", value: bastion.AliasUser},
 			{name: "bastion.ssh_config_path", value: bastion.SSHConfigPath},
+			{name: "bastion.shell_aliases_path", value: bastion.ShellAliasesPath},
 			{name: "bastion.target_known_hosts_path", value: bastion.TargetKnownHosts},
 		} {
 			if strings.TrimSpace(field.value) != "" {
@@ -495,6 +496,7 @@ func validateBastionConfig(cfg *Config, errs *[]string, checkUnresolvedEnv func(
 	checkUnresolvedEnv(bastion.KnownHosts, "bastion.known_hosts_path")
 	checkUnresolvedEnv(bastion.AliasUser, "bastion.alias_user")
 	checkUnresolvedEnv(bastion.SSHConfigPath, "bastion.ssh_config_path")
+	checkUnresolvedEnv(bastion.ShellAliasesPath, "bastion.shell_aliases_path")
 	checkUnresolvedEnv(bastion.TargetKnownHosts, "bastion.target_known_hosts_path")
 
 	if bastion.User == "" {
@@ -551,6 +553,10 @@ func validateBastionConfig(cfg *Config, errs *[]string, checkUnresolvedEnv func(
 
 	if bastion.SSHConfigPath == "" {
 		bastion.SSHConfigPath = "~/.ssh/config"
+	}
+
+	if bastion.ShellAliasesPath == "" {
+		bastion.ShellAliasesPath = "~/.bashrc"
 	}
 
 	if bastion.TargetKnownHosts == "" {

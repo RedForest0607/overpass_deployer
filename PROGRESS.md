@@ -1,6 +1,8 @@
 # Progress
 
 ## Completed
+- 상위 Git 저장소에서 `TEST/`를 로컬 전용 자산으로 분리: `.gitignore`로 제외하고, 공개용 샘플은 `samples/server-script.sample.sh`로 승격
+- `TEST/`에 독립 Git 저장소용 기본 파일(`.gitignore`, `README.md`)을 추가해 상위 저장소와 테스트 이력을 분리할 준비 완료
 - M1 핵심 골격 구현: `deploy vm --config ...` 진입점, 설정 로드, 순차 VM 배포 러너 연결
 - `deploy docker` placeholder 경로 추가
 - M1 배포 단계 구현: SSH 연결, 디렉토리 생성, jar 전송, 설정 파일 배포, 스크립트 배포, 실행 권한 부여
@@ -18,6 +20,8 @@
 - 원격 명령 경로 quoting 공통화로 셸 주입/공백 경로 오동작 방지
 - 설정 선검증 강화: 포트 범위, 로컬 파일 존재, 템플릿 존재, `known_hosts` 확인
 - `bastion` 설정 추가: VM 이름 기반 SSH alias(`~/.ssh/config`) 자동 생성
+- bastion shell alias 동기화 추가: 서버 이름별 `ssh -F ... <alias>`를 `~/.bashrc` managed block으로 등록
+- bastion SSH alias에 `IdentityFile`, `IdentitiesOnly`, `StrictHostKeyChecking`, `UserKnownHostsFile`를 함께 렌더링해 alias SSH가 실제 target 접속까지 가능하도록 보강
 - bastion과 각 EC2의 `known_hosts` 동기화 로직 추가
 - bastion alias/known_hosts 생성 로직 테스트 추가
 - `deploy vm --dry-run --config ...` 추가: SSH/SFTP 및 원격 파일 변경 없이 서버별 예정 작업 로그 출력
@@ -74,8 +78,10 @@
 - 2026-04-10 기준 stock-company rotating smoke wave 3 실행 완료, wave 4 dry-run 완료: 교차 배치 재현성과 bootstrap-only 설정 유효성 검증 및 보고서 작성
 - wave 1/wave 3의 간헐적 재전송 원인 분석 완료: 현재 원격 파일 hash는 모두 local과 일치했고, `internal/scp/transfer.go`의 remote checksum 파서를 stdout/stderr noise tolerant 하게 보강하고 회귀 테스트를 추가
 - 선택 배포용 tag 필터 추가: `servers[].tags`, `apps[].tags`, CLI `--server-tag`, `--app-tag` 지원과 태그 기반 서버/앱 subset 배포 로직 및 회귀 테스트 구현
+- `docs/M1-PLAN.md`, `PLAN.md`를 현재 코드 기준으로 정리해 obsolete 체크리스트를 실제 구현 형태로 교체하고 M1 상태를 완료로 승격
 
 ## Next To-Do
+- `TEST/` 독립 저장소의 원격(origin) 연결 여부와 ignore 규칙을 실제 팀 운영 방식에 맞게 확정
 - 실제 저장소 owner/repo에 맞는 `RELEASE_OWNER`, `RELEASE_REPO` CI 주입값 확정
 - 실제 GitHub Release 태그 기준으로 `goreleaser release --clean` 한 번 검증
 - GitLab Release asset 또는 Package Registry 업로드 CI 단계를 별도로 정리
@@ -84,6 +90,7 @@
 - TEST 가이드에 Podman 기준 실행 순서와 `/tmp/overpass-test-*` 정리 방법 문서화
 - `infra/aws-test`를 실제 AWS 계정에서 `terraform plan/apply`로 검증한 뒤 운영 전제 조건 정리
 - bastion에서 `docs/aws-test-smoke.md` 절차대로 실제 dry-run/실배포/재실행(skip)까지 완주 검증
+- bastion shell alias가 새 셸 또는 `source ~/.bashrc` 후 실제로 노출되는지 smoke test로 재확인
 - smoke test cleanup 절차를 실행한 뒤 destroy plan이 test resources만 포함하는지 재확인
 - 실제 검증에 사용한 AWS test 리소스와 bastion 스테이징 파일을 정리할지 결정하고 destroy 실행
 - 샘플 운영 스크립트에서 아직 설정 스키마로 일반화되지 않은 항목(예: context path, 별도 healthcheck path, Java agent 전용 옵션)을 템플릿 입력으로 승격할지 검토
@@ -97,6 +104,7 @@
 - wave 3 교차 분산 smoke 실행 및 wave 4 bootstrap dry-run 결과 문서화
 - 수정된 checksum 파서로 bastion 재배포 후 wave 1/wave 3 재실행 시 false-positive 재전송이 사라지는지 재검증
 - `deploy.example.yml` 또는 운영 문서에 `tags` / `--server-tag` / `--app-tag` 사용 예시 추가
+- logger 출력 helper 확장을 실제로 할지, 아니면 현재 API를 기준으로 문서를 유지할지 결정
 - 초안 YAML의 `TBD.server.values.yml`, Hamonica agent 배포 규칙, devapm/devapp/devdb 반영 방식 확정
 - 운영 샘플/문서에서 `script.mode: local-file`를 어디에 적용할지 결정
 - devdb PostgreSQL 17 실제 패키지명/리포지토리/서비스 enable 절차 확정

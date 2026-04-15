@@ -14,6 +14,8 @@ import (
 const (
 	bastionAliasBlockStart = "# BEGIN overpass-deployer managed aliases"
 	bastionAliasBlockEnd   = "# END overpass-deployer managed aliases"
+	bastionShellBlockStart = "# BEGIN overpass-deployer managed shell aliases"
+	bastionShellBlockEnd   = "# END overpass-deployer managed shell aliases"
 )
 
 func syncBastion(cfg *config.Config) error {
@@ -28,6 +30,7 @@ func syncBastionWithOptions(cfg *config.Config, opts RunOptions) error {
 	if opts.DryRun {
 		logger.GlobalInfo("--- DRY-RUN bastion sync on %s ---", cfg.Bastion.Host)
 		logger.GlobalInfo("DRY-RUN: would update ssh config aliases at %s", cfg.Bastion.SSHConfigPath)
+		logger.GlobalInfo("DRY-RUN: would update shell aliases at %s", cfg.Bastion.ShellAliasesPath)
 		for _, server := range cfg.Servers {
 			logger.GlobalInfo("DRY-RUN: would register known_hosts entry for %s (%s:%d)", server.Name, server.BastionTargetHost(), server.BastionTargetPort())
 		}
@@ -52,8 +55,11 @@ func syncBastionWithOptions(cfg *config.Config, opts RunOptions) error {
 	}
 	defer client.Close()
 
-	if err := syncBastionSSHConfig(client, cfg.Bastion, cfg.Servers); err != nil {
+	if err := syncBastionSSHConfig(client, cfg.Bastion, cfg.SSH, cfg.Servers); err != nil {
 		return fmt.Errorf("sync bastion ssh config: %w", err)
+	}
+	if err := syncBastionShellAliases(client, cfg.Bastion, cfg.Servers); err != nil {
+		return fmt.Errorf("sync bastion shell aliases: %w", err)
 	}
 	if err := syncBastionKnownHosts(client, cfg.Bastion.TargetKnownHosts, cfg.Servers); err != nil {
 		return fmt.Errorf("sync bastion known_hosts: %w", err)
@@ -81,8 +87,8 @@ func ensureServerKnowsBastion(client ssh.Runner, bastion config.BastionConfig, o
 	return runRemoteKnownHostRegistration(client, bastion.Host, port, bastion.Host, "~/.ssh/known_hosts")
 }
 
-func syncBastionSSHConfig(client ssh.Runner, bastion config.BastionConfig, servers []config.ServerConfig) error {
-	block := renderBastionSSHConfigBlock(servers, bastion.AliasUser)
+func syncBastionSSHConfig(client ssh.Runner, bastion config.BastionConfig, targetSSH config.SSHConfig, servers []config.ServerConfig) error {
+	block := renderBastionSSHConfigBlock(servers, bastion.AliasUser, targetSSH.KeyPath, targetSSH.HostKeyChecking, bastion.TargetKnownHosts)
 	command := upsertManagedBlockCommand(bastion.SSHConfigPath, block)
 	if _, err := client.Run(command); err != nil {
 		return err
@@ -106,6 +112,15 @@ func syncBastionKnownHosts(client ssh.Runner, knownHostsPath string, servers []c
 	return nil
 }
 
+func syncBastionShellAliases(client ssh.Runner, bastion config.BastionConfig, servers []config.ServerConfig) error {
+	block := renderBastionShellAliasBlock(servers, bastion.SSHConfigPath)
+	command := upsertManagedBlockCommandWithMarkers(bastion.ShellAliasesPath, block, bastionShellBlockStart, bastionShellBlockEnd)
+	if _, err := client.Run(command); err != nil {
+		return err
+	}
+	return nil
+}
+
 func runRemoteKnownHostRegistration(client ssh.Runner, host string, port int, logName, knownHostsPath string) error {
 	command := buildKnownHostRegistrationCommand(host, port, knownHostsPath)
 	if _, err := client.Run(command); err != nil {
@@ -114,13 +129,8 @@ func runRemoteKnownHostRegistration(client ssh.Runner, host string, port int, lo
 	return nil
 }
 
-func renderBastionSSHConfigBlock(servers []config.ServerConfig, aliasUser string) string {
-	entries := make([]config.ServerConfig, len(servers))
-	copy(entries, servers)
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].Name < entries[j].Name
-	})
-
+func renderBastionSSHConfigBlock(servers []config.ServerConfig, aliasUser, keyPath, hostKeyChecking, knownHostsPath string) string {
+	entries := sortedServersByName(servers)
 	lines := []string{bastionAliasBlockStart}
 	for _, server := range entries {
 		lines = append(lines,
@@ -128,19 +138,36 @@ func renderBastionSSHConfigBlock(servers []config.ServerConfig, aliasUser string
 			"  HostName "+server.BastionTargetHost(),
 			"  User "+aliasUser,
 			fmt.Sprintf("  Port %d", server.BastionTargetPort()),
-			"",
+			"  IdentityFile "+keyPath,
+			"  IdentitiesOnly yes",
 		)
+		lines = append(lines, hostKeyConfigLines(hostKeyChecking, knownHostsPath)...)
+		lines = append(lines, "")
 	}
 	lines = append(lines, bastionAliasBlockEnd)
 	return strings.Join(lines, "\n")
 }
 
+func renderBastionShellAliasBlock(servers []config.ServerConfig, sshConfigPath string) string {
+	entries := sortedServersByName(servers)
+	lines := []string{bastionShellBlockStart}
+	for _, server := range entries {
+		lines = append(lines, fmt.Sprintf("alias %s='ssh -F %s %s'", server.Name, singleQuoteShellValue(sshConfigPath), singleQuoteShellValue(server.Name)))
+	}
+	lines = append(lines, bastionShellBlockEnd)
+	return strings.Join(lines, "\n")
+}
+
 func upsertManagedBlockCommand(targetPath, block string) string {
+	return upsertManagedBlockCommandWithMarkers(targetPath, block, bastionAliasBlockStart, bastionAliasBlockEnd)
+}
+
+func upsertManagedBlockCommandWithMarkers(targetPath, block, blockStart, blockEnd string) string {
 	dir := filepath.Dir(targetPath)
 	quotedDir := shellPath(dir)
 	quotedPath := shellPath(targetPath)
-	quotedStart := ssh.ShellQuote(bastionAliasBlockStart)
-	quotedEnd := ssh.ShellQuote(bastionAliasBlockEnd)
+	quotedStart := ssh.ShellQuote(blockStart)
+	quotedEnd := ssh.ShellQuote(blockEnd)
 	quotedBlock := ssh.ShellQuote(block)
 
 	return fmt.Sprintf(
@@ -156,6 +183,39 @@ func upsertManagedBlockCommand(targetPath, block string) string {
 		quotedBlock,
 		quotedPath,
 	)
+}
+
+func sortedServersByName(servers []config.ServerConfig) []config.ServerConfig {
+	entries := make([]config.ServerConfig, len(servers))
+	copy(entries, servers)
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Name < entries[j].Name
+	})
+	return entries
+}
+
+func singleQuoteShellValue(value string) string {
+	return strings.ReplaceAll(value, "'", `'\''`)
+}
+
+func hostKeyConfigLines(mode, knownHostsPath string) []string {
+	switch strings.ToLower(strings.TrimSpace(mode)) {
+	case config.HostKeyInsecure:
+		return []string{
+			"  StrictHostKeyChecking no",
+			"  UserKnownHostsFile /dev/null",
+		}
+	case config.HostKeyStrict:
+		return []string{
+			"  StrictHostKeyChecking yes",
+			"  UserKnownHostsFile " + knownHostsPath,
+		}
+	default:
+		return []string{
+			"  StrictHostKeyChecking accept-new",
+			"  UserKnownHostsFile " + knownHostsPath,
+		}
+	}
 }
 
 func buildKnownHostRegistrationCommand(host string, port int, knownHostsPath string) string {

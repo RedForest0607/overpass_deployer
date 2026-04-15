@@ -136,6 +136,15 @@ Use each target private IP or the synced alias names:
 ssh -i ~/.ssh/overpass-aws-test.pem ec2-user@<target_private_ip>
 ```
 
+Shell aliases are written to the bastion user's `~/.bashrc`. Start a new shell or run `source ~/.bashrc`, then verify:
+
+```bash
+alias aws-test-target-apne2a
+alias aws-test-target-apne2b
+aws-test-target-apne2a hostname
+aws-test-target-apne2b hostname
+```
+
 Verify file existence:
 
 ```bash
