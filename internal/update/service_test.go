@@ -20,6 +20,7 @@ func TestExecuteCheckOnlyReturnsAvailableUpdate(t *testing.T) {
 	t.Parallel()
 
 	archiveName := fmt.Sprintf("deploy_v1.2.3_%s_%s.tar.gz", runtime.GOOS, runtime.GOARCH)
+	goreleaserArchiveName := fmt.Sprintf("deploy_1.2.3_%s_%s.tar.gz", runtime.GOOS, runtime.GOARCH)
 	server := newReleaseServer(t, archiveName, []byte("updated-binary"))
 	defer server.Close()
 
@@ -44,12 +45,31 @@ func TestExecuteCheckOnlyReturnsAvailableUpdate(t *testing.T) {
 	if result.AssetName != archiveName {
 		t.Fatalf("expected asset name %q, got %q", archiveName, result.AssetName)
 	}
+
+	serverWithGoreleaserName := newReleaseServer(t, goreleaserArchiveName, []byte("updated-binary"))
+	defer serverWithGoreleaserName.Close()
+
+	result, err = Execute(context.Background(), Config{
+		CurrentVersion: "v1.2.2",
+		RepoOwner:      "acme",
+		RepoName:       "deploy",
+		GitHubAPIBase:  serverWithGoreleaserName.URL,
+		HTTPClient:     serverWithGoreleaserName.Client(),
+		ExecutablePath: filepath.Join(t.TempDir(), "deploy"),
+	}, Options{CheckOnly: true})
+	if err != nil {
+		t.Fatalf("expected goreleaser-named asset to succeed, got %v", err)
+	}
+
+	if result.AssetName != goreleaserArchiveName {
+		t.Fatalf("expected goreleaser asset name %q, got %q", goreleaserArchiveName, result.AssetName)
+	}
 }
 
 func TestExecuteUpdatesBinary(t *testing.T) {
 	t.Parallel()
 
-	archiveName := fmt.Sprintf("deploy_v1.2.3_%s_%s.tar.gz", runtime.GOOS, runtime.GOARCH)
+	archiveName := fmt.Sprintf("deploy_1.2.3_%s_%s.tar.gz", runtime.GOOS, runtime.GOARCH)
 	server := newReleaseServer(t, archiveName, []byte("updated-binary"))
 	defer server.Close()
 
@@ -99,10 +119,10 @@ func TestExecuteFailsWhenAssetMissingForPlatform(t *testing.T) {
 			"tag_name":"v1.2.3",
 			"html_url":"https://example.com/releases/v1.2.3",
 			"assets":[
-				{"name":"deploy_v1.2.3_linux_arm64.tar.gz","browser_download_url":"https://example.com/linux-arm64.tar.gz"},
-				{"name":"checksums.txt","browser_download_url":"https://example.com/checksums.txt"}
-			]
-		}`))
+					{"name":"deploy_1.2.3_linux_arm64.tar.gz","browser_download_url":"https://example.com/linux-arm64.tar.gz"},
+					{"name":"checksums.txt","browser_download_url":"https://example.com/checksums.txt"}
+				]
+			}`))
 	}))
 	defer server.Close()
 
@@ -122,7 +142,7 @@ func TestExecuteFailsWhenAssetMissingForPlatform(t *testing.T) {
 func TestExecuteFailsOnChecksumMismatch(t *testing.T) {
 	t.Parallel()
 
-	archiveName := fmt.Sprintf("deploy_v1.2.3_%s_%s.tar.gz", runtime.GOOS, runtime.GOARCH)
+	archiveName := fmt.Sprintf("deploy_1.2.3_%s_%s.tar.gz", runtime.GOOS, runtime.GOARCH)
 	archiveBytes := makeArchive(t, []byte("updated-binary"))
 
 	var server *httptest.Server

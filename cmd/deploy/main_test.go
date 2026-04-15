@@ -164,7 +164,7 @@ func TestRunUpdateRoutesCheckOnlyOption(t *testing.T) {
 			return &update.Result{
 				CurrentVersion: "v1.2.2",
 				TargetVersion:  "v1.2.3",
-				AssetName:      "deploy_v1.2.3_linux_amd64.tar.gz",
+				AssetName:      "deploy_1.2.3_linux_amd64.tar.gz",
 				ReleaseURL:     "https://example.com/releases/v1.2.3",
 			}, nil
 		},

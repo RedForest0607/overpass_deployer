@@ -62,7 +62,7 @@ GitHub는 `goreleaser release`의 기본 릴리스 경로를 사용합니다. Gi
 GitHub Release asset에서 직접 설치하는 기본 흐름입니다.
 
 ```bash
-curl -L -o deploy.tar.gz https://github.com/<owner>/<repo>/releases/download/v1.0.0/deploy_v1.0.0_linux_amd64.tar.gz
+curl -L -o deploy.tar.gz https://github.com/<owner>/<repo>/releases/download/v1.0.0/deploy_1.0.0_linux_amd64.tar.gz
 curl -L -o checksums.txt https://github.com/<owner>/<repo>/releases/download/v1.0.0/checksums.txt
 sha256sum -c checksums.txt --ignore-missing
 tar -xzf deploy.tar.gz

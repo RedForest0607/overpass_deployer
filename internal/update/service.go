@@ -128,14 +128,20 @@ func resolveExecutablePath(explicitPath string) (string, error) {
 }
 
 func selectArchiveAsset(release *githubRelease) (githubAsset, error) {
-	expectedName := fmt.Sprintf("deploy_%s_%s_%s.tar.gz", release.TagName, runtime.GOOS, runtime.GOARCH)
+	normalizedVersion := normalizeVersion(release.TagName)
+	expectedNames := []string{
+		fmt.Sprintf("deploy_%s_%s_%s.tar.gz", normalizedVersion, runtime.GOOS, runtime.GOARCH),
+		fmt.Sprintf("deploy_%s_%s_%s.tar.gz", release.TagName, runtime.GOOS, runtime.GOARCH),
+	}
 	for _, asset := range release.Assets {
-		if asset.Name == expectedName {
-			return asset, nil
+		for _, expectedName := range expectedNames {
+			if asset.Name == expectedName {
+				return asset, nil
+			}
 		}
 	}
 
-	return githubAsset{}, fmt.Errorf("release %s does not include asset %s for %s/%s", release.TagName, expectedName, runtime.GOOS, runtime.GOARCH)
+	return githubAsset{}, fmt.Errorf("release %s does not include asset %s for %s/%s", release.TagName, expectedNames[0], runtime.GOOS, runtime.GOARCH)
 }
 
 func selectChecksumAsset(release *githubRelease) (string, error) {
