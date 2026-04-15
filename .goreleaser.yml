@@ -21,9 +21,9 @@ builds:
         -X go-deployer/internal/buildinfo.Commit={{ .Commit }}
         -X go-deployer/internal/buildinfo.Date={{ .Date }}
         -X go-deployer/internal/buildinfo.BuiltBy=goreleaser
-        -X go-deployer/internal/buildinfo.RepoOwner={{ .Env.RELEASE_OWNER }}
-        -X go-deployer/internal/buildinfo.RepoName={{ .Env.RELEASE_REPO }}
-        -X go-deployer/internal/buildinfo.GitHubAPIBase={{ .Env.DEPLOY_GITHUB_API_URL }}
+        -X go-deployer/internal/buildinfo.RepoOwner={{ or (index .Env "RELEASE_OWNER") (index .Env "DEPLOY_RELEASE_OWNER") }}
+        -X go-deployer/internal/buildinfo.RepoName={{ or (index .Env "RELEASE_REPO") (index .Env "DEPLOY_RELEASE_REPO") }}
+        -X go-deployer/internal/buildinfo.GitHubAPIBase={{ index .Env "DEPLOY_GITHUB_API_URL" }}
 
 archives:
   - id: deploy-archive

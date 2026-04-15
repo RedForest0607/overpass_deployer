@@ -30,6 +30,8 @@ export RELEASE_OWNER=<github-org-or-user>
 export RELEASE_REPO=overpassDeployer
 ```
 
+이미 `DEPLOY_RELEASE_OWNER`, `DEPLOY_RELEASE_REPO`를 쓰고 있다면 같은 값으로 대체해도 됩니다.
+
 ## 2. Build and publish
 
 스냅샷 빌드:
@@ -106,6 +108,8 @@ GitHub Enterprise API를 쓰는 경우에는 아래 환경변수로 API base URL
 ```bash
 export DEPLOY_GITHUB_API_URL=https://github.example.com/api/v3
 ```
+
+이 값이 비어 있으면 릴리스 빌드와 런타임 모두 기본값 `https://api.github.com`을 사용합니다.
 
 ## 5. Rollback
 
