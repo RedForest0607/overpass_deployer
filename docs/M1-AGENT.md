@@ -284,6 +284,7 @@ ssh:
 
 servers:
   - host: 192.168.1.10
+    # 사용자가 정하는 서버 식별자이며, bastion 사용 시 SSH alias 로도 사용됩니다.
     name: app-server-01
 
     app:

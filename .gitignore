@@ -81,3 +81,11 @@ override.tf.json
 # Local metadata
 # =========================
 internal/.DS_Store
+
+# =========================
+# Local test mock assets
+# =========================
+TEST/
+
+# Public examples that should remain in the main repository
+!/samples/

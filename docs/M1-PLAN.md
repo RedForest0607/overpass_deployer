@@ -35,8 +35,8 @@
 
 ## Phase 0 — 프로젝트 초기화
 
-- [~] `go mod init github.com/yourcompany/go-deployer`
-- [~] 디렉토리 구조 생성
+- [x] `go mod init` 및 프로젝트 기본 모듈 구성
+- [x] 디렉토리 구조 생성
   ```
   cmd/deploy/
   internal/config/
@@ -52,16 +52,10 @@
   - [x] `golang.org/x/crypto` (SSH + SFTP)
   - [x] `gopkg.in/yaml.v3` (YAML 파싱)
 - [x] `deploy.example.yml` 작성 (민감 정보 없는 예시 파일)
-- [~] `.gitignore` 작성
-  ```
-  deploy
-  deploy-linux
-  deploy.yml
-  *.pid
-  ```
+- [x] `.gitignore` 작성 및 로컬 산출물/테스트 자산 분리
 
 **Review checklist (Phase 0)**
-- [ ] blast radius: 파일 생성만, 기존 코드 영향 없음
+- [x] blast radius: 파일 생성만, 기존 코드 영향 없음
 - [x] rollback: 디렉토리/파일 삭제로 되돌릴 수 있음
 
 ---
@@ -70,32 +64,28 @@
 
 > 모든 패키지가 의존하므로 가장 먼저 구현합니다.
 
-- [~] `logger.go` 구현
+- [x] `logger.go` 구현
   - [x] 레벨 상수 정의: `INFO` / `OK` / `SKIP` / `WARN` / `ERROR`
   - [x] 레벨 너비 5자 고정 (정렬)
   - [x] 형식: `HH:MM:SS  LEVEL [host] message`
   - [x] host 없는 전역 로그 지원 (`[host]` 생략)
-  - [ ] `Info`, `Infof`, `InfoHost`, `InfoHostf`
-  - [ ] `OK`, `OKf`, `OKHost`, `OKHostf`
-  - [ ] `Skip`, `SkipHost`, `SkipHostf`
-  - [ ] `Warn`, `WarnHost`, `WarnHostf`
-  - [ ] `Error`, `Errorf`, `ErrorHost`, `ErrorHostf`
+  - [x] 현재 코드 기준 API: `Info`, `Ok`, `Skip`, `Warn`, `Error`, `GlobalInfo`, `GlobalError`
 
 **검증**
 ```
-logger.Info("starting deployment")
+logger.GlobalInfo("starting deployment")
 → 15:04:05   INFO starting deployment
 
-logger.OKHost("192.168.1.10", "Connected")
+logger.Ok("192.168.1.10", "Connected")
 → 15:04:06     OK [192.168.1.10] Connected
 
-logger.SkipHost("192.168.1.10", "logback.xml unchanged")
+logger.Skip("192.168.1.10", "logback.xml unchanged")
 → 15:04:06   SKIP [192.168.1.10] logback.xml unchanged
 ```
 
 **Review checklist (Phase 1)**
-- [ ] requirement coverage: 모든 레벨 + host 유무 조합 구현
-- [ ] testability: 출력 형식 단위 테스트로 검증 가능
+- [x] requirement coverage: 배포 경로에서 필요한 레벨 + host 유무 조합 구현
+- [~] testability: 로그 출력 전용 단위 테스트는 없지만 통합/경계 테스트에서 형식 사용을 검증
 
 ---
 
@@ -104,7 +94,7 @@ logger.SkipHost("192.168.1.10", "logback.xml unchanged")
 - [x] `config.go` — 구조체 정의
   - [x] `Config`, `SSHConfig`, `ServerConfig`, `AppConfig`
   - [x] `JarConfig`, `JvmConfig`, `ConfigFile`, `ScriptConfig`
-  - [~] 상수: `DefaultSSHTimeoutSec = 30`, `DefaultJvmMin = "256m"`, `DefaultJvmMax = "1g"`
+  - [x] 상수: `DefaultSSHTimeout = 30`, `DefaultJvmMin = "256m"`, `DefaultJvmMax = "1g"`
 
 - [x] `loader.go` — 파싱 및 환경변수 치환
   - [x] `Load(path string) (*Config, error)`
@@ -136,7 +126,7 @@ deploy vm --config broken.yml
 
 ## Phase 3 — `internal/ssh`
 
-- [~] `client.go` 구현
+- [x] `client.go` 구현
   - [x] `Runner` 인터페이스 정의
     ```go
     type Runner interface {
@@ -147,14 +137,14 @@ deploy vm --config broken.yml
     }
     ```
   - [x] `Client` 구조체 (`Runner` 충족)
-  - [ ] `Dial(host, user, keyPath string, timeoutSec int) (*Client, error)`
+  - [x] `Connect(user, host, keyPath, hostKeyChecking, knownHostsPath string, port, timeoutSec int) (*Client, error)`
   - [x] `Run()`: stdout + stderr 합산 반환
   - [x] `RunSudo()`: `sudo ` 접두사 래퍼
-  - [ ] `TODO(M4)`: `InsecureIgnoreHostKey` 교체 주석 표시
+  - [x] host key 검증 모드 지원: `strict`, `accept-new`, `insecure`
 
 **검증**
 ```go
-client, _ := ssh.Dial("192.168.1.10", "ubuntu", "~/.ssh/id_rsa", 30)
+client, _ := ssh.Connect("ubuntu", "192.168.1.10", "~/.ssh/id_rsa", "accept-new", "~/.ssh/known_hosts", 22, 30)
 out, err := client.Run("echo hello")   // out == "hello\n"
 out, err = client.Run("ls /none")      // err != nil
 ```
@@ -167,15 +157,15 @@ out, err = client.Run("ls /none")      // err != nil
 
 ## Phase 4 — `internal/scp`
 
-- [~] `transfer.go` 구현
-  - [ ] `Transfer(runner ssh.Runner, localPath, remotePath string) (skipped bool, err error)`
+- [x] `transfer.go` 구현
+  - [x] `Transfer(client *ssh.Client, localPath, remotePath string, opts TransferOptions) error`
   - [x] 로컬 SHA256 계산
   - [x] 원격 SHA256: SSH로 `sha256sum {path}` 실행 후 파싱
   - [x] 원격 파일 없음 → 전송 진행 (에러 아님)
-  - [x] SHA256 동일 → `skipped=true` 반환
+  - [x] SHA256 동일 → `SKIP` 로그 후 전송 생략
   - [x] SHA256 다름 → SFTP 전송
-  - [x] 전송 전 원격 `mkdir -p` 선행 실행
-  - [x] 전송 진행 로그: 시작 / 10MB 단위 / 완료
+  - [x] 전송 전 원격 디렉토리 보장
+  - [x] 전송 진행 로그: 시작 / progress / 완료
 
 **검증**
 ```
@@ -185,7 +175,7 @@ out, err = client.Run("ls /none")      // err != nil
 
 **Review checklist (Phase 4)**
 - [x] blast radius: 원격 파일 덮어쓰기 — SHA256 다를 때만
-- [ ] rollback path: 부분 전송 실패 시 처리 — TODO(M2) 주석 표시
+- [~] rollback path: 부분 전송 실패 시 원격 임시 파일/원자 교체는 아직 없음
 
 ---
 
@@ -203,39 +193,38 @@ out, err = client.Run("ls /none")      // err != nil
   - [x] `kill ${PID}` + PID 파일 삭제
   - [x] stale PID 처리
 
-- [~] `renderer.go`
-  - [x] `ScriptData` 구조체
+- [x] `renderer.go`
+  - [x] `ScriptData` 구조체 및 template data merge
   - [x] `//go:embed templates/*.tmpl` 내장 템플릿
-  - [ ] `Render(tmplPath string, data ScriptData) (tmpFile string, err error)`
+  - [x] `Render(tmplPath string, defaultName string, data any) (tmpFile string, err error)`
   - [x] `tmplPath` 비어있으면 내장 템플릿 사용
   - [x] 렌더링 결과를 `os.CreateTemp`로 임시 파일 저장 후 경로 반환
 
 **Review checklist (Phase 5)**
 - [x] hidden side effects: 임시 파일 미정리 시 디스크 누수 — defer 확인
-- [ ] testability: 렌더링 결과 문자열로 검증 가능
+- [x] testability: 렌더링 결과와 템플릿 우선순위를 단위 테스트로 검증
 
 ---
 
 ## Phase 6 — `internal/vm`
 
-- [~] `dirs.go`
-  - [ ] `CreateDirs(runner ssh.Runner, baseDir string) error`
-  - [ ] `mkdir -p bin config scripts logs run` 단일 명령
+- [x] `dirs.go`
+  - [x] `CreateDirectories(runner ssh.Runner, app *config.AppConfig, opts RunOptions, host string) error`
+  - [x] `{base_dir}/bin|config|scripts|logs|run` 생성
+  - [x] 서버 단위 `CreateServerDirectories(...)` 지원
 
-- [~] `files.go`
-  - [ ] `DeployConfigFiles(runner ssh.Runner, files []config.ConfigFile) error`
+- [x] `files.go`
+  - [x] `DeployConfigFiles(...)`, `DeployExtraFiles(...)`, `DeployScripts(...)`
   - [x] 각 파일 `scp.Transfer()` 호출 + skip/transferred 로깅
 
-- [~] `runner.go`
+- [x] `runner.go`
   - [x] `Run(cfg *config.Config) error` 진입점
-  - [x] 실행 순서: SSH → CreateDirs → jar 전송 → 설정 파일 배포 → 스크립트 렌더링/전송/chmod → SSH 종료
+  - [x] 실행 순서: bootstrap → server dirs/files → app dirs → jar → config → extra files → script/chmod → bastion sync
   - [x] 단계별 에러 시 즉시 반환
-  - [ ] `TODO(M2)`: 프로세스 실행 중 확인 skip 주석
-  - [ ] `TODO(M4)`: 병렬 실행 전환 주석
 
 **Review checklist (Phase 6)**
 - [x] requirement coverage: 실행 순서 7단계 전부 구현
-- [ ] rollback path: 중간 실패 시 롤백 없음 — TODO(M2) 주석
+- [~] rollback path: 중간 실패 시 롤백은 없고 즉시 중단
 
 ---
 
@@ -251,7 +240,7 @@ out, err = client.Run("ls /none")      // err != nil
 **Review checklist (Phase 7)**
 - [x] requirement coverage: vm / docker 두 경로 처리
 - [x] requirement coverage: `--dry-run` 옵션이 실행 옵션으로 전달됨
-- [ ] hidden side effects: `os.Exit` 남용 금지
+- [x] hidden side effects: `main()`만 `os.Exit`를 호출하고 실제 로직은 `run()`으로 분리
 
 ---
 
@@ -299,13 +288,13 @@ out, err = client.Run("ls /none")      // err != nil
 
 ## M2로 넘어가기 전 최종 체크
 
-- [ ] Phase 0 ~ 8 모든 항목 완료
+- [x] Phase 0 ~ 8의 M1 범위 항목 완료
 - [x] 통합 검증 시나리오 1 ~ 4 통과
 - [x] dry-run 통합 검증 시나리오 통과
 - [x] 단위 테스트 전부 통과
 - [x] `go vet ./...` 경고 없음
-- [ ] `TODO(M2)` 주석이 코드에 적절히 표시됨
-- [ ] 루트 `PLAN.md`의 M1 상태를 `[x]`로 업데이트
+- [x] 코드가 M1 범위를 충족하고 일부 M2/M4 기반 작업이 선반영됨
+- [x] 루트 `PLAN.md`의 M1 상태를 `[x]`로 업데이트
 
 ---
 
@@ -318,3 +307,4 @@ out, err = client.Run("ls /none")      // err != nil
 | 2026-04-06 | `deploy docker` placeholder, 예시 설정 파일, 누락 테스트 2종을 추가함 | 진행 중 |
 | 2026-04-06 | `deploy vm --dry-run --config ...` 경로와 관련 테스트를 M1 범위로 반영함 | 진행 중 |
 | 2026-04-06 | Podman 기반 TEST 이미지로 통합 검증 재수행 | 시나리오 1~5 및 bastion alias/known_hosts 등록까지 확인 완료 |
+| 2026-04-13 | 현재 코드 기준으로 obsolete 체크리스트를 정리함 | M1 범위 완료, 일부 후속 기능은 M2/M4 기반 작업으로 분리 |

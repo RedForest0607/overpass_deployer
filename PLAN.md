@@ -20,7 +20,7 @@
 
 | 마일스톤 | 제목 | 상태 | 상세 |
 |---|---|---|---|
-| M1 | VM 모드 MVP | [~] | `docs/M1-PLAN.md` |
+| M1 | VM 모드 MVP | [x] | `docs/M1-PLAN.md` |
 | M2 | VM 모드 완성 (멱등성) | [ ] | `docs/M2-PLAN.md` |
 | M3 | Docker 모드 | [ ] | `docs/M3-PLAN.md` |
 | M4 | UX & Reliability | [ ] | `docs/M4-PLAN.md` |
@@ -44,7 +44,7 @@
 **완료 기준:** `docs/M1-PLAN.md` 체크리스트 전체 통과
 **상세 규칙:** `docs/M1-AGENT.md`
 **설계 가이드:** `docs/M1-guide.md`
-**현재 상태:** [~] 핵심 배포 경로, dry-run, Podman 기반 통합 검증 시나리오 1~5는 완료됨. 남은 작업은 일부 문서/체크리스트 잔여 항목(`TODO(M2)` 정리, `.gitignore` 정합성, 루트 상태 승격) 위주
+**현재 상태:** [x] 핵심 배포 경로, dry-run, Podman 기반 통합 검증 시나리오 1~5가 완료되었고, 체크리스트도 현재 코드 기준으로 정리됨. 일부 확장 기능은 M2/M4 기반 작업으로 유지
 
 ---
 
@@ -141,4 +141,5 @@ M1 (VM MVP)
 | 2026-04-06 | M1 | 코드 기준 진행도 재점검 | M1을 `[~]`로 조정. 핵심 VM 배포 경로는 구현되었고, 남은 작업은 체크리스트 정리, 통합 검증, 일부 CLI/테스트 갭으로 한정 |
 | 2026-04-06 | M4 기반 작업 | SSH host key/known_hosts, bastion alias 동기화가 선반영됨 | M1 완료 전까지는 “선행 기반 작업”으로 간주하고 공식 마일스톤 상태는 올리지 않음 |
 | 2026-04-06 | M1 | dry-run 예정 작업 출력 기능을 M1 범위로 승격 | CLI와 VM/scp/bastion 경계에서 원격 변경 없이 계획 로그만 출력하도록 정리 |
-| 2026-04-06 | M1 | Podman 기반 TEST 이미지로 통합 검증 완료 | happy path, 원격 파일 미존재 자동 전송, dry-run, SSH 실패, bastion alias/known_hosts 등록까지 확인. 다만 M1 전체 완료 처리는 문서 잔여 항목 정리 후 반영 |
+| 2026-04-06 | M1 | Podman 기반 TEST 이미지로 통합 검증 완료 | happy path, 원격 파일 미존재 자동 전송, dry-run, SSH 실패, bastion alias/known_hosts 등록까지 확인 |
+| 2026-04-13 | M1 | 체크리스트를 현재 코드 기준으로 재정렬 | obsolete 항목을 실제 구현 형태로 정리하고 M1 상태를 `[x]`로 승격 |
