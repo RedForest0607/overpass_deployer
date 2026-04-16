@@ -79,6 +79,7 @@
 - wave 1/wave 3의 간헐적 재전송 원인 분석 완료: 현재 원격 파일 hash는 모두 local과 일치했고, `internal/scp/transfer.go`의 remote checksum 파서를 stdout/stderr noise tolerant 하게 보강하고 회귀 테스트를 추가
 - 선택 배포용 tag 필터 추가: `servers[].tags`, `apps[].tags`, CLI `--server-tag`, `--app-tag` 지원과 태그 기반 서버/앱 subset 배포 로직 및 회귀 테스트 구현
 - `docs/M1-PLAN.md`, `PLAN.md`를 현재 코드 기준으로 정리해 obsolete 체크리스트를 실제 구현 형태로 교체하고 M1 상태를 완료로 승격
+- 루트 `README.md` 추가: 운영/사용자 온보딩 중심으로 현재 지원 범위, 빠른 시작, 핵심 설정 구조, 주요 명령, 관련 문서 링크를 정리
 
 ## Next To-Do
 - `TEST/` 독립 저장소의 원격(origin) 연결 여부와 ignore 규칙을 실제 팀 운영 방식에 맞게 확정
@@ -110,3 +111,4 @@
 - devdb PostgreSQL 17 실제 패키지명/리포지토리/서비스 enable 절차 확정
 - `TEST/stock_company` 초안에서 app별 `extra_files[]`로 배포할 보조 스크립트/agent 파일 목록 정리
 - 서버 단위 `extra_files[]`를 사용할 운영 케이스에서 압축 해제/설치 후속 단계가 필요한지 결정
+- README의 Docker/M2 관련 설명은 실제 구현 범위가 확정될 때 다시 보강
