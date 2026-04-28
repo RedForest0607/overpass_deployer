@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 )
 
+// extractBinaryFromArchive는 tar.gz 릴리즈 압축에서 대상 바이너리만 임시 디렉터리로 추출한다.
 func extractBinaryFromArchive(archivePath, binaryName string) (string, error) {
 	file, err := os.Open(archivePath)
 	if err != nil {

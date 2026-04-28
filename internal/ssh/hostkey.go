@@ -16,6 +16,7 @@ import (
 
 var knownHostsMu sync.Mutex
 
+// NewHostKeyCallback은 설정된 검증 모드에 맞는 SSH 호스트 키 콜백을 생성한다.
 func NewHostKeyCallback(mode, knownHostsPath string) (sshlib.HostKeyCallback, error) {
 	switch mode {
 	case config.HostKeyStrict:
@@ -29,6 +30,7 @@ func NewHostKeyCallback(mode, knownHostsPath string) (sshlib.HostKeyCallback, er
 	}
 }
 
+// newAcceptNewHostKeyCallback은 처음 보는 호스트 키만 known_hosts에 추가하고 변경된 키는 거부한다.
 func newAcceptNewHostKeyCallback(knownHostsPath string) (sshlib.HostKeyCallback, error) {
 	if err := ensureKnownHostsFile(knownHostsPath); err != nil {
 		return nil, err
@@ -60,6 +62,7 @@ func newAcceptNewHostKeyCallback(knownHostsPath string) (sshlib.HostKeyCallback,
 	}, nil
 }
 
+// ensureKnownHostsFile은 known_hosts 파일과 상위 디렉터리를 안전한 권한으로 준비한다.
 func ensureKnownHostsFile(path string) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -73,6 +76,7 @@ func ensureKnownHostsFile(path string) error {
 	return file.Close()
 }
 
+// appendKnownHost는 동시 SSH 연결 중에도 known_hosts 항목을 안전하게 추가한다.
 func appendKnownHost(path, hostname, remoteAddress string, key sshlib.PublicKey) error {
 	knownHostsMu.Lock()
 	defer knownHostsMu.Unlock()
@@ -90,6 +94,7 @@ func appendKnownHost(path, hostname, remoteAddress string, key sshlib.PublicKey)
 	return nil
 }
 
+// hostKeyAddresses는 known_hosts 한 줄에 넣을 호스트명과 원격 주소를 중복 없이 정리한다.
 func hostKeyAddresses(hostname, remoteAddress string) []string {
 	trimmed := make([]string, 0, 2)
 	seen := make(map[string]struct{}, 2)

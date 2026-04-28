@@ -80,6 +80,7 @@
 - 선택 배포용 tag 필터 추가: `servers[].tags`, `apps[].tags`, CLI `--server-tag`, `--app-tag` 지원과 태그 기반 서버/앱 subset 배포 로직 및 회귀 테스트 구현
 - `docs/M1-PLAN.md`, `PLAN.md`를 현재 코드 기준으로 정리해 obsolete 체크리스트를 실제 구현 형태로 교체하고 M1 상태를 완료로 승격
 - 루트 `README.md` 추가: 운영/사용자 온보딩 중심으로 현재 지원 범위, 빠른 시작, 핵심 설정 구조, 주요 명령, 관련 문서 링크를 정리
+- `ops/` 운영 자산 스캐폴딩 추가: 서비스 기준(`stock_company`, `sample_api`) 1차 분리 후 각 서비스 아래 `common/`, 환경별(`dev`, `stage`, `prod`) 디렉터리 구조를 생성하고, 상위 저장소와 분리된 독립 Git 저장소로 초기화
 
 ## Next To-Do
 - `TEST/` 독립 저장소의 원격(origin) 연결 여부와 ignore 규칙을 실제 팀 운영 방식에 맞게 확정
@@ -112,3 +113,4 @@
 - `TEST/stock_company` 초안에서 app별 `extra_files[]`로 배포할 보조 스크립트/agent 파일 목록 정리
 - 서버 단위 `extra_files[]`를 사용할 운영 케이스에서 압축 해제/설치 후속 단계가 필요한지 결정
 - README의 Docker/M2 관련 설명은 실제 구현 범위가 확정될 때 다시 보강
+- `ops/` 하위에 실제 운영 샘플 `deploy.yml`, values, config, script 템플릿을 어떤 서비스부터 채울지 우선순위 확정

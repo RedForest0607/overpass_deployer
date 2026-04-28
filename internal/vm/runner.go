@@ -31,11 +31,12 @@ var (
 	deployScriptsStep     = DeployScripts
 )
 
-// Run executes the complete VM deployment workflow for all servers
+// Run은 기본 옵션으로 모든 서버에 대한 VM 배포 워크플로를 실행한다.
 func Run(cfg *config.Config) error {
 	return RunWithOptions(cfg, RunOptions{})
 }
 
+// RunWithOptions는 태그 필터와 dry-run 옵션을 적용한 뒤 서버별 배포와 배스천 동기화를 수행한다.
 func RunWithOptions(cfg *config.Config, opts RunOptions) error {
 	filteredCfg, err := filterConfig(cfg, opts)
 	if err != nil {
@@ -61,6 +62,7 @@ func RunWithOptions(cfg *config.Config, opts RunOptions) error {
 	return nil
 }
 
+// runSingle은 한 서버에 대해 bootstrap, 디렉터리 생성, 파일 전송, 스크립트 배포를 순서대로 실행한다.
 func runSingle(sshCfg config.SSHConfig, bastionCfg config.BastionConfig, server config.ServerConfig, opts RunOptions) error {
 	apps := server.EffectiveApps()
 	if opts.DryRun {
@@ -156,6 +158,7 @@ func runSingle(sshCfg config.SSHConfig, bastionCfg config.BastionConfig, server 
 	return nil
 }
 
+// phaseLabel은 로그 헤더에 사용할 현재 실행 모드 이름을 반환한다.
 func phaseLabel(opts RunOptions) string {
 	if opts.DryRun {
 		return "dry-run"
@@ -163,6 +166,7 @@ func phaseLabel(opts RunOptions) string {
 	return "deployment"
 }
 
+// phaseTitle은 오류 로그에 사용할 현재 실행 모드 제목을 반환한다.
 func phaseTitle(opts RunOptions) string {
 	if opts.DryRun {
 		return "dry-run"

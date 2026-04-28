@@ -14,6 +14,7 @@ import (
 	"go-deployer/internal/vm"
 )
 
+// main은 실제 OS 입출력과 구현체 의존성을 연결한 뒤 CLI 실행 결과를 종료 코드로 반환한다.
 func main() {
 	os.Exit(run(os.Args[1:], dependencies{
 		stdout:     os.Stdout,
@@ -34,6 +35,7 @@ type dependencies struct {
 	buildInfo  func() buildinfo.Info
 }
 
+// run은 최상위 서브커맨드를 해석하고 각 실행 경로로 라우팅한다.
 func run(args []string, deps dependencies) int {
 	if len(args) < 1 {
 		printUsage(deps.stderr)
@@ -57,6 +59,7 @@ func run(args []string, deps dependencies) int {
 	}
 }
 
+// runVM은 VM 배포 옵션을 파싱하고 설정 로드 후 배포 워크플로를 실행한다.
 func runVM(args []string, deps dependencies) int {
 	vmCmd := flag.NewFlagSet("vm", flag.ContinueOnError)
 	vmCmd.SetOutput(deps.stderr)
@@ -88,6 +91,7 @@ func runVM(args []string, deps dependencies) int {
 	return 0
 }
 
+// runVersion은 빌드 시점에 주입된 버전과 플랫폼 메타데이터를 출력한다.
 func runVersion(deps dependencies) int {
 	info := deps.buildInfo()
 
@@ -101,6 +105,7 @@ func runVersion(deps dependencies) int {
 	return 0
 }
 
+// runUpdate는 업데이트 확인 또는 설치 옵션을 파싱하고 업데이트 서비스를 호출한다.
 func runUpdate(args []string, deps dependencies) int {
 	updateCmd := flag.NewFlagSet("update", flag.ContinueOnError)
 	updateCmd.SetOutput(deps.stderr)
@@ -146,6 +151,7 @@ func runUpdate(args []string, deps dependencies) int {
 	return 0
 }
 
+// printUsage는 지원하는 서브커맨드와 주요 플래그를 사용자에게 안내한다.
 func printUsage(w io.Writer) {
 	fmt.Fprintf(w, "Usage: deploy <subcommand> [flags]\n\n")
 	fmt.Fprintf(w, "Subcommands:\n")
@@ -163,6 +169,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintf(w, "  --version string  Install a specific release tag\n")
 }
 
+// parseTagFilter는 쉼표로 구분된 태그 입력을 소문자 중복 없는 목록으로 정규화한다.
 func parseTagFilter(raw string) []string {
 	if strings.TrimSpace(raw) == "" {
 		return nil

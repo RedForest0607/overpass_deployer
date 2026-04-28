@@ -12,6 +12,7 @@ import (
 const packageManagerDNF = "dnf"
 const defaultJDKVendor = "corretto"
 
+// BootstrapHost는 서버의 OS 업데이트와 필수 패키지/JDK 설치를 준비하거나 실행한다.
 func BootstrapHost(runner ssh.Runner, bootstrap config.BootstrapConfig, opts RunOptions, host string) error {
 	host = runnerHost(runner, host)
 	packages, err := packagesForBootstrap(bootstrap)
@@ -66,6 +67,7 @@ func BootstrapHost(runner ssh.Runner, bootstrap config.BootstrapConfig, opts Run
 	return nil
 }
 
+// bootstrapEnabled는 설치할 패키지나 OS 업데이트 작업이 실제로 있는지 판단한다.
 func bootstrapEnabled(bootstrap config.BootstrapConfig, packages []string) bool {
 	if len(packages) > 0 {
 		return true
@@ -73,6 +75,7 @@ func bootstrapEnabled(bootstrap config.BootstrapConfig, packages []string) bool 
 	return bootstrap.OSUpdate.Enabled != nil && *bootstrap.OSUpdate.Enabled
 }
 
+// logBootstrapPlan은 dry-run에서 실행 예정인 bootstrap 명령을 원격 변경 없이 출력한다.
 func logBootstrapPlan(host string, bootstrap config.BootstrapConfig, packages []string) {
 	if bootstrap.OSUpdate.Enabled != nil && *bootstrap.OSUpdate.Enabled {
 		logger.Info(host, "DRY-RUN: would run sudo dnf update -y")
@@ -85,6 +88,7 @@ func logBootstrapPlan(host string, bootstrap config.BootstrapConfig, packages []
 	logger.Info(host, "DRY-RUN: would run sudo %s", buildDNFInstallCommand(packages))
 }
 
+// detectPackageManager는 원격 서버가 지원하는 패키지 관리자를 확인한다.
 func detectPackageManager(runner ssh.Runner) (string, error) {
 	command := "sh -lc " + ssh.ShellQuote("if command -v dnf >/dev/null 2>&1; then echo dnf; elif command -v apt-get >/dev/null 2>&1; then echo apt; fi")
 	out, err := runner.Run(command)
@@ -100,6 +104,7 @@ func detectPackageManager(runner ssh.Runner) (string, error) {
 	return manager, nil
 }
 
+// detectMissingPackages는 rpm 기준으로 아직 설치되지 않은 패키지만 골라낸다.
 func detectMissingPackages(runner ssh.Runner, packages []string) ([]string, error) {
 	missing := make([]string, 0, len(packages))
 	for _, pkg := range packages {
@@ -111,6 +116,7 @@ func detectMissingPackages(runner ssh.Runner, packages []string) ([]string, erro
 	return missing, nil
 }
 
+// buildDNFInstallCommand는 패키지명을 쉘 안전하게 인용해 dnf 설치 명령을 만든다.
 func buildDNFInstallCommand(packages []string) string {
 	quoted := make([]string, 0, len(packages))
 	for _, pkg := range packages {
@@ -119,6 +125,7 @@ func buildDNFInstallCommand(packages []string) string {
 	return "dnf install -y " + strings.Join(quoted, " ")
 }
 
+// packagesForBootstrap은 사용자가 지정한 패키지와 JDK 설정에서 유도한 패키지를 합친다.
 func packagesForBootstrap(bootstrap config.BootstrapConfig) ([]string, error) {
 	packages := append([]string{}, bootstrap.Packages...)
 	jdkPackage, err := resolveJDKPackage(bootstrap.JDK)
@@ -132,6 +139,7 @@ func packagesForBootstrap(bootstrap config.BootstrapConfig) ([]string, error) {
 	return packages, nil
 }
 
+// resolveJDKPackage는 JDK 설정을 Amazon Corretto 패키지명으로 변환한다.
 func resolveJDKPackage(jdk config.JDKConfig) (string, error) {
 	if jdk.Major == 0 && jdk.Vendor == "" {
 		return "", nil
@@ -154,6 +162,7 @@ func resolveJDKPackage(jdk config.JDKConfig) (string, error) {
 	return fmt.Sprintf("java-%d-amazon-corretto", jdk.Major), nil
 }
 
+// configMergePackages는 bootstrap 패키지 목록을 중복 없이 선언 순서대로 병합한다.
 func configMergePackages(base []string, extras []string) []string {
 	seen := make(map[string]struct{}, len(base)+len(extras))
 	merged := make([]string, 0, len(base)+len(extras))

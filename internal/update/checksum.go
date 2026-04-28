@@ -8,6 +8,7 @@ import (
 	"strings"
 )
 
+// parseChecksums는 checksums.txt 형식의 줄을 파일명별 SHA256 맵으로 변환한다.
 func parseChecksums(r io.Reader) (map[string]string, error) {
 	scanner := bufio.NewScanner(r)
 	checksums := make(map[string]string)
@@ -34,6 +35,7 @@ func parseChecksums(r io.Reader) (map[string]string, error) {
 	return checksums, nil
 }
 
+// verifySHA256은 스트림의 실제 SHA256과 기대 체크섬을 대소문자 무시하고 비교한다.
 func verifySHA256(expected string, r io.Reader) error {
 	hash := sha256.New()
 	if _, err := io.Copy(hash, r); err != nil {

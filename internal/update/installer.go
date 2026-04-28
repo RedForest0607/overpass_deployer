@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 )
 
+// replaceExecutable은 기존 실행 파일 권한을 보존하면서 새 바이너리로 원자적 교체를 시도한다.
 func replaceExecutable(targetPath, extractedBinaryPath string) error {
 	targetInfo, err := os.Stat(targetPath)
 	if err != nil {

@@ -9,8 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// LoadTemplateData reads a YAML map from disk and substitutes ${VAR} placeholders
-// using the current process environment.
+// LoadTemplateData는 템플릿 값 YAML을 읽고 환경 변수 치환 후 미해결 변수가 남았는지 검사한다.
 func LoadTemplateData(path string) (map[string]any, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -30,6 +29,7 @@ func LoadTemplateData(path string) (map[string]any, error) {
 	return values, nil
 }
 
+// MergeTemplateData는 기본 템플릿 데이터 위에 사용자 values 파일 값을 덮어쓴다.
 func MergeTemplateData(base map[string]any, overrides map[string]any) map[string]any {
 	merged := make(map[string]any, len(base)+len(overrides))
 
@@ -43,6 +43,7 @@ func MergeTemplateData(base map[string]any, overrides map[string]any) map[string
 	return merged
 }
 
+// replaceEnvVariables는 템플릿 values 파일 안의 ${VAR} 표현식을 환경 변수로 치환한다.
 func replaceEnvVariables(content []byte) []byte {
 	re := regexp.MustCompile(`\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}`)
 	return re.ReplaceAllFunc(content, func(match []byte) []byte {
@@ -54,6 +55,7 @@ func replaceEnvVariables(content []byte) []byte {
 	})
 }
 
+// findUnresolvedEnv는 중첩 map/list 구조를 순회하며 치환되지 않은 환경 변수 위치를 찾는다.
 func findUnresolvedEnv(value any, path string) (string, string) {
 	switch typed := value.(type) {
 	case map[string]any:

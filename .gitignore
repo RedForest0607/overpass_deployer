@@ -83,9 +83,10 @@ override.tf.json
 internal/.DS_Store
 
 # =========================
-# Local test mock assets
+# Local test and operations assets
 # =========================
 TEST/
+ops/
 
 # Public examples that should remain in the main repository
 !/samples/

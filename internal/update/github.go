@@ -29,6 +29,7 @@ type githubClient struct {
 	httpClient *http.Client
 }
 
+// newGitHubClient는 저장소 메타데이터와 API base URL을 검증해 릴리즈 조회 클라이언트를 만든다.
 func newGitHubClient(cfg Config) (*githubClient, error) {
 	if cfg.RepoOwner == "" || cfg.RepoName == "" {
 		return nil, fmt.Errorf("release repository is not configured; set build metadata or %s/%s", ownerEnvKey, repoEnvKey)
@@ -47,10 +48,12 @@ func newGitHubClient(cfg Config) (*githubClient, error) {
 	}, nil
 }
 
+// latestRelease는 GitHub latest release API에서 최신 안정 릴리즈 정보를 가져온다.
 func (c *githubClient) latestRelease(ctx context.Context) (*githubRelease, error) {
 	return c.fetchRelease(ctx, fmt.Sprintf("%s/repos/%s/%s/releases/latest", c.baseURL, c.repoOwner, c.repoName))
 }
 
+// releaseByTag는 v 접두사 유무를 모두 시도해 사용자가 요청한 릴리즈 태그를 찾는다.
 func (c *githubClient) releaseByTag(ctx context.Context, tag string) (*githubRelease, error) {
 	var lastErr error
 	for _, candidate := range tagCandidates(tag) {
@@ -68,6 +71,7 @@ func (c *githubClient) releaseByTag(ctx context.Context, tag string) (*githubRel
 	return nil, lastErr
 }
 
+// fetchRelease는 GitHub 릴리즈 API 응답을 검증하고 prerelease 업데이트를 차단한다.
 func (c *githubClient) fetchRelease(ctx context.Context, endpoint string) (*githubRelease, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -99,6 +103,7 @@ func (c *githubClient) fetchRelease(ctx context.Context, endpoint string) (*gith
 	return &release, nil
 }
 
+// normalizeBaseURL은 GitHub API base URL의 끝 슬래시를 제거해 endpoint 조립을 안정화한다.
 func normalizeBaseURL(raw string) (string, error) {
 	parsed, err := url.Parse(raw)
 	if err != nil {
@@ -108,6 +113,7 @@ func normalizeBaseURL(raw string) (string, error) {
 	return strings.TrimRight(parsed.String(), "/"), nil
 }
 
+// tagCandidates는 사용자가 입력한 태그와 v 접두사 변형을 중복 없이 만든다.
 func tagCandidates(tag string) []string {
 	trimmed := strings.TrimSpace(tag)
 	if trimmed == "" {
@@ -124,6 +130,7 @@ func tagCandidates(tag string) []string {
 	return dedupeStrings(candidates)
 }
 
+// dedupeStrings는 문자열 목록의 최초 등장 순서를 유지하며 중복을 제거한다.
 func dedupeStrings(values []string) []string {
 	seen := make(map[string]struct{}, len(values))
 	result := make([]string, 0, len(values))

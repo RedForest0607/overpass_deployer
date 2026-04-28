@@ -108,7 +108,7 @@ type ScriptConfig struct {
 	RemoteDir  string `yaml:"remote_dir"`
 }
 
-// ScriptData is used to render start/stop templates.
+// ScriptData는 시작/중지 스크립트 템플릿 렌더링에 필요한 앱 실행 값을 담는다.
 type ScriptData struct {
 	AppName       string
 	BaseDir       string
@@ -122,6 +122,7 @@ type ScriptData struct {
 	ContextPath   string
 }
 
+// ToScriptData는 앱 설정을 기본 서버 스크립트 템플릿에서 쓰는 구조체로 변환한다.
 func (c *AppConfig) ToScriptData() ScriptData {
 	return ScriptData{
 		AppName:       c.Name,
@@ -137,6 +138,7 @@ func (c *AppConfig) ToScriptData() ScriptData {
 	}
 }
 
+// ToTemplateData는 템플릿 함수와 사용자 override가 다루기 쉬운 map 형태로 앱 값을 변환한다.
 func (c *AppConfig) ToTemplateData() map[string]any {
 	data := c.ToScriptData()
 
@@ -154,10 +156,12 @@ func (c *AppConfig) ToTemplateData() map[string]any {
 	}
 }
 
+// Enabled는 bastion.host가 설정되어 실제 배스천 동기화가 필요한지 판단한다.
 func (c BastionConfig) Enabled() bool {
 	return c.Host != ""
 }
 
+// SSHSettings는 전역 SSH 설정 위에 배스천 전용 설정을 덮어쓴 최종 접속값을 만든다.
 func (c BastionConfig) SSHSettings(base SSHConfig) SSHConfig {
 	sshCfg := base
 
@@ -183,6 +187,7 @@ func (c BastionConfig) SSHSettings(base SSHConfig) SSHConfig {
 	return sshCfg
 }
 
+// SSHSettings는 서버별 SSH 포트 설정을 전역 SSH 설정에 반영한다.
 func (c ServerConfig) SSHSettings(base SSHConfig) SSHConfig {
 	sshCfg := base
 	if c.SSHPort != 0 {
@@ -191,6 +196,7 @@ func (c ServerConfig) SSHSettings(base SSHConfig) SSHConfig {
 	return sshCfg
 }
 
+// BastionTargetHost는 배스천에서 접근할 내부 호스트명을 명시값 또는 서버 호스트로 결정한다.
 func (c ServerConfig) BastionTargetHost() string {
 	if c.BastionHost != "" {
 		return c.BastionHost
@@ -198,6 +204,7 @@ func (c ServerConfig) BastionTargetHost() string {
 	return c.Host
 }
 
+// BastionTargetPort는 배스천에서 사용할 대상 SSH 포트를 서버별 설정 기준으로 결정한다.
 func (c ServerConfig) BastionTargetPort() int {
 	if c.BastionSSHPort != 0 {
 		return c.BastionSSHPort
@@ -205,14 +212,17 @@ func (c ServerConfig) BastionTargetPort() int {
 	return c.SSHPort
 }
 
+// EffectiveBootstrap은 전역 bootstrap 설정과 서버별 override를 병합한 실행 설정을 반환한다.
 func (c ServerConfig) EffectiveBootstrap(global BootstrapConfig) BootstrapConfig {
 	return mergeBootstrapConfig(global, c.Bootstrap)
 }
 
+// UsesLegacyApp은 단일 app 필드를 사용하는 이전 설정 형식인지 판별한다.
 func (c ServerConfig) UsesLegacyApp() bool {
 	return !c.App.IsZero()
 }
 
+// EffectiveApps는 apps 목록과 legacy app 형식을 동일한 앱 목록으로 정규화한다.
 func (c ServerConfig) EffectiveApps() []AppConfig {
 	if len(c.Apps) > 0 {
 		return c.Apps
@@ -223,6 +233,7 @@ func (c ServerConfig) EffectiveApps() []AppConfig {
 	return nil
 }
 
+// mergeBootstrapConfig는 전역 bootstrap 값에 서버별 값이 있을 때만 덮어써 최종 설정을 만든다.
 func mergeBootstrapConfig(global BootstrapConfig, override BootstrapConfig) BootstrapConfig {
 	merged := BootstrapConfig{
 		Packages: mergePackages(global.Packages, override.Packages),
@@ -246,6 +257,7 @@ func mergeBootstrapConfig(global BootstrapConfig, override BootstrapConfig) Boot
 	return merged
 }
 
+// mergePackages는 전역/서버 패키지 목록을 순서 보존과 중복 제거 규칙으로 합친다.
 func mergePackages(global []string, override []string) []string {
 	if len(global) == 0 && len(override) == 0 {
 		return nil
@@ -264,10 +276,12 @@ func mergePackages(global []string, override []string) []string {
 	return merged
 }
 
+// boolPtr는 bool 값을 선택형 설정 포인터로 다룰 때 사용한다.
 func boolPtr(value bool) *bool {
 	return &value
 }
 
+// IsZero는 legacy app 블록이 실질적으로 비어 있는지 확인한다.
 func (c AppConfig) IsZero() bool {
 	return c.Name == "" &&
 		c.BaseDir == "" &&
@@ -293,6 +307,7 @@ const (
 	ScriptModeLocalFile = "local-file"
 )
 
+// Normalize는 이전 local/remote 필드를 현재 local_path/remote_path 필드로 보정한다.
 func (c *ConfigFile) Normalize() {
 	if c.LocalPath == "" {
 		c.LocalPath = c.Local
@@ -302,6 +317,7 @@ func (c *ConfigFile) Normalize() {
 	}
 }
 
+// Normalize는 스크립트 배포 경로가 비어 있을 때 앱 기본 디렉터리 기준 기본값을 채운다.
 func (c *ScriptConfig) Normalize(baseDir string) {
 	if c.RemotePath == "" {
 		if c.RemoteDir != "" {

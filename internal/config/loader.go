@@ -8,7 +8,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// replaceEnvVariables replaces ${VAR} in the raw content with the corresponding environment variables.
+// replaceEnvVariables는 설정 파일의 ${VAR} 플레이스홀더를 현재 환경 변수 값으로 치환한다.
 func replaceEnvVariables(content []byte) []byte {
 	re := regexp.MustCompile(`\$\{([a-zA-Z_][a-zA-Z0-9_]*)\}`)
 	return re.ReplaceAllFunc(content, func(match []byte) []byte {
@@ -20,7 +20,7 @@ func replaceEnvVariables(content []byte) []byte {
 	})
 }
 
-// Load loads a config file from the given path, substitutes env vars, and validates it.
+// Load는 설정 파일을 읽고 환경 변수 치환, YAML 파싱, 기본값 적용과 검증을 한 번에 수행한다.
 func Load(path string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

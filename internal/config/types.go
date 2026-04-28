@@ -7,9 +7,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// StringList supports both a single YAML string and a YAML string sequence.
+// StringList는 YAML에서 단일 문자열과 문자열 배열을 모두 같은 옵션 목록으로 받아들인다.
 type StringList []string
 
+// UnmarshalYAML은 문자열 입력을 쉘 인자처럼 분리하고 배열 입력은 그대로 보존한다.
 func (s *StringList) UnmarshalYAML(node *yaml.Node) error {
 	switch node.Kind {
 	case yaml.ScalarNode:
@@ -39,6 +40,7 @@ func (s *StringList) UnmarshalYAML(node *yaml.Node) error {
 	}
 }
 
+// splitShellWords는 따옴표와 이스케이프를 고려해 문자열 옵션을 공백 기준 인자 목록으로 나눈다.
 func splitShellWords(value string) ([]string, error) {
 	var result []string
 	var current strings.Builder

@@ -17,6 +17,7 @@ const (
 	checksumAsset = "checksums.txt"
 )
 
+// Execute는 GitHub 릴리즈 확인부터 체크섬 검증, 바이너리 교체까지 self-update 흐름을 실행한다.
 func Execute(ctx context.Context, cfg Config, opts Options) (*Result, error) {
 	cfg = cfg.withRuntimeDefaults()
 
@@ -96,6 +97,7 @@ func Execute(ctx context.Context, cfg Config, opts Options) (*Result, error) {
 	return result, nil
 }
 
+// requestedRelease는 명시된 버전이 있으면 해당 태그를, 없으면 최신 릴리즈를 조회한다.
 func requestedRelease(ctx context.Context, client *githubClient, targetVersion string) (*githubRelease, error) {
 	if strings.TrimSpace(targetVersion) != "" {
 		release, err := client.releaseByTag(ctx, targetVersion)
@@ -114,6 +116,7 @@ func requestedRelease(ctx context.Context, client *githubClient, targetVersion s
 	return release, nil
 }
 
+// resolveExecutablePath는 테스트용 명시 경로나 현재 실행 파일 경로를 업데이트 대상으로 결정한다.
 func resolveExecutablePath(explicitPath string) (string, error) {
 	if explicitPath != "" {
 		return explicitPath, nil
@@ -127,6 +130,7 @@ func resolveExecutablePath(explicitPath string) (string, error) {
 	return executablePath, nil
 }
 
+// selectArchiveAsset은 현재 OS/아키텍처와 버전에 맞는 릴리즈 압축 파일을 선택한다.
 func selectArchiveAsset(release *githubRelease) (githubAsset, error) {
 	normalizedVersion := normalizeVersion(release.TagName)
 	expectedNames := []string{
@@ -144,6 +148,7 @@ func selectArchiveAsset(release *githubRelease) (githubAsset, error) {
 	return githubAsset{}, fmt.Errorf("release %s does not include asset %s for %s/%s", release.TagName, expectedNames[0], runtime.GOOS, runtime.GOARCH)
 }
 
+// selectChecksumAsset은 릴리즈 자산 중 checksums.txt 다운로드 URL을 찾는다.
 func selectChecksumAsset(release *githubRelease) (string, error) {
 	for _, asset := range release.Assets {
 		if asset.Name == checksumAsset {
@@ -154,6 +159,7 @@ func selectChecksumAsset(release *githubRelease) (string, error) {
 	return "", fmt.Errorf("release %s does not include %s", release.TagName, checksumAsset)
 }
 
+// downloadChecksums는 원격 체크섬 파일을 내려받아 파일명별 SHA256 맵으로 파싱한다.
 func downloadChecksums(ctx context.Context, client *http.Client, checksumURL string) (map[string]string, error) {
 	body, err := downloadBytes(ctx, client, checksumURL)
 	if err != nil {
@@ -168,6 +174,7 @@ func downloadChecksums(ctx context.Context, client *http.Client, checksumURL str
 	return checksumMap, nil
 }
 
+// validateDownloadedArchive는 다운로드한 압축 파일의 SHA256이 릴리즈 체크섬과 일치하는지 검증한다.
 func validateDownloadedArchive(archivePath, expectedChecksum string) error {
 	file, err := os.Open(archivePath)
 	if err != nil {
@@ -182,6 +189,7 @@ func validateDownloadedArchive(archivePath, expectedChecksum string) error {
 	return nil
 }
 
+// downloadFile은 릴리즈 자산을 임시 파일로 저장하고 저장된 경로를 반환한다.
 func downloadFile(ctx context.Context, client *http.Client, url, fileName string) (string, error) {
 	body, err := downloadBytes(ctx, client, url)
 	if err != nil {
@@ -207,6 +215,7 @@ func downloadFile(ctx context.Context, client *http.Client, url, fileName string
 	return tempFile.Name(), nil
 }
 
+// downloadBytes는 컨텍스트 취소와 HTTP 상태 검사를 적용해 원격 바이트를 내려받는다.
 func downloadBytes(ctx context.Context, client *http.Client, downloadURL string) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
 	if err != nil {
@@ -232,6 +241,7 @@ func downloadBytes(ctx context.Context, client *http.Client, downloadURL string)
 	return body, nil
 }
 
+// sameVersion은 v 접두사 차이를 무시하고 현재 버전과 대상 버전이 같은지 비교한다.
 func sameVersion(currentVersion, targetVersion string) bool {
 	current := normalizeVersion(currentVersion)
 	target := normalizeVersion(targetVersion)
@@ -242,6 +252,7 @@ func sameVersion(currentVersion, targetVersion string) bool {
 	return current == target
 }
 
+// normalizeVersion은 버전 비교를 위해 공백과 선행 v 접두사를 제거한다.
 func normalizeVersion(version string) string {
 	trimmed := strings.TrimSpace(version)
 	if trimmed == "" {

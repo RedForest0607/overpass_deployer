@@ -25,6 +25,7 @@ const (
 	bytesPerMiB         int64 = 1024 * 1024
 )
 
+// calculateLocalSHA256은 로컬 파일 내용을 기준으로 전송 전 비교용 SHA256 해시를 계산한다.
 func calculateLocalSHA256(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
@@ -39,6 +40,7 @@ func calculateLocalSHA256(path string) (string, error) {
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
+// calculateRemoteSHA256은 원격 파일이 있을 때 SHA256을 가져오고 없으면 빈 해시로 처리한다.
 func calculateRemoteSHA256(runner ssh.Runner, path string) (string, error) {
 	command := fmt.Sprintf(
 		"sh -lc %s",
@@ -63,6 +65,7 @@ func calculateRemoteSHA256(runner ssh.Runner, path string) (string, error) {
 	return parseRemoteSHA256Output(out), nil
 }
 
+// parseRemoteSHA256Output은 원격 명령 출력에서 실제 SHA256 값만 추출한다.
 func parseRemoteSHA256Output(out string) string {
 	for _, line := range strings.Split(out, "\n") {
 		trimmed := strings.TrimSpace(line)
@@ -85,6 +88,7 @@ func parseRemoteSHA256Output(out string) string {
 	return ""
 }
 
+// isSHA256Hex는 문자열이 SHA256 해시 길이와 16진수 문자만 갖는지 확인한다.
 func isSHA256Hex(value string) bool {
 	if len(value) != sha256.Size*2 {
 		return false
@@ -125,6 +129,7 @@ type progressState struct {
 
 var progressOutputMu sync.Mutex
 
+// newProgressWriter는 터미널 환경에 맞춰 파일 전송 진행률 출력기를 초기화한다.
 func newProgressWriter(host, fileName string, totalBytes int64) *progressWriter {
 	return &progressWriter{
 		host:          host,
@@ -136,6 +141,7 @@ func newProgressWriter(host, fileName string, totalBytes int64) *progressWriter 
 	}
 }
 
+// Write는 전송된 바이트 수를 누적하고 필요한 시점에 진행률을 출력한다.
 func (pw *progressWriter) Write(p []byte) (int, error) {
 	n := len(p)
 	pw.written += int64(n)
@@ -154,6 +160,7 @@ func (pw *progressWriter) Write(p []byte) (int, error) {
 	return n, nil
 }
 
+// shouldRenderProgress는 대화형/비대화형 출력 환경별 진행률 갱신 주기를 결정한다.
 func (pw *progressWriter) shouldRenderProgress() bool {
 	if pw.totalBytes <= 0 {
 		return false
@@ -180,6 +187,7 @@ func (pw *progressWriter) shouldRenderProgress() bool {
 	return false
 }
 
+// Finish는 전송 완료 시 최종 진행률 줄을 보장한다.
 func (pw *progressWriter) Finish() {
 	if pw.totalBytes <= 0 {
 		return
@@ -197,6 +205,7 @@ func (pw *progressWriter) Finish() {
 	pw.finishLine(state)
 }
 
+// stdoutIsInteractive는 진행률을 덮어쓸 수 있는 터미널인지 확인한다.
 func stdoutIsInteractive() bool {
 	info, err := os.Stdout.Stat()
 	if err != nil {
@@ -206,6 +215,7 @@ func stdoutIsInteractive() bool {
 	return (info.Mode() & os.ModeCharDevice) != 0
 }
 
+// renderProgress는 현재 전송 상태를 진행률 한 줄로 출력한다.
 func renderProgress(state progressState) {
 	progressOutputMu.Lock()
 	defer progressOutputMu.Unlock()
@@ -219,6 +229,7 @@ func renderProgress(state progressState) {
 	fmt.Fprintln(os.Stdout, line)
 }
 
+// finishProgress는 완료된 진행률 줄을 줄바꿈과 함께 마무리한다.
 func finishProgress(state progressState) {
 	progressOutputMu.Lock()
 	defer progressOutputMu.Unlock()
@@ -232,6 +243,7 @@ func finishProgress(state progressState) {
 	fmt.Fprintln(os.Stdout, line)
 }
 
+// formatProgressLine은 호스트, 파일명, 퍼센트, 용량을 포함한 진행률 문자열을 만든다.
 func formatProgressLine(state progressState) string {
 	hostPrefix := ""
 	if state.host != "" {
@@ -249,6 +261,7 @@ func formatProgressLine(state progressState) string {
 	)
 }
 
+// progressBar는 전송 바이트 비율을 고정 폭 ASCII 막대로 변환한다.
 func progressBar(written, total int64) string {
 	if total <= 0 {
 		return "[" + strings.Repeat("-", progressBarWidth) + "]"
@@ -262,6 +275,7 @@ func progressBar(written, total int64) string {
 	return "[" + strings.Repeat("#", filled) + strings.Repeat("-", progressBarWidth-filled) + "]"
 }
 
+// progressPercent는 전송 바이트 비율을 0에서 100 사이 정수 퍼센트로 계산한다.
 func progressPercent(written, total int64) int {
 	if total <= 0 {
 		return 0
@@ -270,6 +284,7 @@ func progressPercent(written, total int64) int {
 	return int(float64(clampBytes(written, total)) / float64(total) * 100)
 }
 
+// clampBytes는 진행률 계산 중 음수나 총량 초과 값이 표시되지 않도록 보정한다.
 func clampBytes(written, total int64) int64 {
 	if written < 0 {
 		return 0
@@ -280,6 +295,7 @@ func clampBytes(written, total int64) int64 {
 	return written
 }
 
+// formatMiB는 바이트 수를 사람이 읽기 쉬운 MiB 문자열로 변환한다.
 func formatMiB(size int64) string {
 	return fmt.Sprintf("%.1f MiB", float64(size)/float64(bytesPerMiB))
 }
@@ -289,7 +305,7 @@ type TransferOptions struct {
 	Host   string
 }
 
-// Transfer transfers a local file to a remote path via SFTP, skipping if the SHA256 checksum matches.
+// Transfer는 SHA256 비교로 변경 여부를 확인한 뒤 필요한 경우에만 SFTP로 파일을 전송한다.
 func Transfer(client *ssh.Client, localPath, remotePath string, opts TransferOptions) error {
 	host := opts.Host
 	if client != nil {

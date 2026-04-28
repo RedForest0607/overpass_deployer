@@ -21,7 +21,7 @@ const (
 	HostKeyInsecure   = "insecure"
 )
 
-// expandHome expands a path that starts with `~/` to the absolute path of the user's home directory.
+// expandHome은 ~/로 시작하는 경로를 현재 사용자 홈 디렉터리의 절대 경로로 확장한다.
 func expandHome(path string) string {
 	if strings.HasPrefix(path, "~/") {
 		home, _ := os.UserHomeDir()
@@ -30,12 +30,14 @@ func expandHome(path string) string {
 	return path
 }
 
+// validatePort는 SSH와 앱 포트가 TCP 포트 범위 안에 있는지 누적 검증한다.
 func validatePort(port int, fieldName string, errs *[]string) {
 	if port < 1 || port > 65535 {
 		*errs = append(*errs, fmt.Sprintf("%s must be between 1 and 65535", fieldName))
 	}
 }
 
+// validateExistingFile은 로컬 파일 경로가 존재하며 디렉터리가 아닌지 확인한다.
 func validateExistingFile(path string, fieldName string, errs *[]string) {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -47,6 +49,7 @@ func validateExistingFile(path string, fieldName string, errs *[]string) {
 	}
 }
 
+// validateHostKeyCheckingMode는 호스트 키 검증 모드를 기본값과 허용 목록 기준으로 정규화한다.
 func validateHostKeyCheckingMode(mode string, errs *[]string) string {
 	normalized := strings.ToLower(strings.TrimSpace(mode))
 	if normalized == "" {
@@ -62,6 +65,7 @@ func validateHostKeyCheckingMode(mode string, errs *[]string) string {
 	}
 }
 
+// ValidateAndApplyDefaults는 전체 설정의 필수값, 경로, 포트, 태그를 검증하고 런타임 기본값을 채운다.
 func ValidateAndApplyDefaults(cfg *Config) error {
 	var errs []string
 	aliasNames := make(map[string]int, len(cfg.Servers))
@@ -174,6 +178,7 @@ func ValidateAndApplyDefaults(cfg *Config) error {
 	return nil
 }
 
+// validateDirectories는 서버 레벨 디렉터리 목록의 빈 값과 미해결 환경 변수를 검사하고 경로 표기를 정리한다.
 func validateDirectories(directories *[]string, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
 	if directories == nil {
 		return
@@ -190,6 +195,7 @@ func validateDirectories(directories *[]string, prefix string, errs *[]string, c
 	}
 }
 
+// validateExtraFiles는 추가 파일 배포 항목의 로컬/원격 경로와 chmod 형식을 검증한다.
 func validateExtraFiles(extraFiles *[]ExtraFile, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
 	if extraFiles == nil {
 		return
@@ -222,6 +228,7 @@ func validateExtraFiles(extraFiles *[]ExtraFile, prefix string, errs *[]string, 
 	}
 }
 
+// hasBootstrapSettings는 앱 없이 서버 초기화만 수행할 수 있는 bootstrap 설정이 있는지 판단한다.
 func hasBootstrapSettings(bootstrap BootstrapConfig) bool {
 	if len(bootstrap.Packages) > 0 {
 		return true
@@ -232,6 +239,7 @@ func hasBootstrapSettings(bootstrap BootstrapConfig) bool {
 	return bootstrap.OSUpdate.Enabled != nil && *bootstrap.OSUpdate.Enabled
 }
 
+// validateAppConfig는 앱 배포에 필요한 jar, JVM, 포트, 설정 파일, 스크립트 값을 검증하고 기본값을 적용한다.
 func validateAppConfig(app *AppConfig, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
 	checkUnresolvedEnv(app.Name, prefix+".name")
 	if app.Name == "" {
@@ -308,6 +316,7 @@ func validateAppConfig(app *AppConfig, prefix string, errs *[]string, checkUnres
 	validateScriptConfig(app, prefix, errs, checkUnresolvedEnv)
 }
 
+// validateScriptConfig는 template/local-file 스크립트 모드별로 허용되는 필드와 파일 경로를 검증한다.
 func validateScriptConfig(app *AppConfig, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
 	mode := strings.ToLower(strings.TrimSpace(app.Script.Mode))
 	if mode == "" {
@@ -375,6 +384,7 @@ func validateScriptConfig(app *AppConfig, prefix string, errs *[]string, checkUn
 	}
 }
 
+// validateBootstrapConfig는 OS 업데이트, 패키지, JDK 설정을 검증하고 생략된 선택값을 기본값으로 채운다.
 func validateBootstrapConfig(cfg *BootstrapConfig, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
 	if cfg == nil {
 		return
@@ -415,6 +425,7 @@ func validateBootstrapConfig(cfg *BootstrapConfig, prefix string, errs *[]string
 	}
 }
 
+// validateTags는 태그를 소문자로 정규화하고 빈 값, 허용되지 않은 문자, 중복을 정리한다.
 func validateTags(tags *[]string, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
 	if tags == nil {
 		return
@@ -446,6 +457,7 @@ func validateTags(tags *[]string, prefix string, errs *[]string, checkUnresolved
 	*tags = normalized
 }
 
+// normalizeTag는 태그 비교가 일관되도록 공백을 제거하고 소문자로 맞춘다.
 func normalizeTag(value string) string {
 	return strings.ToLower(strings.TrimSpace(value))
 }
@@ -453,14 +465,17 @@ func normalizeTag(value string) string {
 var bastionAliasPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 var fileModePattern = regexp.MustCompile(`^[0-7]{3,4}$`)
 
+// isValidBastionAlias는 SSH alias로 안전하게 사용할 수 있는 문자만 포함하는지 확인한다.
 func isValidBastionAlias(value string) bool {
 	return bastionAliasPattern.MatchString(strings.TrimSpace(value))
 }
 
+// isValidTag는 태그 필터에 사용할 수 있는 안전한 문자 집합인지 확인한다.
 func isValidTag(value string) bool {
 	return bastionAliasPattern.MatchString(strings.TrimSpace(value))
 }
 
+// validateBastionConfig는 배스천 사용 여부에 따라 필수 SSH 값과 alias 파일 경로 기본값을 검증한다.
 func validateBastionConfig(cfg *Config, errs *[]string, checkUnresolvedEnv func(string, string)) {
 	bastion := &cfg.Bastion
 	if !bastion.Enabled() {

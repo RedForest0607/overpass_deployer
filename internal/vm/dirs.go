@@ -10,6 +10,7 @@ import (
 	"go-deployer/pkg/logger"
 )
 
+// CreateDirectories는 앱 실행에 필요한 표준 하위 디렉터리들을 생성한다.
 func CreateDirectories(runner ssh.Runner, app *config.AppConfig, opts RunOptions, host string) error {
 	dirs := []string{
 		filepath.ToSlash(filepath.Join(app.BaseDir, "bin")),
@@ -22,6 +23,7 @@ func CreateDirectories(runner ssh.Runner, app *config.AppConfig, opts RunOptions
 	return createDirectoryPaths(runner, dirs, opts, host, app.BaseDir)
 }
 
+// CreateServerDirectories는 앱과 무관한 서버 레벨 디렉터리 목록을 생성한다.
 func CreateServerDirectories(runner ssh.Runner, directories []string, opts RunOptions, host string) error {
 	host = runnerHost(runner, host)
 	if len(directories) == 0 {
@@ -39,6 +41,7 @@ func CreateServerDirectories(runner ssh.Runner, directories []string, opts RunOp
 	return nil
 }
 
+// createDirectoryPaths는 권한 보정이 필요한 기준 디렉터리를 준비한 뒤 실제 디렉터리를 만든다.
 func createDirectoryPaths(runner ssh.Runner, directories []string, opts RunOptions, host string, ownerBase string) error {
 	host = runnerHost(runner, host)
 	logger.Info(host, "%s directories in %s...", actionLabel(opts, "creating"), ownerBase)
@@ -65,6 +68,7 @@ func createDirectoryPaths(runner ssh.Runner, directories []string, opts RunOptio
 	return nil
 }
 
+// buildPrivilegedDirectorySetupCommand는 sudo로 기준 디렉터리 생성과 소유권 보정을 수행할 명령을 만든다.
 func buildPrivilegedDirectorySetupCommand(baseDir string) string {
 	quotedBaseDir := ssh.ShellQuote(baseDir)
 	innerCommand := strings.Join([]string{

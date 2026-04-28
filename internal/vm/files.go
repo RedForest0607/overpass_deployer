@@ -12,6 +12,7 @@ import (
 	"go-deployer/pkg/logger"
 )
 
+// DeployJar는 앱 JAR 파일을 원격 실행 경로로 전송한다.
 func DeployJar(client *ssh.Client, app *config.AppConfig, opts RunOptions, host string) error {
 	return scp.Transfer(client, app.Jar.LocalPath, app.Jar.RemotePath, scp.TransferOptions{
 		DryRun: opts.DryRun,
@@ -19,6 +20,7 @@ func DeployJar(client *ssh.Client, app *config.AppConfig, opts RunOptions, host 
 	})
 }
 
+// DeployConfigFiles는 앱에 연결된 설정 파일들을 정규화된 원격 경로로 전송한다.
 func DeployConfigFiles(client *ssh.Client, app *config.AppConfig, opts RunOptions, host string) error {
 	for _, cf := range app.ConfigFiles {
 		cf.Normalize()
@@ -32,14 +34,17 @@ func DeployConfigFiles(client *ssh.Client, app *config.AppConfig, opts RunOption
 	return nil
 }
 
+// DeployExtraFiles는 앱 단위 추가 파일을 전송하고 필요한 경우 chmod를 적용한다.
 func DeployExtraFiles(client *ssh.Client, app *config.AppConfig, opts RunOptions, host string) error {
 	return deployExtraFiles(client, app.ExtraFiles, opts, host)
 }
 
+// DeployServerExtraFiles는 특정 앱에 묶이지 않은 서버 레벨 추가 파일을 배포한다.
 func DeployServerExtraFiles(client *ssh.Client, extraFiles []config.ExtraFile, opts RunOptions, host string) error {
 	return deployExtraFiles(client, extraFiles, opts, host)
 }
 
+// deployExtraFiles는 공통 추가 파일 전송 로직과 전송 후 권한 변경을 처리한다.
 func deployExtraFiles(client *ssh.Client, extraFiles []config.ExtraFile, opts RunOptions, host string) error {
 	host = runnerHost(client, host)
 	for _, ef := range extraFiles {
@@ -66,12 +71,14 @@ func deployExtraFiles(client *ssh.Client, extraFiles []config.ExtraFile, opts Ru
 	return nil
 }
 
+// applyRemoteFileMode는 원격 파일에 검증된 chmod 모드를 적용한다.
 func applyRemoteFileMode(runner ssh.Runner, remotePath string, mode string) error {
 	cmd := fmt.Sprintf("chmod %s %s", ssh.ShellQuote(mode), ssh.ShellQuote(remotePath))
 	_, err := runner.Run(cmd)
 	return err
 }
 
+// DeployScripts는 템플릿 렌더링 또는 로컬 파일 기준으로 서버 실행 스크립트를 배포한다.
 func DeployScripts(client *ssh.Client, app *config.AppConfig, opts RunOptions, host string) error {
 	host = runnerHost(client, host)
 	app.Script.Normalize(app.BaseDir)
@@ -104,6 +111,7 @@ func DeployScripts(client *ssh.Client, app *config.AppConfig, opts RunOptions, h
 	return nil
 }
 
+// prepareScriptSource는 스크립트 모드에 따라 전송할 로컬 파일 경로와 임시 파일 정리 함수를 준비한다.
 func prepareScriptSource(app *config.AppConfig) (localPath string, description string, cleanup func(), err error) {
 	switch app.Script.Mode {
 	case "", config.ScriptModeTemplate:
@@ -133,6 +141,7 @@ func prepareScriptSource(app *config.AppConfig) (localPath string, description s
 	}
 }
 
+// resolveScriptTemplateData는 앱 기본 템플릿 데이터와 values 파일 override를 병합한다.
 func resolveScriptTemplateData(app *config.AppConfig) (map[string]any, error) {
 	baseData := app.ToTemplateData()
 	if app.Script.ValuesFile == "" {
@@ -147,6 +156,7 @@ func resolveScriptTemplateData(app *config.AppConfig) (map[string]any, error) {
 	return template.MergeTemplateData(baseData, overrideData), nil
 }
 
+// runnerHost는 dry-run이나 테스트처럼 runner가 없을 때도 로그에 표시할 호스트명을 안전하게 결정한다.
 func runnerHost(runner ssh.Runner, fallback string) string {
 	if client, ok := runner.(*ssh.Client); ok {
 		if client != nil {
@@ -160,6 +170,7 @@ func runnerHost(runner ssh.Runner, fallback string) string {
 	return fallback
 }
 
+// actionLabel은 dry-run과 실제 실행에 맞는 진행 로그 동사를 만든다.
 func actionLabel(opts RunOptions, action string) string {
 	if opts.DryRun {
 		return "Planning " + action
@@ -167,6 +178,7 @@ func actionLabel(opts RunOptions, action string) string {
 	return titleCase(action)
 }
 
+// resultLabel은 dry-run과 실제 실행에 맞는 완료 로그 표현을 만든다.
 func resultLabel(opts RunOptions, actual string, planned string) string {
 	if opts.DryRun {
 		return titleCase(planned)
@@ -174,6 +186,7 @@ func resultLabel(opts RunOptions, actual string, planned string) string {
 	return titleCase(actual)
 }
 
+// titleCase는 로그 메시지 첫 글자를 대문자로 보정한다.
 func titleCase(value string) string {
 	if value == "" {
 		return ""
