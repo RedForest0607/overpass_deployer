@@ -865,6 +865,9 @@ func TestValidateAndApplyDefaultsAllowsBootstrapOnlyServerWithServerExtraFiles(t
 					{
 						LocalPath:  tgzPath,
 						RemotePath: "/home/ec2-user/software/hazelcast/hazelcast.tgz",
+						Extract: ExtractConfig{
+							Enabled: true,
+						},
 					},
 				},
 			},
@@ -873,6 +876,9 @@ func TestValidateAndApplyDefaultsAllowsBootstrapOnlyServerWithServerExtraFiles(t
 
 	if err := ValidateAndApplyDefaults(cfg); err != nil {
 		t.Fatalf("unexpected validation error: %v", err)
+	}
+	if got := cfg.Servers[0].ExtraFiles[0].Extract.RemoteDir; got != "/home/ec2-user/software/hazelcast" {
+		t.Fatalf("unexpected default extract directory: %q", got)
 	}
 }
 
@@ -950,6 +956,37 @@ func TestValidateAndApplyDefaultsRejectsInvalidExtraFileMode(t *testing.T) {
 	err := ValidateAndApplyDefaults(cfg)
 	if err == nil || !strings.Contains(err.Error(), "servers[0].app.extra_files[0].chmod must be a 3 or 4 digit octal mode") {
 		t.Fatalf("expected invalid chmod error, got %v", err)
+	}
+}
+
+func TestValidateAndApplyDefaultsRejectsUnsupportedExtractArchive(t *testing.T) {
+	keyPath := writeTempFile(t, "id_rsa", "key")
+	zipPath := writeTempFile(t, "software.zip", "archive")
+
+	cfg := &Config{
+		SSH: SSHConfig{
+			User:    "deploy",
+			KeyPath: keyPath,
+		},
+		Servers: []ServerConfig{
+			{
+				Host: "infra.example.com",
+				ExtraFiles: []ExtraFile{
+					{
+						LocalPath:  zipPath,
+						RemotePath: "/home/ec2-user/software/software.zip",
+						Extract: ExtractConfig{
+							Enabled: true,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	err := ValidateAndApplyDefaults(cfg)
+	if err == nil || !strings.Contains(err.Error(), "servers[0].extra_files[0].extract.enabled supports only .tar, .tar.gz, or .tgz archives") {
+		t.Fatalf("expected unsupported archive error, got %v", err)
 	}
 }
 

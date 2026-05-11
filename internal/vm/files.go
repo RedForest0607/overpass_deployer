@@ -55,17 +55,25 @@ func deployExtraFiles(client *ssh.Client, extraFiles []config.ExtraFile, opts Ru
 			return fmt.Errorf("transferring extra file %s: %w", ef.LocalPath, err)
 		}
 
-		if ef.Chmod == "" {
+		if ef.Chmod != "" {
+			if opts.DryRun {
+				logger.Info(host, "DRY-RUN: would chmod %s %s", ef.Chmod, ef.RemotePath)
+			} else if err := applyRemoteFileMode(client, ef.RemotePath, ef.Chmod); err != nil {
+				return fmt.Errorf("chmod extra file %s: %w", ef.RemotePath, err)
+			}
+		}
+
+		if !ef.Extract.Enabled {
 			continue
 		}
 
 		if opts.DryRun {
-			logger.Info(host, "DRY-RUN: would chmod %s %s", ef.Chmod, ef.RemotePath)
+			logger.Info(host, "DRY-RUN: would extract %s to %s", ef.RemotePath, ef.Extract.RemoteDir)
 			continue
 		}
 
-		if err := applyRemoteFileMode(client, ef.RemotePath, ef.Chmod); err != nil {
-			return fmt.Errorf("chmod extra file %s: %w", ef.RemotePath, err)
+		if err := applyRemoteArchiveExtraction(client, ef); err != nil {
+			return fmt.Errorf("extract extra file %s: %w", ef.RemotePath, err)
 		}
 	}
 	return nil
@@ -76,6 +84,52 @@ func applyRemoteFileMode(runner ssh.Runner, remotePath string, mode string) erro
 	cmd := fmt.Sprintf("chmod %s %s", ssh.ShellQuote(mode), ssh.ShellQuote(remotePath))
 	_, err := runner.Run(cmd)
 	return err
+}
+
+// applyRemoteArchiveExtraction은 전송된 tar 파일을 지정된 원격 디렉터리에 압축 해제한다.
+func applyRemoteArchiveExtraction(runner ssh.Runner, extraFile config.ExtraFile) error {
+	cmd, err := buildRemoteArchiveExtractionCommand(extraFile)
+	if err != nil {
+		return err
+	}
+	_, err = runner.Run(cmd)
+	return err
+}
+
+// buildRemoteArchiveExtractionCommand는 지원하는 tar 계열 아카이브만 안전하게 압축 해제하는 명령을 만든다.
+func buildRemoteArchiveExtractionCommand(extraFile config.ExtraFile) (string, error) {
+	flags, err := tarExtractionFlags(extraFile.RemotePath)
+	if err != nil {
+		return "", err
+	}
+
+	parts := []string{
+		"mkdir -p " + ssh.ShellQuote(extraFile.Extract.RemoteDir),
+		fmt.Sprintf("tar %s %s -C %s",
+			flags,
+			ssh.ShellQuote(extraFile.RemotePath),
+			ssh.ShellQuote(extraFile.Extract.RemoteDir),
+		),
+	}
+
+	if extraFile.Extract.StripComponents > 0 {
+		parts[1] += fmt.Sprintf(" --strip-components=%d", extraFile.Extract.StripComponents)
+	}
+
+	return strings.Join(parts, " && "), nil
+}
+
+// tarExtractionFlags는 파일 확장자에 맞는 tar 압축 해제 플래그를 선택한다.
+func tarExtractionFlags(remotePath string) (string, error) {
+	lower := strings.ToLower(strings.TrimSpace(remotePath))
+	switch {
+	case strings.HasSuffix(lower, ".tar.gz"), strings.HasSuffix(lower, ".tgz"):
+		return "-xzf", nil
+	case strings.HasSuffix(lower, ".tar"):
+		return "-xf", nil
+	default:
+		return "", fmt.Errorf("unsupported archive format %q", remotePath)
+	}
 }
 
 // DeployScripts는 템플릿 렌더링 또는 로컬 파일 기준으로 서버 실행 스크립트를 배포한다.

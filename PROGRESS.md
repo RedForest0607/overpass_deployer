@@ -81,6 +81,11 @@
 - `docs/M1-PLAN.md`, `PLAN.md`를 현재 코드 기준으로 정리해 obsolete 체크리스트를 실제 구현 형태로 교체하고 M1 상태를 완료로 승격
 - 루트 `README.md` 추가: 운영/사용자 온보딩 중심으로 현재 지원 범위, 빠른 시작, 핵심 설정 구조, 주요 명령, 관련 문서 링크를 정리
 - `ops/` 운영 자산 스캐폴딩 추가: 서비스 기준(`stock_company`, `sample_api`) 1차 분리 후 각 서비스 아래 `common/`, 환경별(`dev`, `stage`, `prod`) 디렉터리 구조를 생성하고, 상위 저장소와 분리된 독립 Git 저장소로 초기화
+- stock-company dev 배포 자산 추가: `ops/stock_company/dev/deploy.yml`, Kafka/Redis compose 파일, 공통 대용량 extra_files hard link 기준 정리 및 전체/태그별 dry-run 검증 완료
+- stock-company dev ScyllaDB 배포는 보류 처리: `devapm2` 배포 대상에서 Scylla compose/bootstrap/directory를 제외하고 MongoDB/Hazelcast만 유지
+- stock-company prod 배포 자산 추가: `cache1/cache2/app1/app2/app3/search1/search2` 서버 배치를 `ops/stock_company/prod/deploy.yml`로 이전하고 dev deploy는 `devapp1/devapp2/devapm1/devapm2`만 유지
+- stock-company prod Redis Sentinel 설정 추가: `redis-sentinel.conf`를 prod app 서버 Redis 자산에 포함하고 compose 마운트 경로를 파일 단위로 보정
+- 서버/app `extra_files[].extract` 옵션 추가: tar/tar.gz/tgz 자산 전송 후 원격 디렉터리에 압축 해제할 수 있게 하고 stock-company dev/prod 소프트웨어 tar에 적용
 
 ## Next To-Do
 - `TEST/` 독립 저장소의 원격(origin) 연결 여부와 ignore 규칙을 실제 팀 운영 방식에 맞게 확정
@@ -114,3 +119,7 @@
 - 서버 단위 `extra_files[]`를 사용할 운영 케이스에서 압축 해제/설치 후속 단계가 필요한지 결정
 - README의 Docker/M2 관련 설명은 실제 구현 범위가 확정될 때 다시 보강
 - `ops/` 하위에 실제 운영 샘플 `deploy.yml`, values, config, script 템플릿을 어떤 서비스부터 채울지 우선순위 확정
+- stock-company dev 운영 자산의 실제 host/bastion 값을 확정하고 placeholder를 치환한 뒤 bastion에서 dry-run/실배포 검증
+- stock-company prod 운영 자산의 실제 host/bastion 값을 확정하고 placeholder를 치환한 뒤 bastion에서 dry-run/실배포 검증
+- stock-company dev 서버별 Kafka/Redis/MongoDB/Hazelcast/Elasticsearch 압축 해제 및 compose 실행 절차를 후속 스크립트로 정리
+- 보류 중인 ScyllaDB compose/config/manager-agent 배포 파일 구성을 확정한 뒤 `devapm2`에 재반영

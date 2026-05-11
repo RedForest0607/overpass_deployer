@@ -94,9 +94,16 @@ type ConfigFile struct {
 }
 
 type ExtraFile struct {
-	LocalPath  string `yaml:"local_path"`
-	RemotePath string `yaml:"remote_path"`
-	Chmod      string `yaml:"chmod"`
+	LocalPath  string        `yaml:"local_path"`
+	RemotePath string        `yaml:"remote_path"`
+	Chmod      string        `yaml:"chmod"`
+	Extract    ExtractConfig `yaml:"extract"`
+}
+
+type ExtractConfig struct {
+	Enabled         bool   `yaml:"enabled"`
+	RemoteDir       string `yaml:"remote_dir"`
+	StripComponents int    `yaml:"strip_components"`
 }
 
 type ScriptConfig struct {

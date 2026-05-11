@@ -195,7 +195,7 @@ func validateDirectories(directories *[]string, prefix string, errs *[]string, c
 	}
 }
 
-// validateExtraFiles는 추가 파일 배포 항목의 로컬/원격 경로와 chmod 형식을 검증한다.
+// validateExtraFiles는 추가 파일 배포 항목의 로컬/원격 경로, chmod, 압축 해제 설정을 검증한다.
 func validateExtraFiles(extraFiles *[]ExtraFile, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
 	if extraFiles == nil {
 		return
@@ -225,7 +225,39 @@ func validateExtraFiles(extraFiles *[]ExtraFile, prefix string, errs *[]string, 
 				*errs = append(*errs, fieldPrefix+".chmod must be a 3 or 4 digit octal mode")
 			}
 		}
+
+		validateExtractConfig(ef, fieldPrefix+".extract", errs, checkUnresolvedEnv)
 	}
+}
+
+// validateExtractConfig는 전송 후 tar 압축 해제 옵션을 검증하고 기본 대상 디렉터리를 채운다.
+func validateExtractConfig(ef *ExtraFile, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
+	if !ef.Extract.Enabled {
+		return
+	}
+
+	if !isSupportedTarArchive(ef.RemotePath) {
+		*errs = append(*errs, prefix+".enabled supports only .tar, .tar.gz, or .tgz archives")
+	}
+
+	checkUnresolvedEnv(ef.Extract.RemoteDir, prefix+".remote_dir")
+	if strings.TrimSpace(ef.Extract.RemoteDir) == "" {
+		ef.Extract.RemoteDir = filepath.ToSlash(filepath.Dir(ef.RemotePath))
+	} else {
+		ef.Extract.RemoteDir = filepath.ToSlash(strings.TrimSpace(ef.Extract.RemoteDir))
+	}
+
+	if ef.Extract.StripComponents < 0 {
+		*errs = append(*errs, prefix+".strip_components must be greater than or equal to zero")
+	}
+}
+
+// isSupportedTarArchive는 원격 tar 명령으로 처리할 압축 파일 확장자인지 확인한다.
+func isSupportedTarArchive(path string) bool {
+	lower := strings.ToLower(strings.TrimSpace(path))
+	return strings.HasSuffix(lower, ".tar") ||
+		strings.HasSuffix(lower, ".tar.gz") ||
+		strings.HasSuffix(lower, ".tgz")
 }
 
 // hasBootstrapSettings는 앱 없이 서버 초기화만 수행할 수 있는 bootstrap 설정이 있는지 판단한다.

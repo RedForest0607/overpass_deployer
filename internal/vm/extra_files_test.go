@@ -25,6 +25,38 @@ func TestDeployExtraFilesDryRunSupportsChmod(t *testing.T) {
 	}
 }
 
+func TestBuildRemoteArchiveExtractionCommand(t *testing.T) {
+	cmd, err := buildRemoteArchiveExtractionCommand(config.ExtraFile{
+		RemotePath: "/home/ec2-user/software/elasticsearch/elasticsearch.tar.gz",
+		Extract: config.ExtractConfig{
+			Enabled:         true,
+			RemoteDir:       "/home/ec2-user/software",
+			StripComponents: 1,
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected extraction command to build, got %v", err)
+	}
+
+	want := "mkdir -p '/home/ec2-user/software' && tar -xzf '/home/ec2-user/software/elasticsearch/elasticsearch.tar.gz' -C '/home/ec2-user/software' --strip-components=1"
+	if cmd != want {
+		t.Fatalf("unexpected extraction command: got %q want %q", cmd, want)
+	}
+}
+
+func TestBuildRemoteArchiveExtractionCommandRejectsUnsupportedArchive(t *testing.T) {
+	_, err := buildRemoteArchiveExtractionCommand(config.ExtraFile{
+		RemotePath: "/home/ec2-user/software/software.zip",
+		Extract: config.ExtractConfig{
+			Enabled:   true,
+			RemoteDir: "/home/ec2-user/software",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected unsupported archive error")
+	}
+}
+
 func TestApplyRemoteFileModeBuildsExpectedCommand(t *testing.T) {
 	runner := &extraFilesRunner{}
 
