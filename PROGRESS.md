@@ -97,6 +97,10 @@
 - extra_files 압축 해제 재발 방지 보강: `extract.remote_dir`를 압축 해제 직전에 sudo로 생성/소유권 보정하도록 deployer를 수정하고 stock-company dev software 서버의 `/home/ec2-user/software` 디렉터리 사전 생성을 반영
 - AWS dev-test 재배포 준비: test EC2의 기존 배포 산출물을 원복하고, 압축 해제 권한 보정을 비재귀 chown으로 축소하며 tag 배포 후 bastion alias가 전체 서버 목록을 유지하도록 수정
 - AWS dev-test 리소스 정리 완료: imported default VPC/subnet/route table은 유지하고, targeted Terraform destroy로 bastion 1대 + target 6대 EC2, key pair, bastion/target security group, SG rule 삭제 완료
+- overpass 앱 디렉토리 표준을 `bin/config/logs`로 축소: jar와 `server.sh`는 `bin`, `application.yml`/`logback.xml`은 `config`, 실행 로그는 `logs` 기준으로 dev/stage/prod deploy 설정 반영
+- bootstrap 확장: `deploy.yml`에서 OS update, 필수 패키지, Corretto 25, Asia/Seoul timezone, 4G swapfile 생성을 선언적으로 처리하도록 `timezone`/`swap` 설정과 idempotent 실행 로직 추가
+- istock mall 운영 자산 반영: `ops/stock_company/dev|stage|prod/deploy.yml` 전역 bootstrap에 필수 패키지, Corretto 25, OS update, Asia/Seoul timezone, 4G swapfile 설정 적용 및 세 환경 dry-run 통과
+- 배포 예상 시간 출력 추가: dry-run/실배포 시작 시 파일 크기, bootstrap, 압축 해제, 디렉터리/앱 단계 수를 기준으로 전체/서버별 예상 배포 시간을 로그에 표시
 
 ## Next To-Do
 - `TEST/` 독립 저장소의 원격(origin) 연결 여부와 ignore 규칙을 실제 팀 운영 방식에 맞게 확정
@@ -113,6 +117,7 @@
 - `deploy.example.yml`과 함께 제공할 템플릿 value 파일 샘플을 저장소 표준 위치로 정리할지 결정
 - 실제 bastion/VM 환경에서 대용량 `.jar` 전송 시 progress bar 출력이 운영 터미널에서도 자연스럽게 갱신되는지 확인
 - apt 기반 Ubuntu/Debian bootstrap 지원과 package manager 자동 감지 확장 여부 결정
+- 실제 Amazon Linux 서버에서 `bootstrap.timezone`/`bootstrap.swap` dry-run 및 실배포를 검증하고 `nc` 패키지명이 환경별로 맞는지 확인
 - `deploy.example.yml`와 운영 문서에 `servers[].apps` 예시 추가
 - `TEST/stock_company/PLAN.md` 기준 `devwas`용 실제 multi-app `deploy.yml` 샘플 작성
 - `TEST/stock_company/PLAN.md` 기준 rotating smoke test 자산 디렉토리와 wave별 `deploy.yml` 초안 생성

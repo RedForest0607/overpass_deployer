@@ -10,6 +10,7 @@ import (
 )
 
 const packageManagerDNF = "dnf"
+const packageManagerYUM = "yum"
 const defaultJDKVendor = "corretto"
 
 // BootstrapHost는 서버의 OS 업데이트와 필수 패키지/JDK 설치를 준비하거나 실행한다.
@@ -33,19 +34,74 @@ func BootstrapHost(runner ssh.Runner, bootstrap config.BootstrapConfig, opts Run
 		return nil
 	}
 
+	if err := applyPackageBootstrap(runner, bootstrap, packages, host); err != nil {
+		return err
+	}
+	if err := applyTimezoneBootstrap(runner, bootstrap.Timezone, host); err != nil {
+		return err
+	}
+	if err := applySwapBootstrap(runner, bootstrap.Swap, host); err != nil {
+		return err
+	}
+
+	logger.Ok(host, "Completed bootstrap")
+	return nil
+}
+
+// bootstrapEnabled는 설치할 패키지나 OS 업데이트 작업이 실제로 있는지 판단한다.
+func bootstrapEnabled(bootstrap config.BootstrapConfig, packages []string) bool {
+	if len(packages) > 0 {
+		return true
+	}
+	if bootstrap.OSUpdate.Enabled != nil && *bootstrap.OSUpdate.Enabled {
+		return true
+	}
+	if bootstrap.Timezone.Name != "" {
+		return true
+	}
+	return bootstrap.Swap.Enabled != nil && *bootstrap.Swap.Enabled
+}
+
+// logBootstrapPlan은 dry-run에서 실행 예정인 bootstrap 명령을 원격 변경 없이 출력한다.
+func logBootstrapPlan(host string, bootstrap config.BootstrapConfig, packages []string) {
+	if bootstrap.OSUpdate.Enabled != nil && *bootstrap.OSUpdate.Enabled {
+		logger.Info(host, "DRY-RUN: would run sudo yum/dnf update -y")
+	}
+	if len(packages) > 0 {
+		logger.Info(host, "DRY-RUN: would check installed packages via rpm -q for %s", strings.Join(packages, ", "))
+		logger.Info(host, "DRY-RUN: would run sudo yum/dnf install -y %s", strings.Join(packages, " "))
+	} else {
+		logger.Info(host, "DRY-RUN: no bootstrap packages to install")
+	}
+	if bootstrap.Timezone.Name != "" {
+		logger.Info(host, "DRY-RUN: would set timezone to %s", bootstrap.Timezone.Name)
+	}
+	if bootstrap.Swap.Enabled != nil && *bootstrap.Swap.Enabled {
+		logger.Info(host, "DRY-RUN: would ensure swap file %s with size %s", bootstrap.Swap.Path, bootstrap.Swap.Size)
+	}
+}
+
+func applyPackageBootstrap(runner ssh.Runner, bootstrap config.BootstrapConfig, packages []string, host string) error {
+	if len(packages) == 0 && (bootstrap.OSUpdate.Enabled == nil || !*bootstrap.OSUpdate.Enabled) {
+		return nil
+	}
+
 	manager, err := detectPackageManager(runner)
 	if err != nil {
 		return err
 	}
-	if manager != packageManagerDNF {
-		return fmt.Errorf("bootstrap requires dnf-compatible host; apt support is not implemented yet")
+	if manager != packageManagerDNF && manager != packageManagerYUM {
+		return fmt.Errorf("bootstrap requires yum/dnf-compatible host; apt support is not implemented yet")
 	}
 
 	if bootstrap.OSUpdate.Enabled != nil && *bootstrap.OSUpdate.Enabled {
-		logger.Info(host, "Running bootstrap OS update via dnf...")
-		if _, err := runner.RunSudo("dnf update -y"); err != nil {
+		logger.Info(host, "Running bootstrap OS update via %s...", manager)
+		if _, err := runner.RunSudo(manager + " update -y"); err != nil {
 			return fmt.Errorf("running bootstrap os update: %w", err)
 		}
+	}
+	if len(packages) == 0 {
+		return nil
 	}
 
 	missingPackages, err := detectMissingPackages(runner, packages)
@@ -57,7 +113,7 @@ func BootstrapHost(runner ssh.Runner, bootstrap config.BootstrapConfig, opts Run
 		return nil
 	}
 
-	installCommand := buildDNFInstallCommand(missingPackages)
+	installCommand := buildPackageInstallCommand(manager, missingPackages)
 	logger.Info(host, "Installing bootstrap packages: %s", strings.Join(missingPackages, ", "))
 	if _, err := runner.RunSudo(installCommand); err != nil {
 		return fmt.Errorf("installing bootstrap packages: %w", err)
@@ -67,30 +123,102 @@ func BootstrapHost(runner ssh.Runner, bootstrap config.BootstrapConfig, opts Run
 	return nil
 }
 
-// bootstrapEnabled는 설치할 패키지나 OS 업데이트 작업이 실제로 있는지 판단한다.
-func bootstrapEnabled(bootstrap config.BootstrapConfig, packages []string) bool {
-	if len(packages) > 0 {
-		return true
+func applyTimezoneBootstrap(runner ssh.Runner, timezone config.TimezoneConfig, host string) error {
+	if timezone.Name == "" {
+		return nil
 	}
-	return bootstrap.OSUpdate.Enabled != nil && *bootstrap.OSUpdate.Enabled
+
+	current, err := runner.Run("timedatectl show -p Timezone --value")
+	if err != nil {
+		return fmt.Errorf("checking timezone: %w", err)
+	}
+	if strings.TrimSpace(current) == timezone.Name {
+		logger.Skip(host, "Timezone already set to %s", timezone.Name)
+		return nil
+	}
+
+	logger.Info(host, "Setting timezone to %s...", timezone.Name)
+	if _, err := runner.RunSudo("timedatectl set-timezone " + ssh.ShellQuote(timezone.Name)); err != nil {
+		return fmt.Errorf("setting timezone: %w", err)
+	}
+	logger.Ok(host, "Set timezone to %s", timezone.Name)
+	return nil
 }
 
-// logBootstrapPlan은 dry-run에서 실행 예정인 bootstrap 명령을 원격 변경 없이 출력한다.
-func logBootstrapPlan(host string, bootstrap config.BootstrapConfig, packages []string) {
-	if bootstrap.OSUpdate.Enabled != nil && *bootstrap.OSUpdate.Enabled {
-		logger.Info(host, "DRY-RUN: would run sudo dnf update -y")
+func applySwapBootstrap(runner ssh.Runner, swap config.SwapConfig, host string) error {
+	if swap.Enabled == nil || !*swap.Enabled {
+		return nil
 	}
-	if len(packages) == 0 {
-		logger.Info(host, "DRY-RUN: no bootstrap packages to install")
-		return
+
+	active, err := runner.Run("swapon --noheadings --show=NAME")
+	if err != nil {
+		return fmt.Errorf("checking active swap: %w", err)
 	}
-	logger.Info(host, "DRY-RUN: would check installed packages via rpm -q for %s", strings.Join(packages, ", "))
-	logger.Info(host, "DRY-RUN: would run sudo %s", buildDNFInstallCommand(packages))
+	if containsLine(active, swap.Path) {
+		logger.Skip(host, "Swap already active at %s", swap.Path)
+		return ensureSwapInFstab(runner, swap.Path)
+	}
+
+	exists, err := remoteFileExists(runner, swap.Path)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		logger.Info(host, "Creating swap file %s (%s)...", swap.Path, swap.Size)
+		if _, err := runner.RunSudo("fallocate -l " + ssh.ShellQuote(swap.Size) + " " + ssh.ShellQuote(swap.Path)); err != nil {
+			return fmt.Errorf("creating swap file: %w", err)
+		}
+		if _, err := runner.RunSudo("chmod 600 " + ssh.ShellQuote(swap.Path)); err != nil {
+			return fmt.Errorf("setting swap file permissions: %w", err)
+		}
+		if _, err := runner.RunSudo("mkswap " + ssh.ShellQuote(swap.Path)); err != nil {
+			return fmt.Errorf("initializing swap file: %w", err)
+		}
+	} else {
+		logger.Info(host, "Swap file %s exists; enabling without recreating...", swap.Path)
+	}
+
+	if _, err := runner.RunSudo("swapon " + ssh.ShellQuote(swap.Path)); err != nil {
+		return fmt.Errorf("enabling swap file: %w", err)
+	}
+	if err := ensureSwapInFstab(runner, swap.Path); err != nil {
+		return err
+	}
+
+	logger.Ok(host, "Enabled swap file %s", swap.Path)
+	return nil
+}
+
+func remoteFileExists(runner ssh.Runner, path string) (bool, error) {
+	command := "sh -lc " + ssh.ShellQuote("if test -f "+ssh.ShellQuote(path)+"; then echo exists; else echo missing; fi")
+	out, err := runner.Run(command)
+	if err != nil {
+		return false, fmt.Errorf("checking swap file: %w", err)
+	}
+	return strings.TrimSpace(out) == "exists", nil
+}
+
+func ensureSwapInFstab(runner ssh.Runner, path string) error {
+	line := path + " none swap sw 0 0"
+	command := "sh -lc " + ssh.ShellQuote("grep -Fxq "+ssh.ShellQuote(line)+" /etc/fstab || printf '%s\n' "+ssh.ShellQuote(line)+" >> /etc/fstab")
+	if _, err := runner.RunSudo(command); err != nil {
+		return fmt.Errorf("ensuring swap fstab entry: %w", err)
+	}
+	return nil
+}
+
+func containsLine(output string, expected string) bool {
+	for _, line := range strings.Split(output, "\n") {
+		if strings.TrimSpace(line) == expected {
+			return true
+		}
+	}
+	return false
 }
 
 // detectPackageManager는 원격 서버가 지원하는 패키지 관리자를 확인한다.
 func detectPackageManager(runner ssh.Runner) (string, error) {
-	command := "sh -lc " + ssh.ShellQuote("if command -v dnf >/dev/null 2>&1; then echo dnf; elif command -v apt-get >/dev/null 2>&1; then echo apt; fi")
+	command := "sh -lc " + ssh.ShellQuote("if command -v dnf >/dev/null 2>&1; then echo dnf; elif command -v yum >/dev/null 2>&1; then echo yum; elif command -v apt-get >/dev/null 2>&1; then echo apt; fi")
 	out, err := runner.Run(command)
 	if err != nil {
 		return "", fmt.Errorf("detecting package manager: %w", err)
@@ -98,7 +226,7 @@ func detectPackageManager(runner ssh.Runner) (string, error) {
 
 	manager := strings.TrimSpace(out)
 	if manager == "" {
-		return "", fmt.Errorf("bootstrap requires dnf-compatible host; apt support is not implemented yet")
+		return "", fmt.Errorf("bootstrap requires yum/dnf-compatible host; apt support is not implemented yet")
 	}
 
 	return manager, nil
@@ -118,11 +246,15 @@ func detectMissingPackages(runner ssh.Runner, packages []string) ([]string, erro
 
 // buildDNFInstallCommand는 패키지명을 쉘 안전하게 인용해 dnf 설치 명령을 만든다.
 func buildDNFInstallCommand(packages []string) string {
+	return buildPackageInstallCommand(packageManagerDNF, packages)
+}
+
+func buildPackageInstallCommand(manager string, packages []string) string {
 	quoted := make([]string, 0, len(packages))
 	for _, pkg := range packages {
 		quoted = append(quoted, ssh.ShellQuote(pkg))
 	}
-	return "dnf install -y " + strings.Join(quoted, " ")
+	return manager + " install -y " + strings.Join(quoted, " ")
 }
 
 // packagesForBootstrap은 사용자가 지정한 패키지와 JDK 설정에서 유도한 패키지를 합친다.

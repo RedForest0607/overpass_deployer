@@ -79,6 +79,13 @@ func TestValidateAndApplyDefaultsMergesBootstrapSettings(t *testing.T) {
 				Vendor: "corretto",
 				Major:  21,
 			},
+			Timezone: TimezoneConfig{
+				Name: "Asia/Seoul",
+			},
+			Swap: SwapConfig{
+				Enabled: boolPtr(true),
+				Size:    "4G",
+			},
 		},
 		Servers: []ServerConfig{
 			{
@@ -124,6 +131,18 @@ func TestValidateAndApplyDefaultsMergesBootstrapSettings(t *testing.T) {
 	if cfg.Servers[0].Bootstrap.OSUpdate.Enabled == nil || *cfg.Servers[0].Bootstrap.OSUpdate.Enabled {
 		t.Fatalf("expected os update default false, got %#v", cfg.Servers[0].Bootstrap.OSUpdate.Enabled)
 	}
+	if cfg.Servers[0].Bootstrap.Timezone.Name != "Asia/Seoul" {
+		t.Fatalf("expected merged timezone Asia/Seoul, got %q", cfg.Servers[0].Bootstrap.Timezone.Name)
+	}
+	if cfg.Servers[0].Bootstrap.Swap.Enabled == nil || !*cfg.Servers[0].Bootstrap.Swap.Enabled {
+		t.Fatalf("expected merged swap enabled, got %#v", cfg.Servers[0].Bootstrap.Swap.Enabled)
+	}
+	if cfg.Servers[0].Bootstrap.Swap.Path != "/swapfile" {
+		t.Fatalf("expected default swap path /swapfile, got %q", cfg.Servers[0].Bootstrap.Swap.Path)
+	}
+	if cfg.Servers[0].Bootstrap.Swap.Size != "4G" {
+		t.Fatalf("expected merged swap size 4G, got %q", cfg.Servers[0].Bootstrap.Swap.Size)
+	}
 }
 
 func TestValidateAndApplyDefaultsRejectsInvalidBootstrapSettings(t *testing.T) {
@@ -140,6 +159,11 @@ func TestValidateAndApplyDefaultsRejectsInvalidBootstrapSettings(t *testing.T) {
 			JDK: JDKConfig{
 				Vendor: "temurin",
 				Major:  0,
+			},
+			Swap: SwapConfig{
+				Enabled: boolPtr(true),
+				Path:    "swapfile",
+				Size:    "0G",
 			},
 		},
 		Servers: []ServerConfig{
@@ -167,6 +191,8 @@ func TestValidateAndApplyDefaultsRejectsInvalidBootstrapSettings(t *testing.T) {
 		"bootstrap.packages[0] must not be empty",
 		`bootstrap.jdk.vendor must be "corretto"`,
 		"bootstrap.jdk.major is required when bootstrap.jdk.vendor is set",
+		"bootstrap.swap.path must be an absolute path",
+		"bootstrap.swap.size must be a positive size like 4G, 512M, or 1024K",
 	} {
 		if !strings.Contains(err.Error(), fragment) {
 			t.Fatalf("expected error to contain %q, got %v", fragment, err)
@@ -290,7 +316,7 @@ func TestValidateAndApplyDefaultsAppliesDefaults(t *testing.T) {
 	if cfg.Servers[0].App.Jvm.MaxHeap != DefaultJvmMax {
 		t.Fatalf("expected default max heap %q, got %q", DefaultJvmMax, cfg.Servers[0].App.Jvm.MaxHeap)
 	}
-	if cfg.Servers[0].App.Script.RemotePath != "/opt/sample/scripts/server.sh" {
+	if cfg.Servers[0].App.Script.RemotePath != "/opt/sample/bin/server.sh" {
 		t.Fatalf("unexpected remote path: %q", cfg.Servers[0].App.Script.RemotePath)
 	}
 	if cfg.Servers[0].Name != "app.example.com" {
@@ -577,7 +603,7 @@ func TestValidateAndApplyDefaultsSupportsAppsList(t *testing.T) {
 	if cfg.Servers[0].Apps[0].Jvm.MinHeap != DefaultJvmMin {
 		t.Fatalf("expected default min heap for first app, got %q", cfg.Servers[0].Apps[0].Jvm.MinHeap)
 	}
-	if cfg.Servers[0].Apps[1].Script.RemotePath != "/opt/sample-b/scripts/server.sh" {
+	if cfg.Servers[0].Apps[1].Script.RemotePath != "/opt/sample-b/bin/server.sh" {
 		t.Fatalf("expected default remote path for second app, got %q", cfg.Servers[0].Apps[1].Script.RemotePath)
 	}
 }

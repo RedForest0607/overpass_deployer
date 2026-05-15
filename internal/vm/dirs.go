@@ -15,9 +15,7 @@ func CreateDirectories(runner ssh.Runner, app *config.AppConfig, opts RunOptions
 	dirs := []string{
 		filepath.ToSlash(filepath.Join(app.BaseDir, "bin")),
 		filepath.ToSlash(filepath.Join(app.BaseDir, "config")),
-		filepath.ToSlash(filepath.Join(app.BaseDir, "scripts")),
 		filepath.ToSlash(filepath.Join(app.BaseDir, "logs")),
-		filepath.ToSlash(filepath.Join(app.BaseDir, "run")),
 	}
 
 	return createDirectoryPaths(runner, dirs, opts, host, app.BaseDir)

@@ -163,6 +163,7 @@ func ValidateAndApplyDefaults(cfg *Config) error {
 		}
 		aliasNames[cfg.Servers[i].Name]++
 		cfg.Servers[i].Bootstrap = cfg.Servers[i].EffectiveBootstrap(cfg.Bootstrap)
+		applyBootstrapDefaults(&cfg.Servers[i].Bootstrap)
 	}
 
 	for alias, count := range aliasNames {
@@ -268,7 +269,13 @@ func hasBootstrapSettings(bootstrap BootstrapConfig) bool {
 	if bootstrap.JDK.Vendor != "" || bootstrap.JDK.Major != 0 || bootstrap.JDK.Headless != nil {
 		return true
 	}
-	return bootstrap.OSUpdate.Enabled != nil && *bootstrap.OSUpdate.Enabled
+	if bootstrap.OSUpdate.Enabled != nil && *bootstrap.OSUpdate.Enabled {
+		return true
+	}
+	if bootstrap.Timezone.Name != "" {
+		return true
+	}
+	return bootstrap.Swap.Enabled != nil && *bootstrap.Swap.Enabled
 }
 
 // validateAppConfig는 앱 배포에 필요한 jar, JVM, 포트, 설정 파일, 스크립트 값을 검증하고 기본값을 적용한다.
@@ -416,7 +423,7 @@ func validateScriptConfig(app *AppConfig, prefix string, errs *[]string, checkUn
 	}
 }
 
-// validateBootstrapConfig는 OS 업데이트, 패키지, JDK 설정을 검증하고 생략된 선택값을 기본값으로 채운다.
+// validateBootstrapConfig는 OS 업데이트, 패키지, JDK, 시간대, swap 설정을 검증한다.
 func validateBootstrapConfig(cfg *BootstrapConfig, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
 	if cfg == nil {
 		return
@@ -452,9 +459,61 @@ func validateBootstrapConfig(cfg *BootstrapConfig, prefix string, errs *[]string
 	if cfg.JDK.Headless == nil && (cfg.JDK.Vendor != "" || cfg.JDK.Major > 0) {
 		cfg.JDK.Headless = boolPtr(true)
 	}
+
+	cfg.Timezone.Name = strings.TrimSpace(cfg.Timezone.Name)
+	checkUnresolvedEnv(cfg.Timezone.Name, prefix+".timezone.name")
+
+	cfg.Swap.Path = strings.TrimSpace(cfg.Swap.Path)
+	cfg.Swap.Size = strings.TrimSpace(cfg.Swap.Size)
+	checkUnresolvedEnv(cfg.Swap.Path, prefix+".swap.path")
+	checkUnresolvedEnv(cfg.Swap.Size, prefix+".swap.size")
+	if cfg.Swap.Enabled != nil && *cfg.Swap.Enabled {
+		if cfg.Swap.Path == "" {
+			cfg.Swap.Path = "/swapfile"
+		}
+		if cfg.Swap.Size == "" {
+			cfg.Swap.Size = "4G"
+		}
+	}
+	if cfg.Swap.Path != "" && !strings.HasPrefix(cfg.Swap.Path, "/") {
+		*errs = append(*errs, prefix+".swap.path must be an absolute path")
+	}
+	if cfg.Swap.Size != "" && !isValidSwapSize(cfg.Swap.Size) {
+		*errs = append(*errs, prefix+".swap.size must be a positive size like 4G, 512M, or 1024K")
+	}
+}
+
+func applyBootstrapDefaults(cfg *BootstrapConfig) {
 	if cfg.OSUpdate.Enabled == nil {
 		cfg.OSUpdate.Enabled = boolPtr(false)
 	}
+	if cfg.Swap.Enabled == nil {
+		cfg.Swap.Enabled = boolPtr(false)
+	}
+	if cfg.Swap.Enabled != nil && *cfg.Swap.Enabled {
+		if cfg.Swap.Path == "" {
+			cfg.Swap.Path = "/swapfile"
+		}
+		if cfg.Swap.Size == "" {
+			cfg.Swap.Size = "4G"
+		}
+	}
+}
+
+func isValidSwapSize(value string) bool {
+	if value == "" {
+		return false
+	}
+	last := value[len(value)-1]
+	if last != 'K' && last != 'M' && last != 'G' {
+		return false
+	}
+	for _, r := range value[:len(value)-1] {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return value[:len(value)-1] != "" && value[:len(value)-1] != "0"
 }
 
 // validateTags는 태그를 소문자로 정규화하고 빈 값, 허용되지 않은 문자, 중복을 정리한다.

@@ -50,6 +50,8 @@ type BootstrapConfig struct {
 	Packages []string       `yaml:"packages"`
 	JDK      JDKConfig      `yaml:"jdk"`
 	OSUpdate OSUpdateConfig `yaml:"os_update"`
+	Timezone TimezoneConfig `yaml:"timezone"`
+	Swap     SwapConfig     `yaml:"swap"`
 }
 
 type JDKConfig struct {
@@ -60,6 +62,16 @@ type JDKConfig struct {
 
 type OSUpdateConfig struct {
 	Enabled *bool `yaml:"enabled"`
+}
+
+type TimezoneConfig struct {
+	Name string `yaml:"name"`
+}
+
+type SwapConfig struct {
+	Enabled *bool  `yaml:"enabled"`
+	Path    string `yaml:"path"`
+	Size    string `yaml:"size"`
 }
 
 type AppConfig struct {
@@ -246,6 +258,8 @@ func mergeBootstrapConfig(global BootstrapConfig, override BootstrapConfig) Boot
 		Packages: mergePackages(global.Packages, override.Packages),
 		JDK:      global.JDK,
 		OSUpdate: global.OSUpdate,
+		Timezone: global.Timezone,
+		Swap:     global.Swap,
 	}
 
 	if override.JDK.Vendor != "" {
@@ -259,6 +273,18 @@ func mergeBootstrapConfig(global BootstrapConfig, override BootstrapConfig) Boot
 	}
 	if override.OSUpdate.Enabled != nil {
 		merged.OSUpdate.Enabled = boolPtr(*override.OSUpdate.Enabled)
+	}
+	if override.Timezone.Name != "" {
+		merged.Timezone.Name = override.Timezone.Name
+	}
+	if override.Swap.Enabled != nil {
+		merged.Swap.Enabled = boolPtr(*override.Swap.Enabled)
+	}
+	if override.Swap.Path != "" {
+		merged.Swap.Path = override.Swap.Path
+	}
+	if override.Swap.Size != "" {
+		merged.Swap.Size = override.Swap.Size
 	}
 
 	return merged
@@ -330,7 +356,7 @@ func (c *ScriptConfig) Normalize(baseDir string) {
 		if c.RemoteDir != "" {
 			c.RemotePath = filepath.ToSlash(filepath.Join(c.RemoteDir, "server.sh"))
 		} else {
-			c.RemotePath = filepath.ToSlash(filepath.Join(baseDir, "scripts", "server.sh"))
+			c.RemotePath = filepath.ToSlash(filepath.Join(baseDir, "bin", "server.sh"))
 		}
 	}
 }

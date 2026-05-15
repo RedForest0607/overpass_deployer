@@ -91,7 +91,7 @@ func TestRunWithOptionsDryRunSkipsSSHConnect(t *testing.T) {
 						{LocalPath: tempFile(t, "application.yml"), RemotePath: "/srv/app/config/application.yml"},
 					},
 					Script: config.ScriptConfig{
-						RemotePath: "/srv/app/scripts/server.sh",
+						RemotePath: "/srv/app/bin/server.sh",
 					},
 				},
 			},

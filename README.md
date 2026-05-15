@@ -100,15 +100,30 @@ bastion:
 ```yaml
 bootstrap:
   packages:
+    - nc
+    - net-tools
     - unzip
-    - procps-ng
+    - wget
+    - vim-enhanced
   jdk:
     vendor: corretto
-    major: 21
-    headless: true
+    major: 25
+    headless: false
   os_update:
-    enabled: false
+    enabled: true
+  timezone:
+    name: Asia/Seoul
+  swap:
+    enabled: true
+    path: /swapfile
+    size: 4G
 ```
+
+- `packages`는 설치되지 않은 항목만 `yum` 또는 `dnf`로 설치합니다.
+- `jdk.headless: false`이면 `java-<major>-amazon-corretto` 패키지를 설치합니다.
+- `timezone.name`이 현재 시간대와 다를 때만 `timedatectl set-timezone`을 실행합니다.
+- `swap.enabled: true`이면 지정한 swap 파일을 없을 때만 생성하고, `/etc/fstab`에는 중복 없이 등록합니다.
+- `deploy vm --dry-run`과 실제 배포는 시작 시 파일 크기와 단계 수를 기준으로 전체/서버별 예상 배포 시간을 출력합니다.
 
 ### `servers[].app` / `servers[].apps`
 

@@ -12,14 +12,23 @@ bastion:
 
 bootstrap:
   packages:
+    - nc
+    - net-tools
     - unzip
-    - procps-ng
+    - wget
+    - vim-enhanced
   jdk:
     vendor: corretto
-    major: 21
-    headless: true
+    major: 25
+    headless: false
   os_update:
-    enabled: false
+    enabled: true
+  timezone:
+    name: Asia/Seoul
+  swap:
+    enabled: true
+    path: /swapfile
+    size: 4G
 
 servers:
   - host: 10.0.1.10

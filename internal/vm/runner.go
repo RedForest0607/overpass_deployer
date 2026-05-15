@@ -42,9 +42,19 @@ func RunWithOptions(cfg *config.Config, opts RunOptions) error {
 	if err != nil {
 		return err
 	}
+	estimate, err := estimateConfigDeployment(filteredCfg)
+	if err != nil {
+		return fmt.Errorf("estimate deployment time: %w", err)
+	}
+	logger.GlobalInfo("--- Estimated deployment time: %s ---", formatEstimate(estimate))
 
 	for _, server := range filteredCfg.Servers {
 		logger.GlobalInfo("--- Starting %s for %s (%s) ---", phaseLabel(opts), server.Name, server.Host)
+		serverEstimate, err := estimateServerDeployment(server)
+		if err != nil {
+			return fmt.Errorf("estimate deployment time for %s: %w", server.Name, err)
+		}
+		logger.Info(server.Host, "Estimated deployment time: %s", formatEstimate(serverEstimate))
 
 		serverSSH := server.SSHSettings(filteredCfg.SSH)
 		if err := runSingle(serverSSH, filteredCfg.Bastion, server, opts); err != nil {

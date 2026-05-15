@@ -169,7 +169,7 @@ func TestLoadSupportsMultipleAppsPerServer(t *testing.T) {
 	if cfg.Servers[0].Apps[0].Name != "sample-a" {
 		t.Fatalf("expected first app name sample-a, got %q", cfg.Servers[0].Apps[0].Name)
 	}
-	if cfg.Servers[0].Apps[1].Script.RemotePath != "/opt/sample-b/scripts/server.sh" {
+	if cfg.Servers[0].Apps[1].Script.RemotePath != "/opt/sample-b/bin/server.sh" {
 		t.Fatalf("expected default script remote path for second app, got %q", cfg.Servers[0].Apps[1].Script.RemotePath)
 	}
 }
