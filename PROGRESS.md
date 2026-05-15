@@ -86,6 +86,16 @@
 - stock-company prod 배포 자산 추가: `cache1/cache2/app1/app2/app3/search1/search2` 서버 배치를 `ops/stock_company/prod/deploy.yml`로 이전하고 dev deploy는 `devapp1/devapp2/devapm1/devapm2`만 유지
 - stock-company prod Redis Sentinel 설정 추가: `redis-sentinel.conf`를 prod app 서버 Redis 자산에 포함하고 compose 마운트 경로를 파일 단위로 보정
 - 서버/app `extra_files[].extract` 옵션 추가: tar/tar.gz/tgz 자산 전송 후 원격 디렉터리에 압축 해제할 수 있게 하고 stock-company dev/prod 소프트웨어 tar에 적용
+- istock dev build 서버용 Docker Compose 자산 추가: `ops/stock_company/dev/build/docker-compose.yml`에 Jenkins, GitLab EE, Nexus3 구성을 분리 배치
+- istock dev build Jenkins 이미지를 `jenkins/jenkins:2.555.2-lts` 기반 전용 Dockerfile로 분리하고 컨테이너 내부 AWS CLI v2 설치를 공식 zip installer 방식으로 반영
+- 기존 Jenkins 플러그인 목록을 `ops/stock_company/dev/build/jenkins/plugins.txt`에 고정하고 Dockerfile에서 `jenkins-plugin-cli`로 사전 설치하도록 반영
+- `TEST/stock_company/aws-rotating-smoke/TEST-WAVE-1.md`, `TEST-WAVE-3.md` 복구: 남아 있던 wave 2/4 문서와 진행 기록 기준으로 실행 결과 문서 재생성
+- stock-company dev/prod overpass 앱 배치 반영: dev `devwas/devapp`, prod `app1/app2/app3/bo1/bo2` 서버에 앱별 jar/config/server.sh/Hamonica agent 설정을 추가하고 `overpass-payments-api` 이름으로 통일
+- stock-company stage overpass 앱 배치 추가: `stagewas` 서버에 `fo-pcweb`, `fo-mobile`, `fo-api` 배포 설정과 stage 전용 values 파일 반영
+- AWS test Terraform을 stock-company dev 배치 기준으로 확장: target EC2를 `devwas/devapp/devapp1/devapp2/devapm1/devapm2` 6대 역할로 재구성하고 dev deploy placeholder 출력과 root volume 변수, 기존 2대 target state 이동 블록 추가
+- AWS dev-test 인프라 생성 및 bastion 스테이징 완료: bastion 1대 + target 6대 EC2를 생성하고 stock-company dev deploy 바이너리/설정/대용량 자산을 bastion에 업로드한 뒤 overpass 태그 dry-run과 전체 dry-run 검증 완료
+- extra_files 압축 해제 재발 방지 보강: `extract.remote_dir`를 압축 해제 직전에 sudo로 생성/소유권 보정하도록 deployer를 수정하고 stock-company dev software 서버의 `/home/ec2-user/software` 디렉터리 사전 생성을 반영
+- AWS dev-test 재배포 준비: test EC2의 기존 배포 산출물을 원복하고, 압축 해제 권한 보정을 비재귀 chown으로 축소하며 tag 배포 후 bastion alias가 전체 서버 목록을 유지하도록 수정
 
 ## Next To-Do
 - `TEST/` 독립 저장소의 원격(origin) 연결 여부와 ignore 규칙을 실제 팀 운영 방식에 맞게 확정
@@ -95,8 +105,7 @@
 - `.gitignore`를 M1 체크리스트 기대 항목과 맞추거나 기준 자체를 현실화
 - 실제 원격 환경에서 `deploy vm --config deploy.yml`, `deploy vm --dry-run --config deploy.yml` 실행 검증
 - TEST 가이드에 Podman 기준 실행 순서와 `/tmp/overpass-test-*` 정리 방법 문서화
-- `infra/aws-test`를 실제 AWS 계정에서 `terraform plan/apply`로 검증한 뒤 운영 전제 조건 정리
-- bastion에서 `docs/aws-test-smoke.md` 절차대로 실제 dry-run/실배포/재실행(skip)까지 완주 검증
+- bastion에서 stock-company dev-test 실제 배포와 재실행(skip)까지 완주 검증
 - bastion shell alias가 새 셸 또는 `source ~/.bashrc` 후 실제로 노출되는지 smoke test로 재확인
 - smoke test cleanup 절차를 실행한 뒤 destroy plan이 test resources만 포함하는지 재확인
 - 실제 검증에 사용한 AWS test 리소스와 bastion 스테이징 파일을 정리할지 결정하고 destroy 실행
@@ -121,5 +130,9 @@
 - `ops/` 하위에 실제 운영 샘플 `deploy.yml`, values, config, script 템플릿을 어떤 서비스부터 채울지 우선순위 확정
 - stock-company dev 운영 자산의 실제 host/bastion 값을 확정하고 placeholder를 치환한 뒤 bastion에서 dry-run/실배포 검증
 - stock-company prod 운영 자산의 실제 host/bastion 값을 확정하고 placeholder를 치환한 뒤 bastion에서 dry-run/실배포 검증
+- stock-company overpass 운영 자산의 `<DEVWAS_HOST>`, `<DEVAPP_HOST>`, `<PRD_BO1_HOST>`, `<PRD_BO2_HOST>` placeholder를 실제 서버 값으로 치환하고 서버별 기동 순서/포트 충돌 여부 검증
+- stock-company stage 운영 자산의 `<STAGE_BASTION_HOST>`, `<STAGEWAS_HOST>` placeholder를 실제 서버 값으로 치환하고 bastion dry-run/실배포 검증
+- AWS dev-test 검증 완료 후 test 리소스 destroy 범위가 dev-test 리소스만 포함하는지 재확인
 - stock-company dev 서버별 Kafka/Redis/MongoDB/Hazelcast/Elasticsearch 압축 해제 및 compose 실행 절차를 후속 스크립트로 정리
+- istock dev build 서버에서 Docker 권한(`jenkins` user/group), Jenkins `aws --version`, GitLab external URL/IP, 80/443/8080/8081/2222 포트 충돌 여부를 실제 서버 기준으로 검증
 - 보류 중인 ScyllaDB compose/config/manager-agent 배포 파일 구성을 확정한 뒤 `devapm2`에 재반영
