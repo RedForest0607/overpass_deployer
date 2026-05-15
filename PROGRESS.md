@@ -101,6 +101,8 @@
 - bootstrap 확장: `deploy.yml`에서 OS update, 필수 패키지, Corretto 25, Asia/Seoul timezone, 4G swapfile 생성을 선언적으로 처리하도록 `timezone`/`swap` 설정과 idempotent 실행 로직 추가
 - istock mall 운영 자산 반영: `ops/stock_company/dev|stage|prod/deploy.yml` 전역 bootstrap에 필수 패키지, Corretto 25, OS update, Asia/Seoul timezone, 4G swapfile 설정 적용 및 세 환경 dry-run 통과
 - 배포 예상 시간 출력 추가: dry-run/실배포 시작 시 파일 크기, bootstrap, 압축 해제, 디렉터리/앱 단계 수를 기준으로 전체/서버별 예상 배포 시간을 로그에 표시
+- 성능 개선: `--parallel` 서버 병렬 배포 옵션 추가, 서버별 원격 checksum 배치 조회, SFTP 세션 재사용으로 실제 배포 시 SSH 왕복/연결 생성 비용 축소
+- AWS dev-test 인프라 재생성 및 stock-company dev 파일 전송 완료: bastion 1대 + target 6대 EC2를 다시 생성하고, bastion에 배포 바이너리/운영 자산/테스트 자산을 업로드한 뒤 private target 전체에 files-only 배포와 재실행 checksum skip 검증 완료
 
 ## Next To-Do
 - `TEST/` 독립 저장소의 원격(origin) 연결 여부와 ignore 규칙을 실제 팀 운영 방식에 맞게 확정
@@ -110,7 +112,7 @@
 - `.gitignore`를 M1 체크리스트 기대 항목과 맞추거나 기준 자체를 현실화
 - 실제 원격 환경에서 `deploy vm --config deploy.yml`, `deploy vm --dry-run --config deploy.yml` 실행 검증
 - TEST 가이드에 Podman 기준 실행 순서와 `/tmp/overpass-test-*` 정리 방법 문서화
-- bastion에서 stock-company dev-test 실제 배포와 재실행(skip)까지 완주 검증
+- NAT 없는 private subnet에서 bootstrap 패키지 설치가 필요한 서버용으로 오프라인 패키지/내부 미러/NAT 중 운영 방식을 확정
 - bastion shell alias가 새 셸 또는 `source ~/.bashrc` 후 실제로 노출되는지 smoke test로 재확인
 - AWS test cleanup 문서에 imported network가 state에 남는 구조와 targeted destroy 명령을 명시
 - 샘플 운영 스크립트에서 아직 설정 스키마로 일반화되지 않은 항목(예: context path, 별도 healthcheck path, Java agent 전용 옵션)을 템플릿 입력으로 승격할지 검토

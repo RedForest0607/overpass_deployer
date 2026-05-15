@@ -79,6 +79,35 @@ func TestRunVMRoutesTagFilters(t *testing.T) {
 	}
 }
 
+func TestRunVMRoutesParallelOption(t *testing.T) {
+	t.Helper()
+
+	var gotOpts vm.RunOptions
+
+	exitCode := run([]string{"vm", "--config", "sample.yml", "--parallel", "3"}, dependencies{
+		stdout:    &bytes.Buffer{},
+		stderr:    &bytes.Buffer{},
+		buildInfo: func() buildinfo.Info { return buildinfo.Current() },
+		loadConfig: func(path string) (*config.Config, error) {
+			return &config.Config{}, nil
+		},
+		runVM: func(cfg *config.Config, opts vm.RunOptions) error {
+			gotOpts = opts
+			return nil
+		},
+		runUpdate: func(ctx context.Context, cfg update.Config, opts update.Options) (*update.Result, error) {
+			return nil, nil
+		},
+	})
+
+	if exitCode != 0 {
+		t.Fatalf("expected success exit code, got %d", exitCode)
+	}
+	if gotOpts.ParallelServers != 3 {
+		t.Fatalf("expected parallel option to be propagated, got %d", gotOpts.ParallelServers)
+	}
+}
+
 func TestRunRejectsUnknownSubcommand(t *testing.T) {
 	t.Helper()
 

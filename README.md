@@ -188,6 +188,7 @@ go run ./cmd/deploy vm --config deploy.example.yml --server-tag prod,primary --a
 go run ./cmd/deploy version
 go run ./cmd/deploy vm --config deploy.example.yml
 go run ./cmd/deploy vm --dry-run --config deploy.example.yml
+go run ./cmd/deploy vm --config deploy.example.yml --parallel 3
 go run ./cmd/deploy vm --config deploy.example.yml --server-tag prod
 go run ./cmd/deploy vm --config deploy.example.yml --app-tag api
 go run ./cmd/deploy update --check
@@ -200,6 +201,8 @@ CLI 기준 현재 서브커맨드:
 - `version`
 - `update`
 - `docker` (미구현)
+
+`--parallel`은 여러 서버를 동시에 배포합니다. 기본값은 `1`이며, 운영에서는 SSH/네트워크 여유에 맞춰 `2~4`부터 올리는 것을 권장합니다. 실제 배포에서는 서버별 원격 checksum을 배치 조회하고 SFTP 세션을 재사용해 SSH 왕복과 연결 생성 비용을 줄입니다.
 
 ## 프로젝트 구조 요약
 

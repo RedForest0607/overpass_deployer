@@ -301,12 +301,46 @@ func formatMiB(size int64) string {
 }
 
 type TransferOptions struct {
-	DryRun bool
-	Host   string
+	DryRun  bool
+	Host    string
+	Session *TransferSession
+}
+
+type TransferSession struct {
+	client       *ssh.Client
+	sftpClient   *sftp.Client
+	remoteHashes map[string]string
+}
+
+func NewTransferSession(client *ssh.Client, remoteHashes map[string]string) (*TransferSession, error) {
+	if client == nil {
+		return nil, fmt.Errorf("ssh client is required")
+	}
+
+	sftpClient, err := sftp.NewClient(client.RawClient())
+	if err != nil {
+		return nil, fmt.Errorf("creating sftp client: %w", err)
+	}
+
+	return &TransferSession{
+		client:       client,
+		sftpClient:   sftpClient,
+		remoteHashes: remoteHashes,
+	}, nil
+}
+
+func (s *TransferSession) Close() error {
+	if s == nil || s.sftpClient == nil {
+		return nil
+	}
+	return s.sftpClient.Close()
 }
 
 // Transfer는 SHA256 비교로 변경 여부를 확인한 뒤 필요한 경우에만 SFTP로 파일을 전송한다.
 func Transfer(client *ssh.Client, localPath, remotePath string, opts TransferOptions) error {
+	if opts.Session != nil {
+		client = opts.Session.client
+	}
 	host := opts.Host
 	if client != nil {
 		host = client.Host()
@@ -333,20 +367,32 @@ func Transfer(client *ssh.Client, localPath, remotePath string, opts TransferOpt
 		return fmt.Errorf("ssh client is required")
 	}
 
-	remoteHash, err := calculateRemoteSHA256(client, remotePath)
-	if err != nil {
-		return fmt.Errorf("calculating remote sha256 for %s: %w", remotePath, err)
+	remoteHash, ok := opts.SessionRemoteHash(remotePath)
+	if !ok {
+		var err error
+		remoteHash, err = calculateRemoteSHA256(client, remotePath)
+		if err != nil {
+			return fmt.Errorf("calculating remote sha256 for %s: %w", remotePath, err)
+		}
 	}
 	if localHash == remoteHash {
 		logger.Skip(host, "%s unchanged", fileName)
 		return nil
 	}
 
-	sftpClient, err := sftp.NewClient(client.RawClient())
-	if err != nil {
-		return fmt.Errorf("creating sftp client: %w", err)
+	sftpClient := opts.SessionSFTPClient()
+	closeSFTP := false
+	if sftpClient == nil {
+		var err error
+		sftpClient, err = sftp.NewClient(client.RawClient())
+		if err != nil {
+			return fmt.Errorf("creating sftp client: %w", err)
+		}
+		closeSFTP = true
 	}
-	defer sftpClient.Close()
+	if closeSFTP {
+		defer sftpClient.Close()
+	}
 
 	remoteDir := filepath.ToSlash(filepath.Dir(remotePath))
 	if err := sftpClient.MkdirAll(remoteDir); err != nil {
@@ -376,4 +422,19 @@ func Transfer(client *ssh.Client, localPath, remotePath string, opts TransferOpt
 
 	logger.Ok(host, "Transferred %s (%.1f MB)", fileName, float64(localInfo.Size())/1024/1024)
 	return nil
+}
+
+func (opts TransferOptions) SessionRemoteHash(remotePath string) (string, bool) {
+	if opts.Session == nil || opts.Session.remoteHashes == nil {
+		return "", false
+	}
+	hash, ok := opts.Session.remoteHashes[remotePath]
+	return hash, ok
+}
+
+func (opts TransferOptions) SessionSFTPClient() *sftp.Client {
+	if opts.Session == nil {
+		return nil
+	}
+	return opts.Session.sftpClient
 }

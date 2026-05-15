@@ -2,8 +2,10 @@ package vm
 
 import (
 	"fmt"
+	"sync"
 
 	"go-deployer/internal/config"
+	"go-deployer/internal/scp"
 	"go-deployer/internal/ssh"
 	"go-deployer/pkg/logger"
 )
@@ -48,27 +50,82 @@ func RunWithOptions(cfg *config.Config, opts RunOptions) error {
 	}
 	logger.GlobalInfo("--- Estimated deployment time: %s ---", formatEstimate(estimate))
 
-	for _, server := range filteredCfg.Servers {
-		logger.GlobalInfo("--- Starting %s for %s (%s) ---", phaseLabel(opts), server.Name, server.Host)
-		serverEstimate, err := estimateServerDeployment(server)
-		if err != nil {
-			return fmt.Errorf("estimate deployment time for %s: %w", server.Name, err)
-		}
-		logger.Info(server.Host, "Estimated deployment time: %s", formatEstimate(serverEstimate))
-
-		serverSSH := server.SSHSettings(filteredCfg.SSH)
-		if err := runSingle(serverSSH, filteredCfg.Bastion, server, opts); err != nil {
-			logger.Error(server.Host, "%s failed: %v", phaseTitle(opts), err)
+	parallelServers := opts.ParallelServers
+	if parallelServers <= 0 {
+		parallelServers = 1
+	}
+	if parallelServers > 1 {
+		logger.GlobalInfo("--- Running up to %d servers in parallel ---", parallelServers)
+		if err := runServersParallel(filteredCfg, opts, parallelServers); err != nil {
 			return err
 		}
-
-		logger.GlobalInfo("--- Completed %s for %s (%s) ---", phaseLabel(opts), server.Name, server.Host)
+	} else if err := runServersSequential(filteredCfg, opts); err != nil {
+		return err
 	}
 
 	if err := syncBastionWithOptions(cfg, opts); err != nil {
 		return err
 	}
 
+	return nil
+}
+
+func runServersSequential(cfg *config.Config, opts RunOptions) error {
+	for _, server := range cfg.Servers {
+		if err := runServerWithEstimate(cfg, server, opts); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func runServersParallel(cfg *config.Config, opts RunOptions, parallelServers int) error {
+	jobs := make(chan config.ServerConfig)
+	errs := make(chan error, len(cfg.Servers))
+	var wg sync.WaitGroup
+
+	for i := 0; i < parallelServers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for server := range jobs {
+				if err := runServerWithEstimate(cfg, server, opts); err != nil {
+					errs <- err
+				}
+			}
+		}()
+	}
+
+	for _, server := range cfg.Servers {
+		jobs <- server
+	}
+	close(jobs)
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func runServerWithEstimate(cfg *config.Config, server config.ServerConfig, opts RunOptions) error {
+	logger.GlobalInfo("--- Starting %s for %s (%s) ---", phaseLabel(opts), server.Name, server.Host)
+	serverEstimate, err := estimateServerDeployment(server)
+	if err != nil {
+		return fmt.Errorf("estimate deployment time for %s: %w", server.Name, err)
+	}
+	logger.Info(server.Host, "Estimated deployment time: %s", formatEstimate(serverEstimate))
+
+	serverSSH := server.SSHSettings(cfg.SSH)
+	if err := runSingle(serverSSH, cfg.Bastion, server, opts); err != nil {
+		logger.Error(server.Host, "%s failed: %v", phaseTitle(opts), err)
+		return err
+	}
+
+	logger.GlobalInfo("--- Completed %s for %s (%s) ---", phaseLabel(opts), server.Name, server.Host)
 	return nil
 }
 
@@ -126,6 +183,16 @@ func runSingle(sshCfg config.SSHConfig, bastionCfg config.BastionConfig, server 
 	if err := bootstrapHostStep(client, server.Bootstrap, opts, server.Host); err != nil {
 		return fmt.Errorf("bootstrap host: %w", err)
 	}
+
+	transferSession, err := prepareTransferSession(client, server)
+	if err != nil {
+		return err
+	}
+	if transferSession != nil {
+		defer transferSession.Close()
+		opts.TransferSession = transferSession
+	}
+
 	if len(server.Directories) > 0 {
 		if err := createServerDirsStep(client, server.Directories, opts, server.Host); err != nil {
 			return fmt.Errorf("create server directories: %w", err)
@@ -166,6 +233,25 @@ func runSingle(sshCfg config.SSHConfig, bastionCfg config.BastionConfig, server 
 	}
 
 	return nil
+}
+
+func prepareTransferSession(client *ssh.Client, server config.ServerConfig) (*scp.TransferSession, error) {
+	remotePaths := collectRemoteFilePaths(server)
+	if len(remotePaths) == 0 {
+		return nil, nil
+	}
+
+	logger.Info(client.Host(), "Checking remote checksums for %d files...", len(remotePaths))
+	remoteHashes, err := fetchRemoteSHA256Batch(client, remotePaths)
+	if err != nil {
+		return nil, fmt.Errorf("check remote file checksums: %w", err)
+	}
+
+	transferSession, err := scp.NewTransferSession(client, remoteHashes)
+	if err != nil {
+		return nil, fmt.Errorf("prepare transfer session: %w", err)
+	}
+	return transferSession, nil
 }
 
 // phaseLabel은 로그 헤더에 사용할 현재 실행 모드 이름을 반환한다.

@@ -26,7 +26,7 @@ SPRING_OPTS+=" {{ . }}"
 PID_PATH="${BASE_DIR}/app.pid"
 LOG_DIR="${BASE_DIR}/logs"
 LOG_FILE="${LOG_DIR}/${APP_NAME}.log"
-CONF_DIR="${BASE_DIR}/config"
+CONF_DIR="${BASE_DIR}/conf"
 
 # Java 실행 경로 확인
 if [ -n "$JAVA_HOME" ]; then
@@ -67,7 +67,7 @@ fi
 
 
 # Logging 설정 추가
-SPRING_OPTS+=" --logging.config=file:${CONF_DIR}/logback.xml"
+SPRING_OPTS+=" --logging.config=file:${CONF_DIR}/logback-spring.xml"
 SPRING_OPTS+=" --spring.config.additional-location=file:${CONF_DIR}/application.yml"
 
 # =================================================================

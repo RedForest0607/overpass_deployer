@@ -15,8 +15,9 @@ import (
 // DeployJar는 앱 JAR 파일을 원격 실행 경로로 전송한다.
 func DeployJar(client *ssh.Client, app *config.AppConfig, opts RunOptions, host string) error {
 	return scp.Transfer(client, app.Jar.LocalPath, app.Jar.RemotePath, scp.TransferOptions{
-		DryRun: opts.DryRun,
-		Host:   runnerHost(client, host),
+		DryRun:  opts.DryRun,
+		Host:    runnerHost(client, host),
+		Session: opts.TransferSession,
 	})
 }
 
@@ -25,8 +26,9 @@ func DeployConfigFiles(client *ssh.Client, app *config.AppConfig, opts RunOption
 	for _, cf := range app.ConfigFiles {
 		cf.Normalize()
 		if err := scp.Transfer(client, cf.LocalPath, cf.RemotePath, scp.TransferOptions{
-			DryRun: opts.DryRun,
-			Host:   runnerHost(client, host),
+			DryRun:  opts.DryRun,
+			Host:    runnerHost(client, host),
+			Session: opts.TransferSession,
 		}); err != nil {
 			return fmt.Errorf("transferring config file %s: %w", cf.LocalPath, err)
 		}
@@ -49,8 +51,9 @@ func deployExtraFiles(client *ssh.Client, extraFiles []config.ExtraFile, opts Ru
 	host = runnerHost(client, host)
 	for _, ef := range extraFiles {
 		if err := scp.Transfer(client, ef.LocalPath, ef.RemotePath, scp.TransferOptions{
-			DryRun: opts.DryRun,
-			Host:   host,
+			DryRun:  opts.DryRun,
+			Host:    host,
+			Session: opts.TransferSession,
 		}); err != nil {
 			return fmt.Errorf("transferring extra file %s: %w", ef.LocalPath, err)
 		}
@@ -171,7 +174,9 @@ func DeployScripts(client *ssh.Client, app *config.AppConfig, opts RunOptions, h
 		return nil
 	}
 
-	if err := scp.Transfer(client, scriptSource, serverPath, scp.TransferOptions{}); err != nil {
+	if err := scp.Transfer(client, scriptSource, serverPath, scp.TransferOptions{
+		Session: opts.TransferSession,
+	}); err != nil {
 		return fmt.Errorf("transferring server.sh: %w", err)
 	}
 
