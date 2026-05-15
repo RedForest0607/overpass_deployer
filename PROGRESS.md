@@ -96,6 +96,7 @@
 - AWS dev-test 인프라 생성 및 bastion 스테이징 완료: bastion 1대 + target 6대 EC2를 생성하고 stock-company dev deploy 바이너리/설정/대용량 자산을 bastion에 업로드한 뒤 overpass 태그 dry-run과 전체 dry-run 검증 완료
 - extra_files 압축 해제 재발 방지 보강: `extract.remote_dir`를 압축 해제 직전에 sudo로 생성/소유권 보정하도록 deployer를 수정하고 stock-company dev software 서버의 `/home/ec2-user/software` 디렉터리 사전 생성을 반영
 - AWS dev-test 재배포 준비: test EC2의 기존 배포 산출물을 원복하고, 압축 해제 권한 보정을 비재귀 chown으로 축소하며 tag 배포 후 bastion alias가 전체 서버 목록을 유지하도록 수정
+- AWS dev-test 리소스 정리 완료: imported default VPC/subnet/route table은 유지하고, targeted Terraform destroy로 bastion 1대 + target 6대 EC2, key pair, bastion/target security group, SG rule 삭제 완료
 
 ## Next To-Do
 - `TEST/` 독립 저장소의 원격(origin) 연결 여부와 ignore 규칙을 실제 팀 운영 방식에 맞게 확정
@@ -107,8 +108,7 @@
 - TEST 가이드에 Podman 기준 실행 순서와 `/tmp/overpass-test-*` 정리 방법 문서화
 - bastion에서 stock-company dev-test 실제 배포와 재실행(skip)까지 완주 검증
 - bastion shell alias가 새 셸 또는 `source ~/.bashrc` 후 실제로 노출되는지 smoke test로 재확인
-- smoke test cleanup 절차를 실행한 뒤 destroy plan이 test resources만 포함하는지 재확인
-- 실제 검증에 사용한 AWS test 리소스와 bastion 스테이징 파일을 정리할지 결정하고 destroy 실행
+- AWS test cleanup 문서에 imported network가 state에 남는 구조와 targeted destroy 명령을 명시
 - 샘플 운영 스크립트에서 아직 설정 스키마로 일반화되지 않은 항목(예: context path, 별도 healthcheck path, Java agent 전용 옵션)을 템플릿 입력으로 승격할지 검토
 - `deploy.example.yml`과 함께 제공할 템플릿 value 파일 샘플을 저장소 표준 위치로 정리할지 결정
 - 실제 bastion/VM 환경에서 대용량 `.jar` 전송 시 progress bar 출력이 운영 터미널에서도 자연스럽게 갱신되는지 확인
