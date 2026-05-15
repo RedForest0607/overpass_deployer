@@ -55,7 +55,7 @@ func RunWithOptions(cfg *config.Config, opts RunOptions) error {
 		logger.GlobalInfo("--- Completed %s for %s (%s) ---", phaseLabel(opts), server.Name, server.Host)
 	}
 
-	if err := syncBastionWithOptions(filteredCfg, opts); err != nil {
+	if err := syncBastionWithOptions(cfg, opts); err != nil {
 		return err
 	}
 

@@ -88,12 +88,33 @@ func applyRemoteFileMode(runner ssh.Runner, remotePath string, mode string) erro
 
 // applyRemoteArchiveExtraction은 전송된 tar 파일을 지정된 원격 디렉터리에 압축 해제한다.
 func applyRemoteArchiveExtraction(runner ssh.Runner, extraFile config.ExtraFile) error {
+	setupCmd := buildExtractDirectorySetupCommand(extraFile.Extract.RemoteDir)
+	if _, err := runner.RunSudo(setupCmd); err != nil {
+		return fmt.Errorf("prepare extract directory %s: %w", extraFile.Extract.RemoteDir, err)
+	}
+
 	cmd, err := buildRemoteArchiveExtractionCommand(extraFile)
 	if err != nil {
 		return err
 	}
 	_, err = runner.Run(cmd)
 	return err
+}
+
+// buildExtractDirectorySetupCommand는 압축 해제 대상 디렉터리만 준비한다.
+// 하위 전체를 chown하지 않아 기존 파일 권한을 넓게 바꾸지 않는다.
+func buildExtractDirectorySetupCommand(remoteDir string) string {
+	quotedRemoteDir := ssh.ShellQuote(remoteDir)
+	innerCommand := strings.Join([]string{
+		"set -eu",
+		fmt.Sprintf("base_dir=%s", quotedRemoteDir),
+		`owner_name="${SUDO_USER:-$(id -un)}"`,
+		`owner_group="$(id -gn "${owner_name}")"`,
+		`mkdir -p "${base_dir}"`,
+		`chown "${owner_name}:${owner_group}" "${base_dir}"`,
+	}, "; ")
+
+	return "sh -lc " + ssh.ShellQuote(innerCommand)
 }
 
 // buildRemoteArchiveExtractionCommand는 지원하는 tar 계열 아카이브만 안전하게 압축 해제하는 명령을 만든다.
@@ -104,7 +125,6 @@ func buildRemoteArchiveExtractionCommand(extraFile config.ExtraFile) (string, er
 	}
 
 	parts := []string{
-		"mkdir -p " + ssh.ShellQuote(extraFile.Extract.RemoteDir),
 		fmt.Sprintf("tar %s %s -C %s",
 			flags,
 			ssh.ShellQuote(extraFile.RemotePath),
@@ -113,7 +133,7 @@ func buildRemoteArchiveExtractionCommand(extraFile config.ExtraFile) (string, er
 	}
 
 	if extraFile.Extract.StripComponents > 0 {
-		parts[1] += fmt.Sprintf(" --strip-components=%d", extraFile.Extract.StripComponents)
+		parts[0] += fmt.Sprintf(" --strip-components=%d", extraFile.Extract.StripComponents)
 	}
 
 	return strings.Join(parts, " && "), nil

@@ -1,7 +1,7 @@
 package vm
 
 import (
-	"fmt"
+	"strings"
 	"testing"
 
 	"go-deployer/internal/config"
@@ -38,9 +38,39 @@ func TestBuildRemoteArchiveExtractionCommand(t *testing.T) {
 		t.Fatalf("expected extraction command to build, got %v", err)
 	}
 
-	want := "mkdir -p '/home/ec2-user/software' && tar -xzf '/home/ec2-user/software/elasticsearch/elasticsearch.tar.gz' -C '/home/ec2-user/software' --strip-components=1"
+	want := "tar -xzf '/home/ec2-user/software/elasticsearch/elasticsearch.tar.gz' -C '/home/ec2-user/software' --strip-components=1"
 	if cmd != want {
 		t.Fatalf("unexpected extraction command: got %q want %q", cmd, want)
+	}
+}
+
+func TestApplyRemoteArchiveExtractionPreparesExtractDirectory(t *testing.T) {
+	runner := &extraFilesRunner{}
+
+	err := applyRemoteArchiveExtraction(runner, config.ExtraFile{
+		RemotePath: "/home/ec2-user/software/elasticsearch/elasticsearch.tar.gz",
+		Extract: config.ExtractConfig{
+			Enabled:   true,
+			RemoteDir: "/home/ec2-user/software",
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected archive extraction to succeed, got %v", err)
+	}
+	if len(runner.sudoCommands) != 1 {
+		t.Fatalf("expected one sudo setup command, got %v", runner.sudoCommands)
+	}
+	if strings.Contains(runner.sudoCommands[0], "chown -R") {
+		t.Fatalf("expected sudo setup command not to recursively chown extract directory, got %q", runner.sudoCommands[0])
+	}
+	if !strings.Contains(runner.sudoCommands[0], `chown "${owner_name}:${owner_group}" "${base_dir}"`) {
+		t.Fatalf("expected sudo setup command to chown only extract directory, got %q", runner.sudoCommands[0])
+	}
+	if len(runner.commands) != 1 {
+		t.Fatalf("expected one extraction command, got %v", runner.commands)
+	}
+	if want := "tar -xzf '/home/ec2-user/software/elasticsearch/elasticsearch.tar.gz' -C '/home/ec2-user/software'"; runner.commands[0] != want {
+		t.Fatalf("unexpected extraction command: got %q want %q", runner.commands[0], want)
 	}
 }
 
@@ -72,7 +102,8 @@ func TestApplyRemoteFileModeBuildsExpectedCommand(t *testing.T) {
 }
 
 type extraFilesRunner struct {
-	commands []string
+	commands     []string
+	sudoCommands []string
 }
 
 func (r *extraFilesRunner) Run(cmd string) (string, error) {
@@ -81,7 +112,8 @@ func (r *extraFilesRunner) Run(cmd string) (string, error) {
 }
 
 func (r *extraFilesRunner) RunSudo(cmd string) (string, error) {
-	return "", fmt.Errorf("unexpected sudo command: %s", cmd)
+	r.sudoCommands = append(r.sudoCommands, cmd)
+	return "", nil
 }
 
 func (r *extraFilesRunner) Host() string {
