@@ -47,7 +47,7 @@ resource "aws_instance" "bastion" {
 
   root_block_device {
     volume_type = "gp3"
-    volume_size = 8
+    volume_size = var.bastion_root_volume_size
     encrypted   = true
   }
 
@@ -58,19 +58,19 @@ resource "aws_instance" "bastion" {
 }
 
 resource "aws_instance" "target" {
-  for_each = aws_subnet.private
+  for_each = var.dev_targets
 
   ami                         = data.aws_ami.amazon_linux_2023.id
   instance_type               = var.instance_type
   key_name                    = aws_key_pair.this.key_name
-  subnet_id                   = each.value.id
+  subnet_id                   = aws_subnet.private[each.value.subnet_az].id
   vpc_security_group_ids      = [aws_security_group.target.id]
   associate_public_ip_address = false
   user_data                   = local.target_user_data
 
   root_block_device {
     volume_type = "gp3"
-    volume_size = 8
+    volume_size = var.target_root_volume_size
     encrypted   = true
   }
 
@@ -82,8 +82,10 @@ resource "aws_instance" "target" {
   }
 
   tags = merge(local.common_tags, {
-    Name = "${var.project_name}-target-${each.key}"
-    Role = "target"
-    AZ   = each.key
+    Name       = "${var.project_name}-${each.key}"
+    Role       = each.key
+    ServerName = each.key
+    AZ         = each.value.subnet_az
+    DeployTags = join(",", each.value.tags)
   })
 }

@@ -1,9 +1,9 @@
 locals {
   common_tags = {
     Project     = var.project_name
-    Environment = "test"
+    Environment = var.environment_name
     ManagedBy   = "terraform"
-    Purpose     = "overpass-deployer-aws-test"
+    Purpose     = "overpass-deployer-stock-company-dev-test"
   }
 }
 
@@ -61,6 +61,75 @@ variable "instance_type" {
   description = "EC2 instance type for all test instances. t3.nano is the default smallest x86_64-friendly choice."
   type        = string
   default     = "t3.nano"
+}
+
+variable "environment_name" {
+  description = "Environment label for test resource tags."
+  type        = string
+  default     = "dev-test"
+}
+
+variable "bastion_root_volume_size" {
+  description = "Root volume size in GiB for the bastion. Keep enough space for deploy binaries and copied stock-company assets."
+  type        = number
+  default     = 20
+
+  validation {
+    condition     = var.bastion_root_volume_size >= 8
+    error_message = "bastion_root_volume_size must be at least 8 GiB."
+  }
+}
+
+variable "target_root_volume_size" {
+  description = "Root volume size in GiB for dev target instances. Stock-company software archives can be large, so 30 GiB is the default."
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.target_root_volume_size >= 8
+    error_message = "target_root_volume_size must be at least 8 GiB."
+  }
+}
+
+variable "dev_targets" {
+  description = "stock_company dev target server roles and private subnet placement."
+  type = map(object({
+    subnet_az = string
+    tags      = list(string)
+  }))
+  default = {
+    devwas = {
+      subnet_az = "ap-northeast-2a"
+      tags      = ["stock-company", "dev", "was", "overpass"]
+    }
+    devapp = {
+      subnet_az = "ap-northeast-2b"
+      tags      = ["stock-company", "dev", "app", "overpass", "batch"]
+    }
+    devapp1 = {
+      subnet_az = "ap-northeast-2a"
+      tags      = ["stock-company", "dev", "app", "search", "agents"]
+    }
+    devapp2 = {
+      subnet_az = "ap-northeast-2b"
+      tags      = ["stock-company", "dev", "app", "kafka"]
+    }
+    devapm1 = {
+      subnet_az = "ap-northeast-2a"
+      tags      = ["stock-company", "dev", "apm", "cache"]
+    }
+    devapm2 = {
+      subnet_az = "ap-northeast-2b"
+      tags      = ["stock-company", "dev", "apm", "cache"]
+    }
+  }
+
+  validation {
+    condition = alltrue([
+      for target in values(var.dev_targets) : contains(["ap-northeast-2a", "ap-northeast-2b"], target.subnet_az)
+    ])
+    error_message = "Each dev_targets subnet_az must match one of the imported private subnet AZ keys."
+  }
 }
 
 variable "install_java" {

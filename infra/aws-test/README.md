@@ -2,6 +2,15 @@
 
 This directory creates EC2 resources for overpass-deployer VM-mode smoke tests on top of the existing `default-vpc` network in `ap-northeast-2`.
 
+The current shape mirrors the `stock_company` dev deployment layout:
+
+- `devwas`: `fo-pcweb`, `fo-mobile`, `fo-api`, `bo-pcweb`, `po-pcweb`, `oa`, `po-mobile`
+- `devapp`: `batch-api1`, `batch-api2`
+- `devapp1`: Elasticsearch and agents
+- `devapp2`: Kafka and Kafka Connect
+- `devapm1`: MongoDB and Hazelcast
+- `devapm2`: MongoDB and Hazelcast
+
 The network resources are represented as Terraform resources with import blocks in `imports.tf`. Terraform should import and track them, not create replacement VPC networking.
 
 ## Imported Network
@@ -28,7 +37,7 @@ Imported network resources use `prevent_destroy` and `ignore_changes = all` so t
 ## Created Test Resources
 
 - 1 bastion EC2 instance in public subnet `ap-northeast-2a`
-- 1 private target EC2 instance per imported private subnet
+- 6 private target EC2 instances matching the stock-company dev server names
 - 1 EC2 key pair from your local public key
 - 2 security groups for bastion and target SSH access
 - Bastion SSH allowances for bastion self-sync and target-side `ssh-keyscan` during smoke tests
@@ -38,8 +47,11 @@ Imported network resources use `prevent_destroy` and `ignore_changes = all` so t
 - Region: `ap-northeast-2`
 - AMI: latest Amazon Linux 2023 for `x86_64`
 - Instance type: `t3.nano`
-- Root volume: encrypted 8 GiB gp3
+- Bastion root volume: encrypted 20 GiB gp3
+- Target root volume: encrypted 30 GiB gp3
 - Target setup: Amazon Corretto 17 installation disabled because imported private subnets do not have a NAT route
+
+The default instance type is intentionally cheap and is enough for deployer file-transfer smoke tests. If you want to actually start Kafka, Elasticsearch, MongoDB, Hazelcast, or multiple JVM apps, override `instance_type` with a larger shape before applying.
 
 Use `t4g.nano` only with an ARM AMI:
 
@@ -61,6 +73,37 @@ allowed_ssh_cidrs = ["203.0.113.10/32"]
 install_java      = false
 ```
 
+Optional dev target placement override:
+
+```hcl
+dev_targets = {
+  devwas = {
+    subnet_az = "ap-northeast-2a"
+    tags      = ["stock-company", "dev", "was", "overpass"]
+  }
+  devapp = {
+    subnet_az = "ap-northeast-2b"
+    tags      = ["stock-company", "dev", "app", "overpass", "batch"]
+  }
+  devapp1 = {
+    subnet_az = "ap-northeast-2a"
+    tags      = ["stock-company", "dev", "app", "search", "agents"]
+  }
+  devapp2 = {
+    subnet_az = "ap-northeast-2b"
+    tags      = ["stock-company", "dev", "app", "kafka"]
+  }
+  devapm1 = {
+    subnet_az = "ap-northeast-2a"
+    tags      = ["stock-company", "dev", "apm", "cache"]
+  }
+  devapm2 = {
+    subnet_az = "ap-northeast-2b"
+    tags      = ["stock-company", "dev", "apm", "cache"]
+  }
+}
+```
+
 Then run:
 
 ```bash
@@ -77,6 +120,7 @@ After apply, use the outputs:
 terraform output bastion_ssh_command
 terraform output bastion_private_ip
 terraform output target_private_ips
+terraform output stock_company_dev_placeholder_values
 terraform output deploy_yml_hint
 ```
 
@@ -98,12 +142,26 @@ bastion:
 
 servers:
   - host: <target_private_ip>
-    name: overpass-target-01
+    name: devwas
     ssh_port: 22
     bastion_host: <target_private_ip>
     bastion_ssh_port: 22
 ```
 
-Use the bastion public IP only for your initial workstation-to-bastion SSH/SCP step. When the `deploy` binary runs on the bastion itself, `bastion.host` should be the bastion private IP so the post-deploy bastion sync can SSH back into the bastion and target VMs can register the bastion host key.
+For `ops/stock_company/dev/deploy.yml`, replace:
+
+```text
+<BASTION_HOST> -> stock_company_dev_placeholder_values.BASTION_HOST
+<DEVWAS_HOST> -> stock_company_dev_placeholder_values.DEVWAS_HOST
+<DEVAPP_HOST> -> stock_company_dev_placeholder_values.DEVAPP_HOST
+<DEVAPP1_HOST> -> stock_company_dev_placeholder_values.DEVAPP1_HOST
+<DEVAPP2_HOST> -> stock_company_dev_placeholder_values.DEVAPP2_HOST
+<DEVAPM1_HOST> -> stock_company_dev_placeholder_values.DEVAPM1_HOST
+<DEVAPM2_HOST> -> stock_company_dev_placeholder_values.DEVAPM2_HOST
+```
+
+The target instances are intentionally private-only. Use the bastion public IP only for your initial workstation-to-bastion SSH/SCP step.
+
+When the `deploy` binary runs on the bastion itself, `bastion.host` should be the bastion private IP so the post-deploy bastion sync can SSH back into the bastion and target VMs can register the bastion host key.
 
 Destroy only the test resources when testing is done. Because this directory imports existing network resources, review any destroy plan carefully before approving it.

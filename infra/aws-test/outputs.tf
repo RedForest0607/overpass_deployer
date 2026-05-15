@@ -14,24 +14,40 @@ output "bastion_ssh_command" {
 }
 
 output "target_private_ips" {
-  description = "Private IP addresses to use in deploy.yml servers[].host from the bastion."
-  value       = { for az, instance in aws_instance.target : az => instance.private_ip }
+  description = "Private IP addresses by stock_company dev server name."
+  value       = { for name, instance in aws_instance.target : name => instance.private_ip }
 }
 
 output "target_names" {
   description = "Suggested deploy.yml server names."
-  value       = { for az in keys(aws_instance.target) : az => "${var.project_name}-target-${az}" }
+  value       = { for name in keys(aws_instance.target) : name => name }
+}
+
+output "stock_company_dev_placeholder_values" {
+  description = "Values to replace stock_company dev deploy.yml host placeholders."
+  value = merge(
+    {
+      BASTION_HOST = aws_instance.bastion.private_ip
+    },
+    {
+      for name, instance in aws_instance.target : lookup({
+        devwas = "DEVWAS_HOST"
+        devapp = "DEVAPP_HOST"
+      }, name, "${upper(name)}_HOST") => instance.private_ip
+    }
+  )
 }
 
 output "deploy_yml_hint" {
   description = "Minimal host block hints for deploy.yml."
   value = [
-    for az, instance in aws_instance.target : {
-      name         = "${var.project_name}-target-${az}"
+    for name, instance in aws_instance.target : {
+      name         = name
       host         = instance.private_ip
       ssh_port     = 22
       bastion_host = instance.private_ip
-      az           = az
+      az           = var.dev_targets[name].subnet_az
+      tags         = var.dev_targets[name].tags
     }
   ]
 }
