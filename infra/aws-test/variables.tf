@@ -102,13 +102,9 @@ variable "dev_targets" {
       subnet_az = "ap-northeast-2a"
       tags      = ["stock-company", "dev", "was", "overpass"]
     }
-    devapp = {
-      subnet_az = "ap-northeast-2b"
-      tags      = ["stock-company", "dev", "app", "overpass", "batch"]
-    }
     devapp1 = {
       subnet_az = "ap-northeast-2a"
-      tags      = ["stock-company", "dev", "app", "search", "agents"]
+      tags      = ["stock-company", "dev", "app", "overpass", "batch", "search", "agents"]
     }
     devapp2 = {
       subnet_az = "ap-northeast-2b"

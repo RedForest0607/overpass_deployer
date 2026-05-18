@@ -85,6 +85,28 @@ func TestBootstrapHostInstallsOnlyMissingPackages(t *testing.T) {
 	}
 }
 
+func TestBootstrapHostDetectsPackageManagerWithNoisyOutput(t *testing.T) {
+	t.Helper()
+
+	runner := &bootstrapRunner{
+		runResults: map[string]commandResult{
+			packageDetectCommandForTest(): {output: "remote warning before command\ndnf\n"},
+			"rpm -q 'git'":                {err: fmt.Errorf("package git is not installed")},
+		},
+	}
+
+	err := BootstrapHost(runner, config.BootstrapConfig{
+		Packages: []string{"git"},
+	}, RunOptions{}, "app-01")
+	if err != nil {
+		t.Fatalf("expected noisy package manager detection to succeed, got %v", err)
+	}
+
+	if len(runner.sudoCommands) != 1 || runner.sudoCommands[0] != "dnf install -y 'git'" {
+		t.Fatalf("unexpected install command: %v", runner.sudoCommands)
+	}
+}
+
 func TestBootstrapHostReturnsErrorWhenDNFIsUnavailable(t *testing.T) {
 	t.Helper()
 
@@ -150,11 +172,11 @@ func TestBootstrapHostCreatesAndPersistsSwapIdempotently(t *testing.T) {
 	t.Helper()
 
 	swapPath := "/swapfile"
-	fileCheckCommand := "sh -lc " + ssh.ShellQuote("if test -f "+ssh.ShellQuote(swapPath)+"; then echo exists; else echo missing; fi")
+	fileCheckCommand := "test -f " + ssh.ShellQuote(swapPath)
 	runner := &bootstrapRunner{
 		runResults: map[string]commandResult{
 			"swapon --noheadings --show=NAME": {output: ""},
-			fileCheckCommand:                  {output: "missing\n"},
+			fileCheckCommand:                  {err: fmt.Errorf("missing")},
 		},
 	}
 
@@ -213,8 +235,43 @@ func TestBootstrapHostSkipsActiveSwapButEnsuresFstab(t *testing.T) {
 	}
 }
 
+func TestBootstrapHostTreatsSwaponAlreadyActiveAsSuccess(t *testing.T) {
+	t.Helper()
+
+	swapPath := "/swapfile"
+	fileCheckCommand := "test -f " + ssh.ShellQuote(swapPath)
+	runner := &bootstrapRunner{
+		runResults: map[string]commandResult{
+			"swapon --noheadings --show=NAME": {output: "", err: nil},
+			fileCheckCommand:                  {output: "", err: nil},
+		},
+		sudoResults: map[string]commandResult{
+			"swapon '/swapfile'": {err: fmt.Errorf("already active")},
+		},
+	}
+	runner.runSequence = map[string][]commandResult{
+		"swapon --noheadings --show=NAME": {
+			{output: ""},
+			{output: "/swapfile\n"},
+		},
+	}
+
+	err := BootstrapHost(runner, config.BootstrapConfig{
+		Swap: config.SwapConfig{
+			Enabled: testBoolPtr(true),
+			Path:    swapPath,
+			Size:    "4G",
+		},
+	}, RunOptions{}, "app-01")
+	if err != nil {
+		t.Fatalf("expected already-active swapon to be treated as success, got %v", err)
+	}
+}
+
 type bootstrapRunner struct {
 	runResults   map[string]commandResult
+	runSequence  map[string][]commandResult
+	sudoResults  map[string]commandResult
 	commands     []string
 	sudoCommands []string
 }
@@ -226,6 +283,11 @@ type commandResult struct {
 
 func (b *bootstrapRunner) Run(cmd string) (string, error) {
 	b.commands = append(b.commands, cmd)
+	if sequence := b.runSequence[cmd]; len(sequence) > 0 {
+		result := sequence[0]
+		b.runSequence[cmd] = sequence[1:]
+		return result.output, result.err
+	}
 	if result, ok := b.runResults[cmd]; ok {
 		return result.output, result.err
 	}
@@ -234,6 +296,9 @@ func (b *bootstrapRunner) Run(cmd string) (string, error) {
 
 func (b *bootstrapRunner) RunSudo(cmd string) (string, error) {
 	b.sudoCommands = append(b.sudoCommands, cmd)
+	if result, ok := b.sudoResults[cmd]; ok {
+		return result.output, result.err
+	}
 	return "", nil
 }
 
@@ -250,5 +315,5 @@ func testBoolPtr(value bool) *bool {
 }
 
 func packageDetectCommandForTest() string {
-	return "sh -lc " + ssh.ShellQuote("if command -v dnf >/dev/null 2>&1; then echo dnf; elif command -v yum >/dev/null 2>&1; then echo yum; elif command -v apt-get >/dev/null 2>&1; then echo apt; fi")
+	return "if test -x /usr/bin/dnf || test -x /bin/dnf; then echo dnf; elif test -x /usr/bin/yum || test -x /bin/yum; then echo yum; elif test -x /usr/bin/apt-get || test -x /bin/apt-get; then echo apt; fi"
 }

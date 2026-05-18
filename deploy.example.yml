@@ -12,7 +12,7 @@ bastion:
 
 bootstrap:
   packages:
-    - nc
+    - nmap-ncat
     - net-tools
     - unzip
     - wget

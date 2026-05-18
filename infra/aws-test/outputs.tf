@@ -32,7 +32,6 @@ output "stock_company_dev_placeholder_values" {
     {
       for name, instance in aws_instance.target : lookup({
         devwas = "DEVWAS_HOST"
-        devapp = "DEVAPP_HOST"
       }, name, "${upper(name)}_HOST") => instance.private_ip
     }
   )

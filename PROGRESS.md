@@ -103,6 +103,11 @@
 - 배포 예상 시간 출력 추가: dry-run/실배포 시작 시 파일 크기, bootstrap, 압축 해제, 디렉터리/앱 단계 수를 기준으로 전체/서버별 예상 배포 시간을 로그에 표시
 - 성능 개선: `--parallel` 서버 병렬 배포 옵션 추가, 서버별 원격 checksum 배치 조회, SFTP 세션 재사용으로 실제 배포 시 SSH 왕복/연결 생성 비용 축소
 - AWS dev-test 인프라 재생성 및 stock-company dev 파일 전송 완료: bastion 1대 + target 6대 EC2를 다시 생성하고, bastion에 배포 바이너리/운영 자산/테스트 자산을 업로드한 뒤 private target 전체에 files-only 배포와 재실행 checksum skip 검증 완료
+- 2026-05-18 기준 AWS dev-test 인프라 상태 확인 및 재생성 완료: `infra/aws-test` Terraform apply로 bastion 1대, private target 6대, key pair, bastion/target security group 생성 완료
+- 2026-05-18 기준 AWS dev-test 인프라에서 `devapp` 역할을 제거하고 `devapp1`로 통합 완료: private target은 `devwas/devapp1/devapp2/devapm1/devapm2` 5대 구조로 반영
+- 2026-05-18 기준 stock-company bootstrap 설정 검증 완료: Amazon Linux 2023에서 `nc` 명령 제공 패키지를 `nmap-ncat`으로 보정하고, dry-run으로 `nmap-ncat/net-tools/unzip/wget/vim-enhanced`, Corretto 25, `/swapfile` 4G 계획 확인
+- 2026-05-18 기준 bastion 내부 deploy 바이너리로 AWS dev-test bootstrap 실검증 완료: 5대 target 모두 `nmap-ncat/net-tools/unzip/wget/vim-enhanced`, Corretto 25 설치와 `/swapfile` 4G 활성화 및 fstab 등록 확인
+- bootstrap 실검증 중 발견한 원격 패키지 매니저 감지/스왑 idempotency 결함 보강: package manager 감지를 절대 경로 기반으로 단순화하고, 이미 활성화된 swapfile 재호출을 성공 처리하도록 회귀 테스트 추가
 
 ## Next To-Do
 - `TEST/` 독립 저장소의 원격(origin) 연결 여부와 ignore 규칙을 실제 팀 운영 방식에 맞게 확정
@@ -140,6 +145,8 @@
 - stock-company overpass 운영 자산의 `<DEVWAS_HOST>`, `<DEVAPP_HOST>`, `<PRD_BO1_HOST>`, `<PRD_BO2_HOST>` placeholder를 실제 서버 값으로 치환하고 서버별 기동 순서/포트 충돌 여부 검증
 - stock-company stage 운영 자산의 `<STAGE_BASTION_HOST>`, `<STAGEWAS_HOST>` placeholder를 실제 서버 값으로 치환하고 bastion dry-run/실배포 검증
 - AWS dev-test 검증 완료 후 test 리소스 destroy 범위가 dev-test 리소스만 포함하는지 재확인
+- 새로 생성된 AWS dev-test 인프라에 stock-company dev placeholder를 반영하고 bastion dry-run/실배포 smoke test 재검증
+- `devapp1` 통합 구조 기준으로 stock-company dev placeholder를 다시 치환하고 batch/search 배포 경로를 bastion에서 재검증
 - stock-company dev 서버별 Kafka/Redis/MongoDB/Hazelcast/Elasticsearch 압축 해제 및 compose 실행 절차를 후속 스크립트로 정리
 - istock dev build 서버에서 Docker 권한(`jenkins` user/group), Jenkins `aws --version`, GitLab external URL/IP, 80/443/8080/8081/2222 포트 충돌 여부를 실제 서버 기준으로 검증
 - 보류 중인 ScyllaDB compose/config/manager-agent 배포 파일 구성을 확정한 뒤 `devapm2`에 재반영

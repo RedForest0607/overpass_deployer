@@ -5,8 +5,7 @@ This directory creates EC2 resources for overpass-deployer VM-mode smoke tests o
 The current shape mirrors the `stock_company` dev deployment layout:
 
 - `devwas`: `fo-pcweb`, `fo-mobile`, `fo-api`, `bo-pcweb`, `po-pcweb`, `oa`, `po-mobile`
-- `devapp`: `batch-api1`, `batch-api2`
-- `devapp1`: Elasticsearch and agents
+- `devapp1`: `batch-api1`, `batch-api2`, Elasticsearch, and agents
 - `devapp2`: Kafka and Kafka Connect
 - `devapm1`: MongoDB and Hazelcast
 - `devapm2`: MongoDB and Hazelcast
@@ -37,7 +36,7 @@ Imported network resources use `prevent_destroy` and `ignore_changes = all` so t
 ## Created Test Resources
 
 - 1 bastion EC2 instance in public subnet `ap-northeast-2a`
-- 6 private target EC2 instances matching the stock-company dev server names
+- 5 private target EC2 instances matching the stock-company dev server names
 - 1 EC2 key pair from your local public key
 - 2 security groups for bastion and target SSH access
 - Bastion SSH allowances for bastion self-sync and target-side `ssh-keyscan` during smoke tests
@@ -81,13 +80,9 @@ dev_targets = {
     subnet_az = "ap-northeast-2a"
     tags      = ["stock-company", "dev", "was", "overpass"]
   }
-  devapp = {
-    subnet_az = "ap-northeast-2b"
-    tags      = ["stock-company", "dev", "app", "overpass", "batch"]
-  }
   devapp1 = {
     subnet_az = "ap-northeast-2a"
-    tags      = ["stock-company", "dev", "app", "search", "agents"]
+    tags      = ["stock-company", "dev", "app", "overpass", "batch", "search", "agents"]
   }
   devapp2 = {
     subnet_az = "ap-northeast-2b"
@@ -153,7 +148,6 @@ For `ops/stock_company/dev/deploy.yml`, replace:
 ```text
 <BASTION_HOST> -> stock_company_dev_placeholder_values.BASTION_HOST
 <DEVWAS_HOST> -> stock_company_dev_placeholder_values.DEVWAS_HOST
-<DEVAPP_HOST> -> stock_company_dev_placeholder_values.DEVAPP_HOST
 <DEVAPP1_HOST> -> stock_company_dev_placeholder_values.DEVAPP1_HOST
 <DEVAPP2_HOST> -> stock_company_dev_placeholder_values.DEVAPP2_HOST
 <DEVAPM1_HOST> -> stock_company_dev_placeholder_values.DEVAPM1_HOST

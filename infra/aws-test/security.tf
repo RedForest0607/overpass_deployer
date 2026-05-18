@@ -39,6 +39,12 @@ resource "aws_security_group" "bastion" {
   tags = merge(local.common_tags, {
     Name = "${var.project_name}-bastion-sg"
   })
+
+  lifecycle {
+    # The target-to-bastion SSH rule is managed as a standalone rule to avoid
+    # a security-group dependency cycle with aws_security_group.target.
+    ignore_changes = [ingress]
+  }
 }
 
 resource "aws_security_group_rule" "bastion_ssh_from_target" {

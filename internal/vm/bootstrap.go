@@ -179,7 +179,11 @@ func applySwapBootstrap(runner ssh.Runner, swap config.SwapConfig, host string) 
 	}
 
 	if _, err := runner.RunSudo("swapon " + ssh.ShellQuote(swap.Path)); err != nil {
-		return fmt.Errorf("enabling swap file: %w", err)
+		activeAfter, checkErr := runner.Run("swapon --noheadings --show=NAME")
+		if checkErr != nil || !containsLine(activeAfter, swap.Path) {
+			return fmt.Errorf("enabling swap file: %w", err)
+		}
+		logger.Skip(host, "Swap already active at %s", swap.Path)
 	}
 	if err := ensureSwapInFstab(runner, swap.Path); err != nil {
 		return err
@@ -190,12 +194,11 @@ func applySwapBootstrap(runner ssh.Runner, swap config.SwapConfig, host string) 
 }
 
 func remoteFileExists(runner ssh.Runner, path string) (bool, error) {
-	command := "sh -lc " + ssh.ShellQuote("if test -f "+ssh.ShellQuote(path)+"; then echo exists; else echo missing; fi")
-	out, err := runner.Run(command)
+	_, err := runner.Run("test -f " + ssh.ShellQuote(path))
 	if err != nil {
-		return false, fmt.Errorf("checking swap file: %w", err)
+		return false, nil
 	}
-	return strings.TrimSpace(out) == "exists", nil
+	return true, nil
 }
 
 func ensureSwapInFstab(runner ssh.Runner, path string) error {
@@ -218,18 +221,28 @@ func containsLine(output string, expected string) bool {
 
 // detectPackageManager는 원격 서버가 지원하는 패키지 관리자를 확인한다.
 func detectPackageManager(runner ssh.Runner) (string, error) {
-	command := "sh -lc " + ssh.ShellQuote("if command -v dnf >/dev/null 2>&1; then echo dnf; elif command -v yum >/dev/null 2>&1; then echo yum; elif command -v apt-get >/dev/null 2>&1; then echo apt; fi")
+	command := "if test -x /usr/bin/dnf || test -x /bin/dnf; then echo dnf; elif test -x /usr/bin/yum || test -x /bin/yum; then echo yum; elif test -x /usr/bin/apt-get || test -x /bin/apt-get; then echo apt; fi"
 	out, err := runner.Run(command)
 	if err != nil {
 		return "", fmt.Errorf("detecting package manager: %w", err)
 	}
 
-	manager := strings.TrimSpace(out)
+	manager := parsePackageManagerOutput(out)
 	if manager == "" {
-		return "", fmt.Errorf("bootstrap requires yum/dnf-compatible host; apt support is not implemented yet")
+		return "", fmt.Errorf("bootstrap requires yum/dnf-compatible host; apt support is not implemented yet (detected output: %q)", strings.TrimSpace(out))
 	}
 
 	return manager, nil
+}
+
+func parsePackageManagerOutput(out string) string {
+	for _, field := range strings.Fields(out) {
+		switch field {
+		case packageManagerDNF, packageManagerYUM, "apt":
+			return field
+		}
+	}
+	return ""
 }
 
 // detectMissingPackages는 rpm 기준으로 아직 설치되지 않은 패키지만 골라낸다.
