@@ -47,14 +47,16 @@ type ServerConfig struct {
 }
 
 type BootstrapConfig struct {
-	Packages []string       `yaml:"packages"`
-	JDK      JDKConfig      `yaml:"jdk"`
-	OSUpdate OSUpdateConfig `yaml:"os_update"`
-	Timezone TimezoneConfig `yaml:"timezone"`
-	Swap     SwapConfig     `yaml:"swap"`
+	Packages []string        `yaml:"packages"`
+	Services []ServiceConfig `yaml:"services"`
+	JDK      JDKConfig       `yaml:"jdk"`
+	OSUpdate OSUpdateConfig  `yaml:"os_update"`
+	Timezone TimezoneConfig  `yaml:"timezone"`
+	Swap     SwapConfig      `yaml:"swap"`
 }
 
 type JDKConfig struct {
+	Enabled  *bool  `yaml:"enabled"`
 	Vendor   string `yaml:"vendor"`
 	Major    int    `yaml:"major"`
 	Headless *bool  `yaml:"headless"`
@@ -72,6 +74,12 @@ type SwapConfig struct {
 	Enabled *bool  `yaml:"enabled"`
 	Path    string `yaml:"path"`
 	Size    string `yaml:"size"`
+}
+
+type ServiceConfig struct {
+	Name    string `yaml:"name"`
+	Enabled *bool  `yaml:"enabled"`
+	State   string `yaml:"state"`
 }
 
 type AppConfig struct {
@@ -256,19 +264,29 @@ func (c ServerConfig) EffectiveApps() []AppConfig {
 func mergeBootstrapConfig(global BootstrapConfig, override BootstrapConfig) BootstrapConfig {
 	merged := BootstrapConfig{
 		Packages: mergePackages(global.Packages, override.Packages),
+		Services: mergeServices(global.Services, override.Services),
 		JDK:      global.JDK,
 		OSUpdate: global.OSUpdate,
 		Timezone: global.Timezone,
 		Swap:     global.Swap,
 	}
 
-	if override.JDK.Vendor != "" {
+	if override.JDK.Enabled != nil {
+		merged.JDK.Enabled = boolPtr(*override.JDK.Enabled)
+	}
+	if merged.JDK.Enabled != nil && !*merged.JDK.Enabled {
+		merged.JDK.Vendor = ""
+		merged.JDK.Major = 0
+		merged.JDK.Headless = nil
+	} else if override.JDK.Vendor != "" {
 		merged.JDK.Vendor = override.JDK.Vendor
 	}
-	if override.JDK.Major != 0 {
-		merged.JDK.Major = override.JDK.Major
+	if merged.JDK.Enabled == nil || *merged.JDK.Enabled {
+		if override.JDK.Major != 0 {
+			merged.JDK.Major = override.JDK.Major
+		}
 	}
-	if override.JDK.Headless != nil {
+	if (merged.JDK.Enabled == nil || *merged.JDK.Enabled) && override.JDK.Headless != nil {
 		merged.JDK.Headless = boolPtr(*override.JDK.Headless)
 	}
 	if override.OSUpdate.Enabled != nil {
@@ -285,6 +303,30 @@ func mergeBootstrapConfig(global BootstrapConfig, override BootstrapConfig) Boot
 	}
 	if override.Swap.Size != "" {
 		merged.Swap.Size = override.Swap.Size
+	}
+
+	return merged
+}
+
+// mergeServices는 같은 name을 가진 서버별 서비스 설정이 전역 설정을 덮어쓰도록 병합한다.
+func mergeServices(global []ServiceConfig, override []ServiceConfig) []ServiceConfig {
+	if len(global) == 0 && len(override) == 0 {
+		return nil
+	}
+
+	merged := append([]ServiceConfig{}, global...)
+	indexByName := make(map[string]int, len(merged))
+	for i, service := range merged {
+		indexByName[service.Name] = i
+	}
+
+	for _, service := range override {
+		if idx, ok := indexByName[service.Name]; ok {
+			merged[idx] = service
+			continue
+		}
+		indexByName[service.Name] = len(merged)
+		merged = append(merged, service)
 	}
 
 	return merged

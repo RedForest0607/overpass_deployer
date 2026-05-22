@@ -95,6 +95,9 @@ func estimateBootstrapDuration(bootstrap config.BootstrapConfig) (time.Duration,
 	if len(packages) > 0 {
 		duration += estimatedPackageBaseDuration + time.Duration(len(packages))*estimatedPackageItemDuration
 	}
+	if len(bootstrap.Services) > 0 {
+		duration += time.Duration(len(bootstrap.Services)) * estimatedPackageItemDuration
+	}
 	if bootstrap.Timezone.Name != "" {
 		duration += estimatedTimezoneDuration
 	}

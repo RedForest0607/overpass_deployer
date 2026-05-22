@@ -85,6 +85,28 @@ func TestBootstrapHostInstallsOnlyMissingPackages(t *testing.T) {
 	}
 }
 
+func TestPackagesForBootstrapSkipsDisabledJDK(t *testing.T) {
+	t.Helper()
+
+	disabled := false
+	headless := false
+	packages, err := packagesForBootstrap(config.BootstrapConfig{
+		Packages: []string{"postgresql17"},
+		JDK: config.JDKConfig{
+			Enabled:  &disabled,
+			Vendor:   "corretto",
+			Major:    25,
+			Headless: &headless,
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected disabled jdk to skip package resolution, got %v", err)
+	}
+	if got, want := strings.Join(packages, ","), "postgresql17"; got != want {
+		t.Fatalf("unexpected packages: got %q want %q", got, want)
+	}
+}
+
 func TestBootstrapHostDetectsPackageManagerWithNoisyOutput(t *testing.T) {
 	t.Helper()
 
@@ -265,6 +287,74 @@ func TestBootstrapHostTreatsSwaponAlreadyActiveAsSuccess(t *testing.T) {
 	}, RunOptions{}, "app-01")
 	if err != nil {
 		t.Fatalf("expected already-active swapon to be treated as success, got %v", err)
+	}
+}
+
+func TestBootstrapHostEnablesAndStartsServices(t *testing.T) {
+	t.Helper()
+
+	runner := &bootstrapRunner{
+		runResults: map[string]commandResult{
+			"systemctl is-enabled 'nginx'": {output: "disabled\n", err: fmt.Errorf("disabled")},
+			"systemctl is-active 'nginx'":  {output: "inactive\n", err: fmt.Errorf("inactive")},
+		},
+	}
+
+	err := BootstrapHost(runner, config.BootstrapConfig{
+		Services: []config.ServiceConfig{{Name: "nginx"}},
+	}, RunOptions{}, "web-01")
+	if err != nil {
+		t.Fatalf("expected service bootstrap to succeed, got %v", err)
+	}
+
+	want := []string{"systemctl enable 'nginx'", "systemctl start 'nginx'"}
+	if strings.Join(runner.sudoCommands, ",") != strings.Join(want, ",") {
+		t.Fatalf("unexpected service commands: got %v want %v", runner.sudoCommands, want)
+	}
+}
+
+func TestBootstrapHostSkipsActiveEnabledService(t *testing.T) {
+	t.Helper()
+
+	runner := &bootstrapRunner{
+		runResults: map[string]commandResult{
+			"systemctl is-enabled 'nginx'": {output: "enabled\n"},
+			"systemctl is-active 'nginx'":  {output: "active\n"},
+		},
+	}
+
+	err := BootstrapHost(runner, config.BootstrapConfig{
+		Services: []config.ServiceConfig{{Name: "nginx", State: config.ServiceStateStarted}},
+	}, RunOptions{}, "web-01")
+	if err != nil {
+		t.Fatalf("expected service bootstrap to succeed, got %v", err)
+	}
+	if len(runner.sudoCommands) != 0 {
+		t.Fatalf("expected no service commands, got %v", runner.sudoCommands)
+	}
+}
+
+func TestBootstrapHostStopsServiceWhenDisabledWithoutState(t *testing.T) {
+	t.Helper()
+
+	disabled := false
+	runner := &bootstrapRunner{
+		runResults: map[string]commandResult{
+			"systemctl is-enabled 'nginx'": {output: "enabled\n"},
+			"systemctl is-active 'nginx'":  {output: "active\n"},
+		},
+	}
+
+	err := BootstrapHost(runner, config.BootstrapConfig{
+		Services: []config.ServiceConfig{{Name: "nginx", Enabled: &disabled}},
+	}, RunOptions{}, "web-01")
+	if err != nil {
+		t.Fatalf("expected service bootstrap to succeed, got %v", err)
+	}
+
+	want := []string{"systemctl disable 'nginx'", "systemctl stop 'nginx'"}
+	if strings.Join(runner.sudoCommands, ",") != strings.Join(want, ",") {
+		t.Fatalf("unexpected service commands: got %v want %v", runner.sudoCommands, want)
 	}
 }
 

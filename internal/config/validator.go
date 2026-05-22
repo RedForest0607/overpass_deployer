@@ -11,14 +11,17 @@ import (
 )
 
 const (
-	DefaultSSHTimeout = 30
-	DefaultJvmMin     = "256m"
-	DefaultJvmMax     = "1g"
-	DefaultSSHPort    = 22
-	DefaultJDKVendor  = "corretto"
-	HostKeyStrict     = "strict"
-	HostKeyAcceptNew  = "accept-new"
-	HostKeyInsecure   = "insecure"
+	DefaultSSHTimeout     = 30
+	DefaultJvmMin         = "256m"
+	DefaultJvmMax         = "1g"
+	DefaultSSHPort        = 22
+	DefaultJDKVendor      = "corretto"
+	ServiceStateStarted   = "started"
+	ServiceStateStopped   = "stopped"
+	ServiceStateRestarted = "restarted"
+	HostKeyStrict         = "strict"
+	HostKeyAcceptNew      = "accept-new"
+	HostKeyInsecure       = "insecure"
 )
 
 // expandHome은 ~/로 시작하는 경로를 현재 사용자 홈 디렉터리의 절대 경로로 확장한다.
@@ -266,7 +269,10 @@ func hasBootstrapSettings(bootstrap BootstrapConfig) bool {
 	if len(bootstrap.Packages) > 0 {
 		return true
 	}
-	if bootstrap.JDK.Vendor != "" || bootstrap.JDK.Major != 0 || bootstrap.JDK.Headless != nil {
+	if len(bootstrap.Services) > 0 {
+		return true
+	}
+	if bootstrap.JDK.Enabled != nil || bootstrap.JDK.Vendor != "" || bootstrap.JDK.Major != 0 || bootstrap.JDK.Headless != nil {
 		return true
 	}
 	if bootstrap.OSUpdate.Enabled != nil && *bootstrap.OSUpdate.Enabled {
@@ -439,7 +445,34 @@ func validateBootstrapConfig(cfg *BootstrapConfig, prefix string, errs *[]string
 		cfg.Packages[i] = strings.TrimSpace(pkg)
 	}
 
-	if cfg.JDK.Vendor != "" {
+	for i := range cfg.Services {
+		field := fmt.Sprintf("%s.services[%d]", prefix, i)
+		cfg.Services[i].Name = strings.TrimSpace(cfg.Services[i].Name)
+		cfg.Services[i].State = strings.ToLower(strings.TrimSpace(cfg.Services[i].State))
+		checkUnresolvedEnv(cfg.Services[i].Name, field+".name")
+		checkUnresolvedEnv(cfg.Services[i].State, field+".state")
+
+		if cfg.Services[i].Name == "" {
+			*errs = append(*errs, field+".name must not be empty")
+		}
+		if cfg.Services[i].State == "" {
+			cfg.Services[i].State = defaultServiceState(cfg.Services[i])
+		}
+		switch cfg.Services[i].State {
+		case ServiceStateStarted, ServiceStateStopped, ServiceStateRestarted:
+		default:
+			*errs = append(*errs, fmt.Sprintf("%s.state must be one of %q, %q, or %q", field, ServiceStateStarted, ServiceStateStopped, ServiceStateRestarted))
+		}
+		if cfg.Services[i].Enabled == nil {
+			cfg.Services[i].Enabled = boolPtr(true)
+		}
+	}
+
+	if cfg.JDK.Enabled != nil && !*cfg.JDK.Enabled {
+		if cfg.JDK.Vendor != "" || cfg.JDK.Major != 0 || cfg.JDK.Headless != nil {
+			*errs = append(*errs, prefix+".jdk cannot set vendor, major, or headless when enabled is false")
+		}
+	} else if cfg.JDK.Vendor != "" {
 		cfg.JDK.Vendor = strings.ToLower(strings.TrimSpace(cfg.JDK.Vendor))
 		checkUnresolvedEnv(cfg.JDK.Vendor, prefix+".jdk.vendor")
 		if cfg.JDK.Vendor != DefaultJDKVendor {
@@ -447,16 +480,18 @@ func validateBootstrapConfig(cfg *BootstrapConfig, prefix string, errs *[]string
 		}
 	}
 
-	if cfg.JDK.Major < 0 {
-		*errs = append(*errs, prefix+".jdk.major must be greater than zero")
+	if cfg.JDK.Enabled == nil || *cfg.JDK.Enabled {
+		if cfg.JDK.Major < 0 {
+			*errs = append(*errs, prefix+".jdk.major must be greater than zero")
+		}
 	}
-	if cfg.JDK.Vendor != "" && cfg.JDK.Major == 0 {
+	if (cfg.JDK.Enabled == nil || *cfg.JDK.Enabled) && cfg.JDK.Vendor != "" && cfg.JDK.Major == 0 {
 		*errs = append(*errs, prefix+".jdk.major is required when "+prefix+".jdk.vendor is set")
 	}
-	if cfg.JDK.Major > 0 && cfg.JDK.Vendor == "" {
+	if (cfg.JDK.Enabled == nil || *cfg.JDK.Enabled) && cfg.JDK.Major > 0 && cfg.JDK.Vendor == "" {
 		cfg.JDK.Vendor = DefaultJDKVendor
 	}
-	if cfg.JDK.Headless == nil && (cfg.JDK.Vendor != "" || cfg.JDK.Major > 0) {
+	if (cfg.JDK.Enabled == nil || *cfg.JDK.Enabled) && cfg.JDK.Headless == nil && (cfg.JDK.Vendor != "" || cfg.JDK.Major > 0) {
 		cfg.JDK.Headless = boolPtr(true)
 	}
 
@@ -481,6 +516,13 @@ func validateBootstrapConfig(cfg *BootstrapConfig, prefix string, errs *[]string
 	if cfg.Swap.Size != "" && !isValidSwapSize(cfg.Swap.Size) {
 		*errs = append(*errs, prefix+".swap.size must be a positive size like 4G, 512M, or 1024K")
 	}
+}
+
+func defaultServiceState(service ServiceConfig) string {
+	if service.Enabled != nil && !*service.Enabled {
+		return ServiceStateStopped
+	}
+	return ServiceStateStarted
 }
 
 func applyBootstrapDefaults(cfg *BootstrapConfig) {

@@ -102,21 +102,25 @@ variable "dev_targets" {
       subnet_az = "ap-northeast-2a"
       tags      = ["stock-company", "dev", "was", "overpass"]
     }
-    devapp1 = {
+    devapp = {
       subnet_az = "ap-northeast-2a"
-      tags      = ["stock-company", "dev", "app", "overpass", "batch", "search", "agents"]
+      tags      = ["stock-company", "dev", "app", "overpass", "batch", "search", "kafka", "redis", "agents"]
     }
-    devapp2 = {
+    devbuild = {
       subnet_az = "ap-northeast-2b"
-      tags      = ["stock-company", "dev", "app", "kafka"]
+      tags      = ["stock-company", "dev", "build", "ops"]
     }
-    devapm1 = {
+    hamonica = {
       subnet_az = "ap-northeast-2a"
-      tags      = ["stock-company", "dev", "apm", "cache"]
+      tags      = ["stock-company", "dev", "hamonica", "cache"]
     }
-    devapm2 = {
+    hamonica_adm = {
       subnet_az = "ap-northeast-2b"
-      tags      = ["stock-company", "dev", "apm", "cache"]
+      tags      = ["stock-company", "dev", "hamonica-adm", "cache"]
+    }
+    postgresql = {
+      subnet_az = "ap-northeast-2a"
+      tags      = ["stock-company", "dev", "postgresql", "db", "ops"]
     }
   }
 

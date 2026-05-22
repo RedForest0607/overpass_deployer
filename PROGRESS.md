@@ -108,6 +108,12 @@
 - 2026-05-18 기준 stock-company bootstrap 설정 검증 완료: Amazon Linux 2023에서 `nc` 명령 제공 패키지를 `nmap-ncat`으로 보정하고, dry-run으로 `nmap-ncat/net-tools/unzip/wget/vim-enhanced`, Corretto 25, `/swapfile` 4G 계획 확인
 - 2026-05-18 기준 bastion 내부 deploy 바이너리로 AWS dev-test bootstrap 실검증 완료: 5대 target 모두 `nmap-ncat/net-tools/unzip/wget/vim-enhanced`, Corretto 25 설치와 `/swapfile` 4G 활성화 및 fstab 등록 확인
 - bootstrap 실검증 중 발견한 원격 패키지 매니저 감지/스왑 idempotency 결함 보강: package manager 감지를 절대 경로 기반으로 단순화하고, 이미 활성화된 swapfile 재호출을 성공 처리하도록 회귀 테스트 추가
+- 2026-05-18 기준 AWS dev-test 리소스 정리 완료: imported default VPC/subnet/route table은 유지하고 bastion 1대, target 5대, key pair, bastion/target security group, SG rule 삭제 완료
+- 2026-05-21 기준 istock mall EC2 배치 설정 재정렬: dev `devapp` 단일화, `devbuild`/`hamonica`/`hamonica-adm`/`postgresql` 추가, stage FO 3대 분리, prod app 2대 구성 반영
+- 서버별 `bootstrap.jdk.enabled: false` 옵션 추가: istock mall `postgresql`, `search1`, `search2`에서 Corretto 25 설치를 제외하고 cache 서버 JDK 설치는 유지
+- ISTOCK-MALL 실계정 리소스 inventory Terraform 추가: `infra/istock-mall`에서 계정 guardrail, 기존 VPC/Subnet/EC2/SG/ALB/RDS data source, dev/stage/prod deploy placeholder output 정리
+- ISTOCK-MALL inventory output 기준으로 `ops/stock_company/dev|stage|prod/deploy.yml` host/bastion placeholder를 실제 private IP로 동기화하고 dev/stage/prod 대표 태그 dry-run 통과
+- `bootstrap.services[]` 선언형 서비스 관리 추가: 패키지 설치 이후 `systemctl enable/disable/start/stop/restart`를 idempotent하게 실행하고 nginx 예시와 회귀 테스트 반영
 
 ## Next To-Do
 - `TEST/` 독립 저장소의 원격(origin) 연결 여부와 ignore 규칙을 실제 팀 운영 방식에 맞게 확정
@@ -142,11 +148,13 @@
 - `ops/` 하위에 실제 운영 샘플 `deploy.yml`, values, config, script 템플릿을 어떤 서비스부터 채울지 우선순위 확정
 - stock-company dev 운영 자산의 실제 host/bastion 값을 확정하고 placeholder를 치환한 뒤 bastion에서 dry-run/실배포 검증
 - stock-company prod 운영 자산의 실제 host/bastion 값을 확정하고 placeholder를 치환한 뒤 bastion에서 dry-run/실배포 검증
-- stock-company overpass 운영 자산의 `<DEVWAS_HOST>`, `<DEVAPP_HOST>`, `<PRD_BO1_HOST>`, `<PRD_BO2_HOST>` placeholder를 실제 서버 값으로 치환하고 서버별 기동 순서/포트 충돌 여부 검증
-- stock-company stage 운영 자산의 `<STAGE_BASTION_HOST>`, `<STAGEWAS_HOST>` placeholder를 실제 서버 값으로 치환하고 bastion dry-run/실배포 검증
+- stock-company overpass 운영 자산의 실제 서버별 기동 순서/포트 충돌 여부 검증
+- stock-company stage 운영 자산을 prod bastion 경유 기준으로 실제 dry-run/실배포 검증
 - AWS dev-test 검증 완료 후 test 리소스 destroy 범위가 dev-test 리소스만 포함하는지 재확인
 - 새로 생성된 AWS dev-test 인프라에 stock-company dev placeholder를 반영하고 bastion dry-run/실배포 smoke test 재검증
-- `devapp1` 통합 구조 기준으로 stock-company dev placeholder를 다시 치환하고 batch/search 배포 경로를 bastion에서 재검증
+- `devapp` 단일 구조와 `devbuild`/`hamonica`/`hamonica-adm`/`postgresql` 기준으로 stock-company dev placeholder를 다시 치환하고 bastion에서 재검증
 - stock-company dev 서버별 Kafka/Redis/MongoDB/Hazelcast/Elasticsearch 압축 해제 및 compose 실행 절차를 후속 스크립트로 정리
 - istock dev build 서버에서 Docker 권한(`jenkins` user/group), Jenkins `aws --version`, GitLab external URL/IP, 80/443/8080/8081/2222 포트 충돌 여부를 실제 서버 기준으로 검증
 - 보류 중인 ScyllaDB compose/config/manager-agent 배포 파일 구성을 확정한 뒤 `devapm2`에 재반영
+- `infra/istock-mall` output 기준 private bastion IP와 workstation 실행용 public bastion IP 중 운영 실행 기준을 확정
+- bo-web EC2 2대 생성 후 `bootstrap.packages: [nginx]`, `bootstrap.services: [{name: nginx, enabled: true, state: started}]` 기준 dry-run/실배포 검증

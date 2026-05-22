@@ -29,6 +29,10 @@ bootstrap:
     enabled: true
     path: /swapfile
     size: 4G
+  services:
+    - name: nginx
+      enabled: true
+      state: started
 
 servers:
   - host: 10.0.1.10

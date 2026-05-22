@@ -31,7 +31,12 @@ output "stock_company_dev_placeholder_values" {
     },
     {
       for name, instance in aws_instance.target : lookup({
-        devwas = "DEVWAS_HOST"
+        devwas       = "DEVWAS_HOST"
+        devapp       = "DEVAPP_HOST"
+        devbuild     = "DEVBUILD_HOST"
+        hamonica     = "DEV_HAMONICA_HOST"
+        hamonica_adm = "DEV_HAMONICA_ADM_HOST"
+        postgresql   = "DEV_POSTGRESQL_HOST"
       }, name, "${upper(name)}_HOST") => instance.private_ip
     }
   )

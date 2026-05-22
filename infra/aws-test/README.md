@@ -5,10 +5,11 @@ This directory creates EC2 resources for overpass-deployer VM-mode smoke tests o
 The current shape mirrors the `stock_company` dev deployment layout:
 
 - `devwas`: `fo-pcweb`, `fo-mobile`, `fo-api`, `bo-pcweb`, `po-pcweb`, `oa`, `po-mobile`
-- `devapp1`: `batch-api1`, `batch-api2`, Elasticsearch, and agents
-- `devapp2`: Kafka and Kafka Connect
-- `devapm1`: MongoDB and Hazelcast
-- `devapm2`: MongoDB and Hazelcast
+- `devapp`: `batch-api1`, `batch-api2`, Elasticsearch, agents, Kafka, Kafka Connect, and Redis
+- `devbuild`: Jenkins, GitLab EE, and Nexus3 build tooling
+- `hamonica`: MongoDB and Hazelcast
+- `hamonica_adm`: MongoDB and Hazelcast
+- `postgresql`: PostgreSQL 17 bootstrap packages
 
 The network resources are represented as Terraform resources with import blocks in `imports.tf`. Terraform should import and track them, not create replacement VPC networking.
 
@@ -36,7 +37,7 @@ Imported network resources use `prevent_destroy` and `ignore_changes = all` so t
 ## Created Test Resources
 
 - 1 bastion EC2 instance in public subnet `ap-northeast-2a`
-- 5 private target EC2 instances matching the stock-company dev server names
+- 6 private target EC2 instances matching the stock-company dev server names
 - 1 EC2 key pair from your local public key
 - 2 security groups for bastion and target SSH access
 - Bastion SSH allowances for bastion self-sync and target-side `ssh-keyscan` during smoke tests
@@ -80,21 +81,25 @@ dev_targets = {
     subnet_az = "ap-northeast-2a"
     tags      = ["stock-company", "dev", "was", "overpass"]
   }
-  devapp1 = {
+  devapp = {
     subnet_az = "ap-northeast-2a"
-    tags      = ["stock-company", "dev", "app", "overpass", "batch", "search", "agents"]
+    tags      = ["stock-company", "dev", "app", "overpass", "batch", "search", "kafka", "redis", "agents"]
   }
-  devapp2 = {
+  devbuild = {
     subnet_az = "ap-northeast-2b"
-    tags      = ["stock-company", "dev", "app", "kafka"]
+    tags      = ["stock-company", "dev", "build", "ops"]
   }
-  devapm1 = {
+  hamonica = {
     subnet_az = "ap-northeast-2a"
-    tags      = ["stock-company", "dev", "apm", "cache"]
+    tags      = ["stock-company", "dev", "hamonica", "cache"]
   }
-  devapm2 = {
+  hamonica_adm = {
     subnet_az = "ap-northeast-2b"
-    tags      = ["stock-company", "dev", "apm", "cache"]
+    tags      = ["stock-company", "dev", "hamonica-adm", "cache"]
+  }
+  postgresql = {
+    subnet_az = "ap-northeast-2a"
+    tags      = ["stock-company", "dev", "postgresql", "db", "ops"]
   }
 }
 ```
@@ -148,10 +153,11 @@ For `ops/stock_company/dev/deploy.yml`, replace:
 ```text
 <BASTION_HOST> -> stock_company_dev_placeholder_values.BASTION_HOST
 <DEVWAS_HOST> -> stock_company_dev_placeholder_values.DEVWAS_HOST
-<DEVAPP1_HOST> -> stock_company_dev_placeholder_values.DEVAPP1_HOST
-<DEVAPP2_HOST> -> stock_company_dev_placeholder_values.DEVAPP2_HOST
-<DEVAPM1_HOST> -> stock_company_dev_placeholder_values.DEVAPM1_HOST
-<DEVAPM2_HOST> -> stock_company_dev_placeholder_values.DEVAPM2_HOST
+<DEVAPP_HOST> -> stock_company_dev_placeholder_values.DEVAPP_HOST
+<DEVBUILD_HOST> -> stock_company_dev_placeholder_values.DEVBUILD_HOST
+<DEV_HAMONICA_HOST> -> stock_company_dev_placeholder_values.DEV_HAMONICA_HOST
+<DEV_HAMONICA_ADM_HOST> -> stock_company_dev_placeholder_values.DEV_HAMONICA_ADM_HOST
+<DEV_POSTGRESQL_HOST> -> stock_company_dev_placeholder_values.DEV_POSTGRESQL_HOST
 ```
 
 The target instances are intentionally private-only. Use the bastion public IP only for your initial workstation-to-bastion SSH/SCP step.

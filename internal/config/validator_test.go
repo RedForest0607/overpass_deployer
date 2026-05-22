@@ -75,6 +75,9 @@ func TestValidateAndApplyDefaultsMergesBootstrapSettings(t *testing.T) {
 		},
 		Bootstrap: BootstrapConfig{
 			Packages: []string{"unzip", "procps-ng"},
+			Services: []ServiceConfig{
+				{Name: "nginx"},
+			},
 			JDK: JDKConfig{
 				Vendor: "corretto",
 				Major:  21,
@@ -92,6 +95,9 @@ func TestValidateAndApplyDefaultsMergesBootstrapSettings(t *testing.T) {
 				Host: "app.example.com",
 				Bootstrap: BootstrapConfig{
 					Packages: []string{"git", "unzip"},
+					Services: []ServiceConfig{
+						{Name: "nginx", State: "restarted"},
+					},
 					JDK: JDKConfig{
 						Major:    17,
 						Headless: &headlessFalse,
@@ -143,6 +149,82 @@ func TestValidateAndApplyDefaultsMergesBootstrapSettings(t *testing.T) {
 	if cfg.Servers[0].Bootstrap.Swap.Size != "4G" {
 		t.Fatalf("expected merged swap size 4G, got %q", cfg.Servers[0].Bootstrap.Swap.Size)
 	}
+	gotServices := cfg.Servers[0].Bootstrap.Services
+	if len(gotServices) != 1 || gotServices[0].Name != "nginx" || gotServices[0].State != ServiceStateRestarted || gotServices[0].Enabled == nil || !*gotServices[0].Enabled {
+		t.Fatalf("unexpected merged services: %#v", gotServices)
+	}
+}
+
+func TestValidateAndApplyDefaultsAllowsServerToDisableMergedJDK(t *testing.T) {
+	keyPath := writeTempFile(t, "id_rsa", "key")
+	disabled := false
+
+	cfg := &Config{
+		SSH: SSHConfig{
+			User:    "deploy",
+			KeyPath: keyPath,
+		},
+		Bootstrap: BootstrapConfig{
+			JDK: JDKConfig{
+				Vendor: "corretto",
+				Major:  25,
+			},
+		},
+		Servers: []ServerConfig{
+			{
+				Host: "postgresql.example.com",
+				Bootstrap: BootstrapConfig{
+					JDK: JDKConfig{
+						Enabled: &disabled,
+					},
+				},
+				Directories: []string{"/home/ec2-user/software/postgresql"},
+			},
+		},
+	}
+
+	if err := ValidateAndApplyDefaults(cfg); err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+
+	got := cfg.Servers[0].Bootstrap.JDK
+	if got.Enabled == nil || *got.Enabled {
+		t.Fatalf("expected merged jdk enabled false, got %#v", got.Enabled)
+	}
+	if got.Vendor != "" || got.Major != 0 || got.Headless != nil {
+		t.Fatalf("expected disabled jdk to clear package fields, got %#v", got)
+	}
+}
+
+func TestValidateAndApplyDefaultsTreatsDisabledServiceAsStoppedByDefault(t *testing.T) {
+	keyPath := writeTempFile(t, "id_rsa", "key")
+	disabled := false
+
+	cfg := &Config{
+		SSH: SSHConfig{
+			User:    "deploy",
+			KeyPath: keyPath,
+		},
+		Servers: []ServerConfig{
+			{
+				Host: "web.example.com",
+				Bootstrap: BootstrapConfig{
+					Services: []ServiceConfig{
+						{Name: "nginx", Enabled: &disabled},
+					},
+				},
+			},
+		},
+	}
+
+	if err := ValidateAndApplyDefaults(cfg); err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+
+	got := cfg.Servers[0].Bootstrap.Services[0]
+	if got.State != ServiceStateStopped {
+		t.Fatalf("expected disabled service to default to stopped, got %q", got.State)
+	}
 }
 
 func TestValidateAndApplyDefaultsRejectsInvalidBootstrapSettings(t *testing.T) {
@@ -164,6 +246,9 @@ func TestValidateAndApplyDefaultsRejectsInvalidBootstrapSettings(t *testing.T) {
 				Enabled: boolPtr(true),
 				Path:    "swapfile",
 				Size:    "0G",
+			},
+			Services: []ServiceConfig{
+				{Name: "", State: "booted"},
 			},
 		},
 		Servers: []ServerConfig{
@@ -193,6 +278,8 @@ func TestValidateAndApplyDefaultsRejectsInvalidBootstrapSettings(t *testing.T) {
 		"bootstrap.jdk.major is required when bootstrap.jdk.vendor is set",
 		"bootstrap.swap.path must be an absolute path",
 		"bootstrap.swap.size must be a positive size like 4G, 512M, or 1024K",
+		"bootstrap.services[0].name must not be empty",
+		`bootstrap.services[0].state must be one of "started", "stopped", or "restarted"`,
 	} {
 		if !strings.Contains(err.Error(), fragment) {
 			t.Fatalf("expected error to contain %q, got %v", fragment, err)
