@@ -121,6 +121,8 @@
 - `bastion.target_key_path` 설정 추가: 배스천 내부에 `.pem` 키가 있으면 shell alias를 `ssh -i <key> -p <port> <user>@<host>` 형태로 생성하고 iSTOCK dev/stage/prod 배포 설정에 반영
 - 디렉토리 생성 단계 보수화: 기존 디렉토리는 소유권 변경 없이 그대로 두고, 없는 디렉토리만 생성 후 생성 지점만 소유권 보정
 - swap bootstrap 보강: `/swapfile`이 없거나 swap 서명이 없을 때도 단일 sudo 단계에서 생성/권한 보정/mkswap/swapon을 보장하도록 수정
+- stock-company dev/prod `OLD_yamls` 기준 application YAML env placeholder 분리본 추가: `NEW_yamls`에 Redis host/port/password/sentinel node, MongoDB nodes, datasource 접속 정보, 내부 API URL, Hazelcast/AWS 접속 값을 `${...}` 형태로 치환
+- iSTOCK-MALL AWS 인프라 Terraform 디렉토리(`infra/istock-mall/`)는 main 브랜치 추적 대상에서 제외하고, 별도 운영 브랜치/저장소에서 관리하는 방향으로 정리
 
 ## Next To-Do
 - `TEST/` 독립 저장소의 원격(origin) 연결 여부와 ignore 규칙을 실제 팀 운영 방식에 맞게 확정
@@ -163,5 +165,6 @@
 - stock-company dev 서버별 Kafka/Redis/MongoDB/Hazelcast/Elasticsearch 압축 해제 및 compose 실행 절차를 후속 스크립트로 정리
 - istock dev build 서버에서 Docker Compose 수동 설치 후 `docker compose version`, Docker 권한(`jenkins` user/group), Jenkins `aws --version`, GitLab external URL/IP, 80/443/8080/8081/2222 포트 충돌 여부를 실제 서버 기준으로 검증
 - 보류 중인 ScyllaDB compose/config/manager-agent 배포 파일 구성을 확정한 뒤 `devapm2`에 재반영
-- `infra/istock-mall` output 기준 private bastion IP와 workstation 실행용 public bastion IP 중 운영 실행 기준을 확정
-- bo-web EC2 2대 생성 후 `REPLACE_WITH_PRD_BO_WEB*_PRIVATE_IP` placeholder를 실제 private IP로 치환하고 `--server-tag bo-web` 기준 dry-run/실배포 검증
+- bo-web EC2 2대에 nginx bootstrap을 `--server-tag bo-web` 기준으로 dry-run/실배포 검증
+- WAS가 실행되는 EC2별 `.env` 파일에 `NEW_yamls`의 `${...}` 변수 값을 채우고, systemd `EnvironmentFile` 또는 실행 스크립트 `source` 방식으로 Spring Boot 프로세스에 주입되는지 검증
+- iSTOCK-MALL AWS 인프라 Terraform 코드는 main이 아닌 별도 운영 브랜치/저장소에서 state/import 정책과 함께 관리

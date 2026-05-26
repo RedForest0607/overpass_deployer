@@ -87,6 +87,7 @@ internal/.DS_Store
 # =========================
 TEST/
 ops/
+infra/istock-mall/
 
 # Public examples that should remain in the main repository
 !/samples/
