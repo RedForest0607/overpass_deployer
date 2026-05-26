@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"go-deployer/internal/config"
-	"go-deployer/internal/ssh"
 )
 
 func TestBootstrapHostDryRunPlansOSUpdateAndInstall(t *testing.T) {
@@ -194,11 +193,9 @@ func TestBootstrapHostCreatesAndPersistsSwapIdempotently(t *testing.T) {
 	t.Helper()
 
 	swapPath := "/swapfile"
-	fileCheckCommand := "test -f " + ssh.ShellQuote(swapPath)
 	runner := &bootstrapRunner{
 		runResults: map[string]commandResult{
 			"swapon --noheadings --show=NAME": {output: ""},
-			fileCheckCommand:                  {err: fmt.Errorf("missing")},
 		},
 	}
 
@@ -213,13 +210,7 @@ func TestBootstrapHostCreatesAndPersistsSwapIdempotently(t *testing.T) {
 		t.Fatalf("expected swap bootstrap to succeed, got %v", err)
 	}
 
-	wantPrefixes := []string{
-		"fallocate -l '4G' '/swapfile'",
-		"chmod 600 '/swapfile'",
-		"mkswap '/swapfile'",
-		"swapon '/swapfile'",
-		"sh -lc ",
-	}
+	wantPrefixes := []string{"sh -lc ", "sh -lc "}
 	if len(runner.sudoCommands) != len(wantPrefixes) {
 		t.Fatalf("unexpected sudo command count: got %v", runner.sudoCommands)
 	}
@@ -228,8 +219,24 @@ func TestBootstrapHostCreatesAndPersistsSwapIdempotently(t *testing.T) {
 			t.Fatalf("expected sudo command %d to start with %q, got %q", i, prefix, runner.sudoCommands[i])
 		}
 	}
-	if !strings.Contains(runner.sudoCommands[4], "/swapfile none swap sw 0 0") {
-		t.Fatalf("expected fstab command to include swap line, got %q", runner.sudoCommands[4])
+	if !strings.Contains(runner.sudoCommands[1], "/swapfile none swap sw 0 0") {
+		t.Fatalf("expected fstab command to include swap line, got %q", runner.sudoCommands[1])
+	}
+}
+
+func TestBuildSwapEnsureCommandCreatesInitializesAndEnablesSwap(t *testing.T) {
+	command := buildSwapEnsureCommand(config.SwapConfig{Path: "/swapfile", Size: "4G"})
+
+	for _, fragment := range []string{
+		`if [ ! -f "${swap_path}" ]; then fallocate -l "${swap_size}" "${swap_path}"; fi`,
+		`chmod 600 "${swap_path}"`,
+		`file -s "${swap_path}" | grep -qi`,
+		`mkswap "${swap_path}"`,
+		`swapon "${swap_path}" || swapon --noheadings --show=NAME | grep -Fxq "${swap_path}"`,
+	} {
+		if !strings.Contains(command, fragment) {
+			t.Fatalf("expected swap ensure command to contain %q, got %q", fragment, command)
+		}
 	}
 }
 
@@ -261,14 +268,12 @@ func TestBootstrapHostTreatsSwaponAlreadyActiveAsSuccess(t *testing.T) {
 	t.Helper()
 
 	swapPath := "/swapfile"
-	fileCheckCommand := "test -f " + ssh.ShellQuote(swapPath)
 	runner := &bootstrapRunner{
 		runResults: map[string]commandResult{
 			"swapon --noheadings --show=NAME": {output: "", err: nil},
-			fileCheckCommand:                  {output: "", err: nil},
 		},
 		sudoResults: map[string]commandResult{
-			"swapon '/swapfile'": {err: fmt.Errorf("already active")},
+			buildSwapEnsureCommand(config.SwapConfig{Path: swapPath, Size: "4G"}): {err: fmt.Errorf("already active")},
 		},
 	}
 	runner.runSequence = map[string][]commandResult{
@@ -310,6 +315,74 @@ func TestBootstrapHostEnablesAndStartsServices(t *testing.T) {
 	want := []string{"systemctl enable 'nginx'", "systemctl start 'nginx'"}
 	if strings.Join(runner.sudoCommands, ",") != strings.Join(want, ",") {
 		t.Fatalf("unexpected service commands: got %v want %v", runner.sudoCommands, want)
+	}
+}
+
+func TestBootstrapHostInstallsDockerComposeWhenMissing(t *testing.T) {
+	t.Helper()
+
+	runner := &bootstrapRunner{
+		runResults: map[string]commandResult{
+			"test -x '/usr/local/lib/docker/cli-plugins/docker-compose' && docker compose version --short": {
+				err: fmt.Errorf("missing"),
+			},
+			"docker compose version": {output: "Docker Compose version v2.29.7\n"},
+		},
+	}
+
+	err := BootstrapHost(runner, config.BootstrapConfig{
+		DockerCompose: config.DockerComposeConfig{
+			Enabled:     testBoolPtr(true),
+			Version:     "v2.29.7",
+			SourceURL:   "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-x86_64",
+			InstallPath: "/usr/local/lib/docker/cli-plugins/docker-compose",
+		},
+	}, RunOptions{}, "build-01")
+	if err != nil {
+		t.Fatalf("expected docker compose bootstrap to succeed, got %v", err)
+	}
+
+	if len(runner.sudoCommands) != 1 {
+		t.Fatalf("expected one sudo command, got %v", runner.sudoCommands)
+	}
+	command := runner.sudoCommands[0]
+	for _, expected := range []string{
+		"mkdir -p",
+		"curl -fL",
+		"https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-x86_64",
+		"/usr/local/lib/docker/cli-plugins/docker-compose",
+		"chmod 0755",
+	} {
+		if !strings.Contains(command, expected) {
+			t.Fatalf("expected install command to contain %q, got %q", expected, command)
+		}
+	}
+}
+
+func TestBootstrapHostSkipsExistingDockerComposeVersion(t *testing.T) {
+	t.Helper()
+
+	runner := &bootstrapRunner{
+		runResults: map[string]commandResult{
+			"test -x '/usr/local/lib/docker/cli-plugins/docker-compose' && docker compose version --short": {
+				output: "2.29.7\n",
+			},
+		},
+	}
+
+	err := BootstrapHost(runner, config.BootstrapConfig{
+		DockerCompose: config.DockerComposeConfig{
+			Enabled:     testBoolPtr(true),
+			Version:     "v2.29.7",
+			SourceURL:   "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-x86_64",
+			InstallPath: "/usr/local/lib/docker/cli-plugins/docker-compose",
+		},
+	}, RunOptions{}, "build-01")
+	if err != nil {
+		t.Fatalf("expected existing docker compose to skip, got %v", err)
+	}
+	if len(runner.sudoCommands) != 0 {
+		t.Fatalf("expected no sudo commands, got %v", runner.sudoCommands)
 	}
 }
 

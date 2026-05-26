@@ -6,7 +6,7 @@ It is intentionally read-only Terraform:
 
 - no `resource` blocks
 - no imports required for normal use
-- data sources verify that the expected VPCs, subnets, EC2 instances, security groups, ALBs, and RDS instances still exist
+- data sources verify that the expected deploy VPCs, subnets, EC2 instances, security groups, ALBs, and RDS instances still exist
 - outputs provide the host placeholder values for `ops/stock_company/dev/deploy.yml`, `ops/stock_company/stage/deploy.yml`, and `ops/stock_company/prod/deploy.yml`
 
 ## Resource Shape
@@ -15,6 +15,9 @@ Use these VPCs for the current deploy assets:
 
 - dev: `vpc-067cb0b0af0f4fed4` (`dev-vpc-01`, `10.20.0.0/16`)
 - stage/prod stock_company: `vpc-087035e5939e270fb` (`prd-vpc-01`, `10.10.0.0/16`)
+
+Excluded from this inventory:
+
 - separate istockmall production stack: `vpc-04f0895b77627e829` (`istockmall-VPC-prd`, `10.0.0.0/16`)
 
 The deployer should use existing bastions and private EC2 targets instead of creating new hosts:

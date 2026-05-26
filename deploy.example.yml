@@ -9,6 +9,8 @@ bastion:
   host: bastion.example.com
   # servers[].name 을 bastion SSH alias 의 로그인 사용자와 함께 사용합니다.
   alias_user: ec2-user
+  # 배스천 내부에 대상 서버 접속용 키가 있으면 shell alias를 `ssh -i <key> user@host` 형태로 생성합니다.
+  target_key_path: ~/.ssh/target.pem
 
 bootstrap:
   packages:

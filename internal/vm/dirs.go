@@ -74,8 +74,7 @@ func buildPrivilegedDirectorySetupCommand(baseDir string) string {
 		fmt.Sprintf("base_dir=%s", quotedBaseDir),
 		`owner_name="${SUDO_USER:-$(id -un)}"`,
 		`owner_group="$(id -gn "${owner_name}")"`,
-		`mkdir -p "${base_dir}"`,
-		`chown -R "${owner_name}:${owner_group}" "${base_dir}"`,
+		`if [ ! -d "${base_dir}" ]; then mkdir -p "${base_dir}" && chown "${owner_name}:${owner_group}" "${base_dir}"; fi`,
 	}, "; ")
 
 	return "sh -lc " + ssh.ShellQuote(innerCommand)

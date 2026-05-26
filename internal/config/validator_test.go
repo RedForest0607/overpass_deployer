@@ -89,6 +89,12 @@ func TestValidateAndApplyDefaultsMergesBootstrapSettings(t *testing.T) {
 				Enabled: boolPtr(true),
 				Size:    "4G",
 			},
+			DockerCompose: DockerComposeConfig{
+				Enabled:     boolPtr(true),
+				Version:     "v2.29.7",
+				SourceURL:   "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-x86_64",
+				InstallPath: "/opt/docker-compose",
+			},
 		},
 		Servers: []ServerConfig{
 			{
@@ -101,6 +107,9 @@ func TestValidateAndApplyDefaultsMergesBootstrapSettings(t *testing.T) {
 					JDK: JDKConfig{
 						Major:    17,
 						Headless: &headlessFalse,
+					},
+					DockerCompose: DockerComposeConfig{
+						InstallPath: "/usr/local/lib/docker/cli-plugins/docker-compose",
 					},
 				},
 				App: AppConfig{
@@ -152,6 +161,19 @@ func TestValidateAndApplyDefaultsMergesBootstrapSettings(t *testing.T) {
 	gotServices := cfg.Servers[0].Bootstrap.Services
 	if len(gotServices) != 1 || gotServices[0].Name != "nginx" || gotServices[0].State != ServiceStateRestarted || gotServices[0].Enabled == nil || !*gotServices[0].Enabled {
 		t.Fatalf("unexpected merged services: %#v", gotServices)
+	}
+	gotCompose := cfg.Servers[0].Bootstrap.DockerCompose
+	if gotCompose.Enabled == nil || !*gotCompose.Enabled {
+		t.Fatalf("expected merged docker compose enabled, got %#v", gotCompose.Enabled)
+	}
+	if gotCompose.Version != "v2.29.7" {
+		t.Fatalf("expected merged docker compose version, got %q", gotCompose.Version)
+	}
+	if gotCompose.SourceURL != "https://github.com/docker/compose/releases/download/v2.29.7/docker-compose-linux-x86_64" {
+		t.Fatalf("expected merged docker compose source URL, got %q", gotCompose.SourceURL)
+	}
+	if gotCompose.InstallPath != "/usr/local/lib/docker/cli-plugins/docker-compose" {
+		t.Fatalf("expected overridden docker compose install path, got %q", gotCompose.InstallPath)
 	}
 }
 
@@ -250,6 +272,11 @@ func TestValidateAndApplyDefaultsRejectsInvalidBootstrapSettings(t *testing.T) {
 			Services: []ServiceConfig{
 				{Name: "", State: "booted"},
 			},
+			DockerCompose: DockerComposeConfig{
+				Enabled:     boolPtr(true),
+				SourceURL:   "http://example.com/docker-compose",
+				InstallPath: "usr/local/bin/docker-compose",
+			},
 		},
 		Servers: []ServerConfig{
 			{
@@ -280,6 +307,9 @@ func TestValidateAndApplyDefaultsRejectsInvalidBootstrapSettings(t *testing.T) {
 		"bootstrap.swap.size must be a positive size like 4G, 512M, or 1024K",
 		"bootstrap.services[0].name must not be empty",
 		`bootstrap.services[0].state must be one of "started", "stopped", or "restarted"`,
+		"bootstrap.docker_compose.version is required when enabled is true",
+		"bootstrap.docker_compose.source_url must be an https URL",
+		"bootstrap.docker_compose.install_path must be an absolute path",
 	} {
 		if !strings.Contains(err.Error(), fragment) {
 			t.Fatalf("expected error to contain %q, got %v", fragment, err)

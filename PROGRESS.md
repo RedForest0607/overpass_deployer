@@ -114,6 +114,13 @@
 - ISTOCK-MALL 실계정 리소스 inventory Terraform 추가: `infra/istock-mall`에서 계정 guardrail, 기존 VPC/Subnet/EC2/SG/ALB/RDS data source, dev/stage/prod deploy placeholder output 정리
 - ISTOCK-MALL inventory output 기준으로 `ops/stock_company/dev|stage|prod/deploy.yml` host/bastion placeholder를 실제 private IP로 동기화하고 dev/stage/prod 대표 태그 dry-run 통과
 - `bootstrap.services[]` 선언형 서비스 관리 추가: 패키지 설치 이후 `systemctl enable/disable/start/stop/restart`를 idempotent하게 실행하고 nginx 예시와 회귀 테스트 반영
+- stock-company prod 운영 deploy에 `bo-web1`, `bo-web2` nginx 전용 서버 항목 추가: JDK 설치 제외, `nginx` 패키지 설치 및 서비스 enable/start 선언
+- `bootstrap.docker_compose` 수동 설치 옵션 추가: 패키지 매니저 대신 지정 URL에서 Docker Compose v2 바이너리를 받아 CLI plugin 경로에 설치하고 버전/idempotency 검증을 수행하도록 구현
+- istock mall dev Docker Compose 서버 설정 보정: `devbuild`/`devapp`에서 `docker-compose-plugin` 패키지 의존을 제거하고 Docker 서비스 enable/start 및 Compose v2 수동 설치를 선언, `devbuild`는 host JDK 설치 제외
+- `infra/istock-mall` inventory에서 기존 `istockmall-VPC-prd`(`10.0.0.0/16`) 관련 VPC/NAT/Route Table/ALB/NLB/RDS 항목 제외
+- `bastion.target_key_path` 설정 추가: 배스천 내부에 `.pem` 키가 있으면 shell alias를 `ssh -i <key> -p <port> <user>@<host>` 형태로 생성하고 iSTOCK dev/stage/prod 배포 설정에 반영
+- 디렉토리 생성 단계 보수화: 기존 디렉토리는 소유권 변경 없이 그대로 두고, 없는 디렉토리만 생성 후 생성 지점만 소유권 보정
+- swap bootstrap 보강: `/swapfile`이 없거나 swap 서명이 없을 때도 단일 sudo 단계에서 생성/권한 보정/mkswap/swapon을 보장하도록 수정
 
 ## Next To-Do
 - `TEST/` 독립 저장소의 원격(origin) 연결 여부와 ignore 규칙을 실제 팀 운영 방식에 맞게 확정
@@ -154,7 +161,7 @@
 - 새로 생성된 AWS dev-test 인프라에 stock-company dev placeholder를 반영하고 bastion dry-run/실배포 smoke test 재검증
 - `devapp` 단일 구조와 `devbuild`/`hamonica`/`hamonica-adm`/`postgresql` 기준으로 stock-company dev placeholder를 다시 치환하고 bastion에서 재검증
 - stock-company dev 서버별 Kafka/Redis/MongoDB/Hazelcast/Elasticsearch 압축 해제 및 compose 실행 절차를 후속 스크립트로 정리
-- istock dev build 서버에서 Docker 권한(`jenkins` user/group), Jenkins `aws --version`, GitLab external URL/IP, 80/443/8080/8081/2222 포트 충돌 여부를 실제 서버 기준으로 검증
+- istock dev build 서버에서 Docker Compose 수동 설치 후 `docker compose version`, Docker 권한(`jenkins` user/group), Jenkins `aws --version`, GitLab external URL/IP, 80/443/8080/8081/2222 포트 충돌 여부를 실제 서버 기준으로 검증
 - 보류 중인 ScyllaDB compose/config/manager-agent 배포 파일 구성을 확정한 뒤 `devapm2`에 재반영
 - `infra/istock-mall` output 기준 private bastion IP와 workstation 실행용 public bastion IP 중 운영 실행 기준을 확정
-- bo-web EC2 2대 생성 후 `bootstrap.packages: [nginx]`, `bootstrap.services: [{name: nginx, enabled: true, state: started}]` 기준 dry-run/실배포 검증
+- bo-web EC2 2대 생성 후 `REPLACE_WITH_PRD_BO_WEB*_PRIVATE_IP` placeholder를 실제 private IP로 치환하고 `--server-tag bo-web` 기준 dry-run/실배포 검증

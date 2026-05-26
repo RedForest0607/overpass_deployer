@@ -71,7 +71,8 @@ func syncBastionWithOptions(cfg *config.Config, opts RunOptions) error {
 	return nil
 }
 
-// ensureServerKnowsBastion은 각 대상 서버가 배스천 호스트 키를 known_hosts에 등록하도록 보장한다.
+// ensureServerKnowsBastion은 각 대상 서버가 배스천 호스트 키를 known_hosts에 등록하도록 시도한다.
+// 대상 서버에서 배스천 SSH 포트로 역방향 접근이 막힌 환경이 있을 수 있어 실패해도 배포는 계속 진행한다.
 func ensureServerKnowsBastion(client ssh.Runner, bastion config.BastionConfig, opts RunOptions, host string) error {
 	if !bastion.Enabled() {
 		return nil
@@ -87,12 +88,15 @@ func ensureServerKnowsBastion(client ssh.Runner, bastion config.BastionConfig, o
 		return nil
 	}
 
-	return runRemoteKnownHostRegistration(client, bastion.Host, port, bastion.Host, "~/.ssh/known_hosts")
+	if err := runRemoteKnownHostRegistration(client, bastion.Host, port, bastion.Host, "~/.ssh/known_hosts"); err != nil {
+		logger.Warn(host, "Skipping bastion known_hosts registration for %s:%d: %v", bastion.Host, port, err)
+	}
+	return nil
 }
 
 // syncBastionSSHConfig는 배스천의 SSH config 파일에 관리 블록 형태의 서버 alias를 반영한다.
 func syncBastionSSHConfig(client ssh.Runner, bastion config.BastionConfig, targetSSH config.SSHConfig, servers []config.ServerConfig) error {
-	block := renderBastionSSHConfigBlock(servers, bastion.AliasUser, targetSSH.KeyPath, targetSSH.HostKeyChecking, bastion.TargetKnownHosts)
+	block := renderBastionSSHConfigBlock(servers, bastion.AliasUser, bastionTargetKeyPath(bastion, targetSSH), targetSSH.HostKeyChecking, bastion.TargetKnownHosts)
 	command := upsertManagedBlockCommand(bastion.SSHConfigPath, block)
 	if _, err := client.Run(command); err != nil {
 		return err
@@ -119,7 +123,7 @@ func syncBastionKnownHosts(client ssh.Runner, knownHostsPath string, servers []c
 
 // syncBastionShellAliases는 배스천 셸 alias 파일에 ssh alias 단축 명령을 반영한다.
 func syncBastionShellAliases(client ssh.Runner, bastion config.BastionConfig, servers []config.ServerConfig) error {
-	block := renderBastionShellAliasBlock(servers, bastion.SSHConfigPath)
+	block := renderBastionShellAliasBlock(servers, bastion)
 	command := upsertManagedBlockCommandWithMarkers(bastion.ShellAliasesPath, block, bastionShellBlockStart, bastionShellBlockEnd)
 	if _, err := client.Run(command); err != nil {
 		return err
@@ -134,6 +138,14 @@ func runRemoteKnownHostRegistration(client ssh.Runner, host string, port int, lo
 		return fmt.Errorf("%s: %w", logName, err)
 	}
 	return nil
+}
+
+// bastionTargetKeyPath는 배스천 내부에서 대상 서버 접속 alias가 사용할 키 경로를 결정한다.
+func bastionTargetKeyPath(bastion config.BastionConfig, targetSSH config.SSHConfig) string {
+	if strings.TrimSpace(bastion.TargetKeyPath) != "" {
+		return strings.TrimSpace(bastion.TargetKeyPath)
+	}
+	return targetSSH.KeyPath
 }
 
 // renderBastionSSHConfigBlock은 배스천 SSH config에 삽입할 관리 블록 문자열을 생성한다.
@@ -157,14 +169,29 @@ func renderBastionSSHConfigBlock(servers []config.ServerConfig, aliasUser, keyPa
 }
 
 // renderBastionShellAliasBlock은 배스천 셸에서 사용할 서버별 ssh alias 블록을 생성한다.
-func renderBastionShellAliasBlock(servers []config.ServerConfig, sshConfigPath string) string {
+func renderBastionShellAliasBlock(servers []config.ServerConfig, bastion config.BastionConfig) string {
 	entries := sortedServersByName(servers)
 	lines := []string{bastionShellBlockStart}
 	for _, server := range entries {
-		lines = append(lines, fmt.Sprintf("alias %s='ssh -F %s %s'", server.Name, singleQuoteShellValue(sshConfigPath), singleQuoteShellValue(server.Name)))
+		lines = append(lines, renderBastionShellAliasLine(server, bastion))
 	}
 	lines = append(lines, bastionShellBlockEnd)
 	return strings.Join(lines, "\n")
+}
+
+func renderBastionShellAliasLine(server config.ServerConfig, bastion config.BastionConfig) string {
+	if strings.TrimSpace(bastion.TargetKeyPath) == "" {
+		return fmt.Sprintf("alias %s='ssh -F %s %s'", server.Name, singleQuoteShellValue(bastion.SSHConfigPath), singleQuoteShellValue(server.Name))
+	}
+
+	command := fmt.Sprintf(
+		"ssh -i %s -p %d %s@%s",
+		ssh.ShellQuote(strings.TrimSpace(bastion.TargetKeyPath)),
+		server.BastionTargetPort(),
+		ssh.ShellQuote(bastion.AliasUser),
+		ssh.ShellQuote(server.BastionTargetHost()),
+	)
+	return fmt.Sprintf("alias %s='%s'", server.Name, singleQuoteShellValue(command))
 }
 
 // upsertManagedBlockCommand는 기본 SSH alias 마커 기준으로 파일 내 관리 블록을 갱신하는 명령을 만든다.

@@ -43,6 +43,9 @@ func BootstrapHost(runner ssh.Runner, bootstrap config.BootstrapConfig, opts Run
 	if err := applySwapBootstrap(runner, bootstrap.Swap, host); err != nil {
 		return err
 	}
+	if err := applyDockerComposeBootstrap(runner, bootstrap.DockerCompose, host); err != nil {
+		return err
+	}
 	if err := applyServiceBootstrap(runner, bootstrap.Services, host); err != nil {
 		return err
 	}
@@ -65,7 +68,10 @@ func bootstrapEnabled(bootstrap config.BootstrapConfig, packages []string) bool 
 	if bootstrap.Timezone.Name != "" {
 		return true
 	}
-	return bootstrap.Swap.Enabled != nil && *bootstrap.Swap.Enabled
+	if bootstrap.Swap.Enabled != nil && *bootstrap.Swap.Enabled {
+		return true
+	}
+	return bootstrap.DockerCompose.Enabled != nil && *bootstrap.DockerCompose.Enabled
 }
 
 // logBootstrapPlan은 dry-run에서 실행 예정인 bootstrap 명령을 원격 변경 없이 출력한다.
@@ -84,6 +90,9 @@ func logBootstrapPlan(host string, bootstrap config.BootstrapConfig, packages []
 	}
 	if bootstrap.Swap.Enabled != nil && *bootstrap.Swap.Enabled {
 		logger.Info(host, "DRY-RUN: would ensure swap file %s with size %s", bootstrap.Swap.Path, bootstrap.Swap.Size)
+	}
+	if bootstrap.DockerCompose.Enabled != nil && *bootstrap.DockerCompose.Enabled {
+		logger.Info(host, "DRY-RUN: would install Docker Compose %s from %s to %s", bootstrap.DockerCompose.Version, bootstrap.DockerCompose.SourceURL, bootstrap.DockerCompose.InstallPath)
 	}
 	for _, service := range bootstrap.Services {
 		logger.Info(host, "DRY-RUN: would ensure service %s is %s and enabled=%t", service.Name, serviceState(service), serviceEnabled(service))
@@ -168,26 +177,8 @@ func applySwapBootstrap(runner ssh.Runner, swap config.SwapConfig, host string) 
 		return ensureSwapInFstab(runner, swap.Path)
 	}
 
-	exists, err := remoteFileExists(runner, swap.Path)
-	if err != nil {
-		return err
-	}
-	if !exists {
-		logger.Info(host, "Creating swap file %s (%s)...", swap.Path, swap.Size)
-		if _, err := runner.RunSudo("fallocate -l " + ssh.ShellQuote(swap.Size) + " " + ssh.ShellQuote(swap.Path)); err != nil {
-			return fmt.Errorf("creating swap file: %w", err)
-		}
-		if _, err := runner.RunSudo("chmod 600 " + ssh.ShellQuote(swap.Path)); err != nil {
-			return fmt.Errorf("setting swap file permissions: %w", err)
-		}
-		if _, err := runner.RunSudo("mkswap " + ssh.ShellQuote(swap.Path)); err != nil {
-			return fmt.Errorf("initializing swap file: %w", err)
-		}
-	} else {
-		logger.Info(host, "Swap file %s exists; enabling without recreating...", swap.Path)
-	}
-
-	if _, err := runner.RunSudo("swapon " + ssh.ShellQuote(swap.Path)); err != nil {
+	logger.Info(host, "Ensuring swap file %s (%s)...", swap.Path, swap.Size)
+	if _, err := runner.RunSudo(buildSwapEnsureCommand(swap)); err != nil {
 		activeAfter, checkErr := runner.Run("swapon --noheadings --show=NAME")
 		if checkErr != nil || !containsLine(activeAfter, swap.Path) {
 			return fmt.Errorf("enabling swap file: %w", err)
@@ -200,6 +191,84 @@ func applySwapBootstrap(runner ssh.Runner, swap config.SwapConfig, host string) 
 
 	logger.Ok(host, "Enabled swap file %s", swap.Path)
 	return nil
+}
+
+func buildSwapEnsureCommand(swap config.SwapConfig) string {
+	quotedPath := ssh.ShellQuote(swap.Path)
+	quotedSize := ssh.ShellQuote(swap.Size)
+	innerCommand := strings.Join([]string{
+		"set -eu",
+		fmt.Sprintf("swap_path=%s", quotedPath),
+		fmt.Sprintf("swap_size=%s", quotedSize),
+		`if [ ! -f "${swap_path}" ]; then fallocate -l "${swap_size}" "${swap_path}"; fi`,
+		`chmod 600 "${swap_path}"`,
+		`if ! file -s "${swap_path}" | grep -qi 'swap file'; then mkswap "${swap_path}"; fi`,
+		`swapon "${swap_path}" || swapon --noheadings --show=NAME | grep -Fxq "${swap_path}"`,
+	}, "; ")
+
+	return "sh -lc " + ssh.ShellQuote(innerCommand)
+}
+
+func applyDockerComposeBootstrap(runner ssh.Runner, compose config.DockerComposeConfig, host string) error {
+	if compose.Enabled == nil || !*compose.Enabled {
+		return nil
+	}
+
+	installed, err := dockerComposeInstalled(runner, compose)
+	if err != nil {
+		return err
+	}
+	if installed {
+		logger.Skip(host, "Docker Compose %s already installed", compose.Version)
+		return nil
+	}
+
+	logger.Info(host, "Installing Docker Compose %s...", compose.Version)
+	if _, err := runner.RunSudo(buildDockerComposeInstallCommand(compose)); err != nil {
+		return fmt.Errorf("installing docker compose: %w", err)
+	}
+	if _, err := runner.Run("docker compose version"); err != nil {
+		return fmt.Errorf("verifying docker compose: %w", err)
+	}
+
+	logger.Ok(host, "Installed Docker Compose %s", compose.Version)
+	return nil
+}
+
+func dockerComposeInstalled(runner ssh.Runner, compose config.DockerComposeConfig) (bool, error) {
+	command := "test -x " + ssh.ShellQuote(compose.InstallPath) + " && docker compose version --short"
+	out, err := runner.Run(command)
+	if err != nil {
+		return false, nil
+	}
+	return normalizeDockerComposeVersion(out) == normalizeDockerComposeVersion(compose.Version), nil
+}
+
+func normalizeDockerComposeVersion(value string) string {
+	return strings.TrimPrefix(strings.TrimSpace(value), "v")
+}
+
+func buildDockerComposeInstallCommand(compose config.DockerComposeConfig) string {
+	installDir := ssh.ShellQuote(parentDir(compose.InstallPath))
+	installPath := ssh.ShellQuote(compose.InstallPath)
+	sourceURL := ssh.ShellQuote(compose.SourceURL)
+
+	innerCommand := strings.Join([]string{
+		"set -eu",
+		fmt.Sprintf("mkdir -p %s", installDir),
+		fmt.Sprintf("if command -v curl >/dev/null 2>&1; then curl -fL %s -o %s; elif command -v wget >/dev/null 2>&1; then wget -O %s %s; else echo 'curl or wget is required to install Docker Compose' >&2; exit 1; fi", sourceURL, installPath, installPath, sourceURL),
+		fmt.Sprintf("chmod 0755 %s", installPath),
+	}, "; ")
+
+	return "sh -lc " + ssh.ShellQuote(innerCommand)
+}
+
+func parentDir(path string) string {
+	idx := strings.LastIndex(path, "/")
+	if idx <= 0 {
+		return "/"
+	}
+	return path[:idx]
 }
 
 func applyServiceBootstrap(runner ssh.Runner, services []config.ServiceConfig, host string) error {

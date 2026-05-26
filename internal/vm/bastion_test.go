@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
@@ -50,13 +51,33 @@ func TestRenderBastionShellAliasBlockSortsAndBuildsAliases(t *testing.T) {
 		{Name: "alpha"},
 	}
 
-	block := renderBastionShellAliasBlock(servers, "~/.overpass-smoke/ssh/config")
+	block := renderBastionShellAliasBlock(servers, config.BastionConfig{
+		SSHConfigPath: "~/.overpass-smoke/ssh/config",
+	})
 
 	if !strings.Contains(block, "alias alpha='ssh -F ~/.overpass-smoke/ssh/config alpha'") {
 		t.Fatalf("expected block to contain alpha shell alias, got %q", block)
 	}
 	if strings.Index(block, "alias alpha=") > strings.Index(block, "alias zeta=") {
 		t.Fatalf("expected shell aliases to be sorted by name, got %q", block)
+	}
+}
+
+func TestRenderBastionShellAliasBlockUsesTargetKeyPathWhenConfigured(t *testing.T) {
+	servers := []config.ServerConfig{
+		{Name: "devbuild", Host: "10.20.20.60", SSHPort: 22},
+	}
+
+	block := renderBastionShellAliasBlock(servers, config.BastionConfig{
+		AliasUser:     "ec2-user",
+		TargetKeyPath: "~/.ssh/dev-istockmall.pem",
+	})
+
+	if !strings.Contains(block, "alias devbuild='ssh -i '\\''~/.ssh/dev-istockmall.pem'\\'' -p 22 '\\''ec2-user'\\''@'\\''10.20.20.60'\\'''") {
+		t.Fatalf("expected direct key-based shell alias, got %q", block)
+	}
+	if strings.Contains(block, "ssh -F") {
+		t.Fatalf("expected key-based alias not to use -F, got %q", block)
 	}
 }
 
@@ -133,6 +154,18 @@ func TestEnsureServerKnowsBastionDryRunSkipsRunner(t *testing.T) {
 	}
 }
 
+func TestEnsureServerKnowsBastionTreatsRegistrationFailureAsWarning(t *testing.T) {
+	runner := &errorRunner{err: errors.New("ssh-keyscan failed")}
+
+	err := ensureServerKnowsBastion(runner, config.BastionConfig{
+		Host: "bastion.internal",
+		Port: 22,
+	}, RunOptions{}, "app-01")
+	if err != nil {
+		t.Fatalf("expected bastion registration failure to be non-fatal, got %v", err)
+	}
+}
+
 type panicRunner struct{}
 
 func (p *panicRunner) Run(cmd string) (string, error) {
@@ -148,5 +181,25 @@ func (p *panicRunner) Host() string {
 }
 
 func (p *panicRunner) Close() error {
+	return nil
+}
+
+type errorRunner struct {
+	err error
+}
+
+func (r *errorRunner) Run(cmd string) (string, error) {
+	return "", r.err
+}
+
+func (r *errorRunner) RunSudo(cmd string) (string, error) {
+	return "", r.err
+}
+
+func (r *errorRunner) Host() string {
+	return "error-runner"
+}
+
+func (r *errorRunner) Close() error {
 	return nil
 }

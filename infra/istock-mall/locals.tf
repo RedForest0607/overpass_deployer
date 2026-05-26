@@ -15,11 +15,6 @@ locals {
       cidr = "10.10.0.0/16"
       name = "prd-vpc-01"
     }
-    istockmall_prod = {
-      id   = "vpc-04f0895b77627e829"
-      cidr = "10.0.0.0/16"
-      name = "istockmall-VPC-prd"
-    }
   }
 
   subnets = {
@@ -373,38 +368,29 @@ locals {
   }
 
   route_tables = {
-    dev_public                 = "rtb-0f7822a9ec6bbd988"
-    dev_private                = "rtb-05126e58e1ac9e1dc"
-    prod_public                = "rtb-06a2f67c835db19e6"
-    prod_private               = "rtb-07aafdb53b8daf018"
-    istockmall_prod_public     = "rtb-017a4d7f6c5ed9516"
-    istockmall_prod_private_2a = "rtb-0d3d227ed6c2c5049"
-    istockmall_prod_private_2c = "rtb-0bd98a47ac0474279"
+    dev_public   = "rtb-0f7822a9ec6bbd988"
+    dev_private  = "rtb-05126e58e1ac9e1dc"
+    prod_public  = "rtb-06a2f67c835db19e6"
+    prod_private = "rtb-07aafdb53b8daf018"
   }
 
   nat_gateways = {
-    dev           = "nat-0ac651bdb55cfa038"
-    prod          = "nat-0e7878dc75ff947ff"
-    istockmall_2a = "nat-03dafe9a216618747"
-    istockmall_2c = "nat-032e9ba2672e8a2a0"
+    dev  = "nat-0ac651bdb55cfa038"
+    prod = "nat-0e7878dc75ff947ff"
   }
 
   load_balancers = {
-    dev_external          = "dev-external-alb"
-    prd_fo                = "prd-fo-external-alb"
-    prd_bo                = "prd-bo-external-alb"
-    prd_api               = "prd-api-internal-alb"
-    prd_payment           = "prd-payment-internal-alb"
-    prd_search            = "prd-search-external-alb"
-    prd_apm               = "prd-apm-external-alb"
-    istockmall_backend    = "istockmall-ALB-Backend-prd"
-    istockmall_backoffice = "istockmall-ALB-BackOffice-prd"
-    istockmall_rabbit_mq  = "istockmall-NLB-Rabbit-MQ-prd"
+    dev_external = "dev-external-alb"
+    prd_fo       = "prd-fo-external-alb"
+    prd_bo       = "prd-bo-external-alb"
+    prd_api      = "prd-api-internal-alb"
+    prd_payment  = "prd-payment-internal-alb"
+    prd_search   = "prd-search-external-alb"
+    prd_apm      = "prd-apm-external-alb"
   }
 
   databases = {
-    prod_postgres    = "prd-postgres-rds"
-    istockmall_mysql = "isockmall-db"
+    prod_postgres = "prd-postgres-rds"
   }
 
   deploy_placeholder_values = {

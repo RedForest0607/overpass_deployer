@@ -9,7 +9,7 @@ output "account" {
 }
 
 output "vpcs" {
-  description = "VPCs that are relevant to stock_company and istockmall resources."
+  description = "VPCs that are relevant to stock_company deploy resources."
   value = {
     for key, vpc in local.vpcs : key => merge(vpc, {
       arn = data.aws_vpc.selected[key].arn
@@ -53,7 +53,7 @@ output "security_groups" {
 }
 
 output "load_balancers" {
-  description = "Existing ALB/NLB resources discovered in the account."
+  description = "Existing ALB resources used by stock_company deploy environments."
   value = {
     for key, name in local.load_balancers : key => {
       name     = name

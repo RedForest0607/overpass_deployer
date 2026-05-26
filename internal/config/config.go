@@ -30,6 +30,7 @@ type BastionConfig struct {
 	SSHConfigPath    string `yaml:"ssh_config_path"`
 	ShellAliasesPath string `yaml:"shell_aliases_path"`
 	TargetKnownHosts string `yaml:"target_known_hosts_path"`
+	TargetKeyPath    string `yaml:"target_key_path"`
 }
 
 type ServerConfig struct {
@@ -47,12 +48,13 @@ type ServerConfig struct {
 }
 
 type BootstrapConfig struct {
-	Packages []string        `yaml:"packages"`
-	Services []ServiceConfig `yaml:"services"`
-	JDK      JDKConfig       `yaml:"jdk"`
-	OSUpdate OSUpdateConfig  `yaml:"os_update"`
-	Timezone TimezoneConfig  `yaml:"timezone"`
-	Swap     SwapConfig      `yaml:"swap"`
+	Packages      []string            `yaml:"packages"`
+	Services      []ServiceConfig     `yaml:"services"`
+	JDK           JDKConfig           `yaml:"jdk"`
+	OSUpdate      OSUpdateConfig      `yaml:"os_update"`
+	Timezone      TimezoneConfig      `yaml:"timezone"`
+	Swap          SwapConfig          `yaml:"swap"`
+	DockerCompose DockerComposeConfig `yaml:"docker_compose"`
 }
 
 type JDKConfig struct {
@@ -74,6 +76,13 @@ type SwapConfig struct {
 	Enabled *bool  `yaml:"enabled"`
 	Path    string `yaml:"path"`
 	Size    string `yaml:"size"`
+}
+
+type DockerComposeConfig struct {
+	Enabled     *bool  `yaml:"enabled"`
+	Version     string `yaml:"version"`
+	SourceURL   string `yaml:"source_url"`
+	InstallPath string `yaml:"install_path"`
 }
 
 type ServiceConfig struct {
@@ -263,12 +272,13 @@ func (c ServerConfig) EffectiveApps() []AppConfig {
 // mergeBootstrapConfig는 전역 bootstrap 값에 서버별 값이 있을 때만 덮어써 최종 설정을 만든다.
 func mergeBootstrapConfig(global BootstrapConfig, override BootstrapConfig) BootstrapConfig {
 	merged := BootstrapConfig{
-		Packages: mergePackages(global.Packages, override.Packages),
-		Services: mergeServices(global.Services, override.Services),
-		JDK:      global.JDK,
-		OSUpdate: global.OSUpdate,
-		Timezone: global.Timezone,
-		Swap:     global.Swap,
+		Packages:      mergePackages(global.Packages, override.Packages),
+		Services:      mergeServices(global.Services, override.Services),
+		JDK:           global.JDK,
+		OSUpdate:      global.OSUpdate,
+		Timezone:      global.Timezone,
+		Swap:          global.Swap,
+		DockerCompose: global.DockerCompose,
 	}
 
 	if override.JDK.Enabled != nil {
@@ -303,6 +313,18 @@ func mergeBootstrapConfig(global BootstrapConfig, override BootstrapConfig) Boot
 	}
 	if override.Swap.Size != "" {
 		merged.Swap.Size = override.Swap.Size
+	}
+	if override.DockerCompose.Enabled != nil {
+		merged.DockerCompose.Enabled = boolPtr(*override.DockerCompose.Enabled)
+	}
+	if override.DockerCompose.Version != "" {
+		merged.DockerCompose.Version = override.DockerCompose.Version
+	}
+	if override.DockerCompose.SourceURL != "" {
+		merged.DockerCompose.SourceURL = override.DockerCompose.SourceURL
+	}
+	if override.DockerCompose.InstallPath != "" {
+		merged.DockerCompose.InstallPath = override.DockerCompose.InstallPath
 	}
 
 	return merged

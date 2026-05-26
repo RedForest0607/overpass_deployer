@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -281,7 +282,10 @@ func hasBootstrapSettings(bootstrap BootstrapConfig) bool {
 	if bootstrap.Timezone.Name != "" {
 		return true
 	}
-	return bootstrap.Swap.Enabled != nil && *bootstrap.Swap.Enabled
+	if bootstrap.Swap.Enabled != nil && *bootstrap.Swap.Enabled {
+		return true
+	}
+	return bootstrap.DockerCompose.Enabled != nil && *bootstrap.DockerCompose.Enabled
 }
 
 // validateAppConfig는 앱 배포에 필요한 jar, JVM, 포트, 설정 파일, 스크립트 값을 검증하고 기본값을 적용한다.
@@ -516,6 +520,48 @@ func validateBootstrapConfig(cfg *BootstrapConfig, prefix string, errs *[]string
 	if cfg.Swap.Size != "" && !isValidSwapSize(cfg.Swap.Size) {
 		*errs = append(*errs, prefix+".swap.size must be a positive size like 4G, 512M, or 1024K")
 	}
+
+	validateDockerComposeConfig(&cfg.DockerCompose, prefix+".docker_compose", errs, checkUnresolvedEnv)
+}
+
+func validateDockerComposeConfig(cfg *DockerComposeConfig, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
+	if cfg == nil {
+		return
+	}
+	if cfg.Enabled == nil || !*cfg.Enabled {
+		return
+	}
+
+	cfg.Version = strings.TrimSpace(cfg.Version)
+	cfg.SourceURL = strings.TrimSpace(cfg.SourceURL)
+	cfg.InstallPath = filepath.ToSlash(strings.TrimSpace(cfg.InstallPath))
+
+	checkUnresolvedEnv(cfg.Version, prefix+".version")
+	checkUnresolvedEnv(cfg.SourceURL, prefix+".source_url")
+	checkUnresolvedEnv(cfg.InstallPath, prefix+".install_path")
+
+	if cfg.Version == "" {
+		*errs = append(*errs, prefix+".version is required when enabled is true")
+	}
+	if cfg.SourceURL == "" {
+		*errs = append(*errs, prefix+".source_url is required when enabled is true")
+	} else if !isHTTPSURL(cfg.SourceURL) {
+		*errs = append(*errs, prefix+".source_url must be an https URL")
+	}
+	if cfg.InstallPath == "" {
+		cfg.InstallPath = "/usr/local/lib/docker/cli-plugins/docker-compose"
+	}
+	if !strings.HasPrefix(cfg.InstallPath, "/") {
+		*errs = append(*errs, prefix+".install_path must be an absolute path")
+	}
+}
+
+func isHTTPSURL(raw string) bool {
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	return parsed.Scheme == "https" && parsed.Host != ""
 }
 
 func defaultServiceState(service ServiceConfig) string {
@@ -539,6 +585,12 @@ func applyBootstrapDefaults(cfg *BootstrapConfig) {
 		if cfg.Swap.Size == "" {
 			cfg.Swap.Size = "4G"
 		}
+	}
+	if cfg.DockerCompose.Enabled == nil {
+		cfg.DockerCompose.Enabled = boolPtr(false)
+	}
+	if cfg.DockerCompose.Enabled != nil && *cfg.DockerCompose.Enabled && cfg.DockerCompose.InstallPath == "" {
+		cfg.DockerCompose.InstallPath = "/usr/local/lib/docker/cli-plugins/docker-compose"
 	}
 }
 
@@ -624,6 +676,7 @@ func validateBastionConfig(cfg *Config, errs *[]string, checkUnresolvedEnv func(
 			{name: "bastion.ssh_config_path", value: bastion.SSHConfigPath},
 			{name: "bastion.shell_aliases_path", value: bastion.ShellAliasesPath},
 			{name: "bastion.target_known_hosts_path", value: bastion.TargetKnownHosts},
+			{name: "bastion.target_key_path", value: bastion.TargetKeyPath},
 		} {
 			if strings.TrimSpace(field.value) != "" {
 				*errs = append(*errs, field.name+" requires bastion.host")
@@ -646,6 +699,7 @@ func validateBastionConfig(cfg *Config, errs *[]string, checkUnresolvedEnv func(
 	checkUnresolvedEnv(bastion.SSHConfigPath, "bastion.ssh_config_path")
 	checkUnresolvedEnv(bastion.ShellAliasesPath, "bastion.shell_aliases_path")
 	checkUnresolvedEnv(bastion.TargetKnownHosts, "bastion.target_known_hosts_path")
+	checkUnresolvedEnv(bastion.TargetKeyPath, "bastion.target_key_path")
 
 	if bastion.User == "" {
 		bastion.User = cfg.SSH.User
@@ -710,4 +764,5 @@ func validateBastionConfig(cfg *Config, errs *[]string, checkUnresolvedEnv func(
 	if bastion.TargetKnownHosts == "" {
 		bastion.TargetKnownHosts = "~/.ssh/known_hosts"
 	}
+	bastion.TargetKeyPath = strings.TrimSpace(bastion.TargetKeyPath)
 }
