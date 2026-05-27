@@ -73,11 +73,26 @@ func TestRenderBastionShellAliasBlockUsesTargetKeyPathWhenConfigured(t *testing.
 		TargetKeyPath: "~/.ssh/dev-istockmall.pem",
 	})
 
-	if !strings.Contains(block, "alias devbuild='ssh -i '\\''~/.ssh/dev-istockmall.pem'\\'' -p 22 '\\''ec2-user'\\''@'\\''10.20.20.60'\\'''") {
+	if !strings.Contains(block, "alias devbuild='ssh -i ~/.ssh/dev-istockmall.pem -p 22 ec2-user@10.20.20.60'") {
 		t.Fatalf("expected direct key-based shell alias, got %q", block)
 	}
 	if strings.Contains(block, "ssh -F") {
 		t.Fatalf("expected key-based alias not to use -F, got %q", block)
+	}
+}
+
+func TestRenderBastionShellAliasBlockQuotesOnlyUnsafeArguments(t *testing.T) {
+	servers := []config.ServerConfig{
+		{Name: "search1", Host: "10.10.51.10", SSHPort: 22},
+	}
+
+	block := renderBastionShellAliasBlock(servers, config.BastionConfig{
+		AliasUser:     "ec2-user",
+		TargetKeyPath: "~/.ssh/key with space.pem",
+	})
+
+	if !strings.Contains(block, `alias search1='ssh -i "~/.ssh/key with space.pem" -p 22 ec2-user@10.10.51.10'`) {
+		t.Fatalf("expected only unsafe argument to be quoted, got %q", block)
 	}
 }
 

@@ -36,8 +36,8 @@ func TestBootstrapHostSkipsWhenPackagesAlreadyInstalled(t *testing.T) {
 	headless := true
 	runner := &bootstrapRunner{
 		runResults: map[string]commandResult{
-			packageDetectCommandForTest():               {output: "dnf\n"},
-			"rpm -q 'git'":                              {output: "git-1.0.0\n"},
+			packageDetectCommandForTest(packageManagerDNF): {output: ""},
+			"rpm -q 'git'": {output: "git-1.0.0\n"},
 			"rpm -q 'java-21-amazon-corretto-headless'": {output: "java-21-amazon-corretto-headless-1.0.0\n"},
 		},
 	}
@@ -63,9 +63,9 @@ func TestBootstrapHostInstallsOnlyMissingPackages(t *testing.T) {
 
 	runner := &bootstrapRunner{
 		runResults: map[string]commandResult{
-			packageDetectCommandForTest(): {output: "dnf\n"},
-			"rpm -q 'git'":                {err: fmt.Errorf("package git is not installed")},
-			"rpm -q 'unzip'":              {output: "unzip-1.0.0\n"},
+			packageDetectCommandForTest(packageManagerDNF): {output: ""},
+			"rpm -q 'git'":   {err: fmt.Errorf("package git is not installed")},
+			"rpm -q 'unzip'": {output: "unzip-1.0.0\n"},
 		},
 	}
 
@@ -111,8 +111,8 @@ func TestBootstrapHostDetectsPackageManagerWithNoisyOutput(t *testing.T) {
 
 	runner := &bootstrapRunner{
 		runResults: map[string]commandResult{
-			packageDetectCommandForTest(): {output: "remote warning before command\ndnf\n"},
-			"rpm -q 'git'":                {err: fmt.Errorf("package git is not installed")},
+			packageDetectCommandForTest(packageManagerDNF): {output: "remote warning before command\n"},
+			"rpm -q 'git'": {err: fmt.Errorf("package git is not installed")},
 		},
 	}
 
@@ -133,7 +133,9 @@ func TestBootstrapHostReturnsErrorWhenDNFIsUnavailable(t *testing.T) {
 
 	runner := &bootstrapRunner{
 		runResults: map[string]commandResult{
-			packageDetectCommandForTest(): {output: "apt\n"},
+			packageDetectCommandForTest(packageManagerDNF): {err: fmt.Errorf("dnf missing")},
+			packageDetectCommandForTest(packageManagerYUM): {err: fmt.Errorf("yum missing")},
+			packageDetectCommandForTest("apt"):             {output: ""},
 		},
 	}
 
@@ -150,8 +152,9 @@ func TestBootstrapHostInstallsPackagesViaYumWhenDNFIsUnavailable(t *testing.T) {
 
 	runner := &bootstrapRunner{
 		runResults: map[string]commandResult{
-			packageDetectCommandForTest(): {output: "yum\n"},
-			"rpm -q 'nc'":                 {err: fmt.Errorf("package nc is not installed")},
+			packageDetectCommandForTest(packageManagerDNF): {err: fmt.Errorf("dnf missing")},
+			packageDetectCommandForTest(packageManagerYUM): {output: ""},
+			"rpm -q 'nc'": {err: fmt.Errorf("package nc is not installed")},
 		},
 	}
 
@@ -477,6 +480,15 @@ func testBoolPtr(value bool) *bool {
 	return &value
 }
 
-func packageDetectCommandForTest() string {
-	return "if test -x /usr/bin/dnf || test -x /bin/dnf; then echo dnf; elif test -x /usr/bin/yum || test -x /bin/yum; then echo yum; elif test -x /usr/bin/apt-get || test -x /bin/apt-get; then echo apt; fi"
+func packageDetectCommandForTest(manager string) string {
+	switch manager {
+	case packageManagerDNF:
+		return "test -x /usr/bin/dnf || test -x /bin/dnf"
+	case packageManagerYUM:
+		return "test -x /usr/bin/yum || test -x /bin/yum"
+	case "apt":
+		return "test -x /usr/bin/apt-get || test -x /bin/apt-get"
+	default:
+		return ""
+	}
 }

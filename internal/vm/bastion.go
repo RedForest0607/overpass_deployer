@@ -181,15 +181,19 @@ func renderBastionShellAliasBlock(servers []config.ServerConfig, bastion config.
 
 func renderBastionShellAliasLine(server config.ServerConfig, bastion config.BastionConfig) string {
 	if strings.TrimSpace(bastion.TargetKeyPath) == "" {
-		return fmt.Sprintf("alias %s='ssh -F %s %s'", server.Name, singleQuoteShellValue(bastion.SSHConfigPath), singleQuoteShellValue(server.Name))
+		command := fmt.Sprintf(
+			"ssh -F %s %s",
+			shellAliasArgument(bastion.SSHConfigPath),
+			shellAliasArgument(server.Name),
+		)
+		return fmt.Sprintf("alias %s='%s'", server.Name, singleQuoteShellValue(command))
 	}
 
 	command := fmt.Sprintf(
-		"ssh -i %s -p %d %s@%s",
-		ssh.ShellQuote(strings.TrimSpace(bastion.TargetKeyPath)),
+		"ssh -i %s -p %d %s",
+		shellAliasArgument(strings.TrimSpace(bastion.TargetKeyPath)),
 		server.BastionTargetPort(),
-		ssh.ShellQuote(bastion.AliasUser),
-		ssh.ShellQuote(server.BastionTargetHost()),
+		shellAliasArgument(fmt.Sprintf("%s@%s", bastion.AliasUser, server.BastionTargetHost())),
 	)
 	return fmt.Sprintf("alias %s='%s'", server.Name, singleQuoteShellValue(command))
 }
@@ -236,6 +240,38 @@ func sortedServersByName(servers []config.ServerConfig) []config.ServerConfig {
 // singleQuoteShellValue는 단일 따옴표 안에 넣을 값을 alias 문자열에 맞게 이스케이프한다.
 func singleQuoteShellValue(value string) string {
 	return strings.ReplaceAll(value, "'", `'\''`)
+}
+
+func shellAliasArgument(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return `""`
+	}
+	if isSimpleShellAliasArgument(value) {
+		return value
+	}
+
+	replacer := strings.NewReplacer(
+		`\`, `\\`,
+		`"`, `\"`,
+		`$`, `\$`,
+		"`", "\\`",
+	)
+	return `"` + replacer.Replace(value) + `"`
+}
+
+func isSimpleShellAliasArgument(value string) bool {
+	for _, r := range value {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case strings.ContainsRune("_@%+=:,./~-", r):
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // hostKeyConfigLines는 호스트 키 검증 모드에 맞는 SSH config 라인들을 만든다.

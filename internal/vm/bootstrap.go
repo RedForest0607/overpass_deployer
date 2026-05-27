@@ -379,28 +379,30 @@ func containsLine(output string, expected string) bool {
 
 // detectPackageManager는 원격 서버가 지원하는 패키지 관리자를 확인한다.
 func detectPackageManager(runner ssh.Runner) (string, error) {
-	command := "if test -x /usr/bin/dnf || test -x /bin/dnf; then echo dnf; elif test -x /usr/bin/yum || test -x /bin/yum; then echo yum; elif test -x /usr/bin/apt-get || test -x /bin/apt-get; then echo apt; fi"
-	out, err := runner.Run(command)
-	if err != nil {
-		return "", fmt.Errorf("detecting package manager: %w", err)
+	checks := []struct {
+		manager string
+		command string
+	}{
+		{manager: packageManagerDNF, command: "test -x /usr/bin/dnf || test -x /bin/dnf"},
+		{manager: packageManagerYUM, command: "test -x /usr/bin/yum || test -x /bin/yum"},
+		{manager: "apt", command: "test -x /usr/bin/apt-get || test -x /bin/apt-get"},
 	}
 
-	manager := parsePackageManagerOutput(out)
-	if manager == "" {
-		return "", fmt.Errorf("bootstrap requires yum/dnf-compatible host; apt support is not implemented yet (detected output: %q)", strings.TrimSpace(out))
-	}
-
-	return manager, nil
-}
-
-func parsePackageManagerOutput(out string) string {
-	for _, field := range strings.Fields(out) {
-		switch field {
-		case packageManagerDNF, packageManagerYUM, "apt":
-			return field
+	var failures []string
+	for _, check := range checks {
+		out, err := runner.Run(check.command)
+		if err == nil {
+			return check.manager, nil
+		}
+		if trimmed := strings.TrimSpace(out); trimmed != "" {
+			failures = append(failures, fmt.Sprintf("%s output: %s", check.manager, trimmed))
 		}
 	}
-	return ""
+
+	if len(failures) > 0 {
+		return "", fmt.Errorf("bootstrap requires yum/dnf-compatible host; apt support is not implemented yet (%s)", strings.Join(failures, "; "))
+	}
+	return "", fmt.Errorf("bootstrap requires yum/dnf-compatible host; apt support is not implemented yet")
 }
 
 // detectMissingPackages는 rpm 기준으로 아직 설치되지 않은 패키지만 골라낸다.

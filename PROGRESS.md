@@ -1,6 +1,12 @@
 # Progress
 
 ## Completed
+- 2026-05-27 기준 stock-company prod 배포 및 Elasticsearch 복구 중 발견한 문제를 `docs/stock-company-prod-deployment-issues.md`에 별도 트러블슈팅 문서로 정리
+- 2026-05-27 기준 stock-company prod bo-app1/bo-app2에 nginx bootstrap 배포를 완료하고, nginx active/enabled 및 localhost HTTP 200 응답을 검증
+- 2026-05-27 기준 기존 서버 원본 `infra/istock-mall/elasticsearch.tar`를 기반으로 `ops/stock_company/common|prod/extra_files/elasticsearch.tar.gz` 정리본 재생성 및 교체 완료: Elasticsearch/Kibana `data`/`logs`/`tmp`/`pid`/`optimize` 하위 런타임 파일과 macOS 메타데이터를 제거하고 JDK/실행 스크립트 보존, prod search dry-run 통과
+- 2026-05-27 기준 `infra/istock-mall/elasticsearch.tar` 분석 및 prod search1/search2 수동 반영 완료: archive 내 `es-master`/`es-data` JDK와 Kibana 실행 자산 확인, bastion staging checksum 일치 검증, 각 search 서버 `/tmp/elasticsearch.tar` checksum 일치 후 `/app`에 sudo extract 및 `elasticsearch:elasticsearch` 소유권 보정 완료
+- 2026-05-27 기준 stock-company prod search1/search2 배포 재실행 완료: `/app/elasticsearch/elasticsearch.tar.gz` checksum 일치로 재전송 없이 skip, `/app/elasticsearch` 추출 경로와 4G swap 활성화 검증, bastion alias sync 완료
+- 2026-05-27 기준 stock-company prod app1/app2에 overpass 앱 배포 항목을 제외한 bootstrap/extra_files 배포를 완료하고, app2 `/home/ec2-user/software` 권한 충돌을 정리해 `software.tar` 재압축 해제까지 검증
 - 상위 Git 저장소에서 `TEST/`를 로컬 전용 자산으로 분리: `.gitignore`로 제외하고, 공개용 샘플은 `samples/server-script.sample.sh`로 승격
 - `TEST/`에 독립 Git 저장소용 기본 파일(`.gitignore`, `README.md`)을 추가해 상위 저장소와 테스트 이력을 분리할 준비 완료
 - M1 핵심 골격 구현: `deploy vm --config ...` 진입점, 설정 로드, 순차 VM 배포 러너 연결
@@ -114,7 +120,7 @@
 - ISTOCK-MALL 실계정 리소스 inventory Terraform 추가: `infra/istock-mall`에서 계정 guardrail, 기존 VPC/Subnet/EC2/SG/ALB/RDS data source, dev/stage/prod deploy placeholder output 정리
 - ISTOCK-MALL inventory output 기준으로 `ops/stock_company/dev|stage|prod/deploy.yml` host/bastion placeholder를 실제 private IP로 동기화하고 dev/stage/prod 대표 태그 dry-run 통과
 - `bootstrap.services[]` 선언형 서비스 관리 추가: 패키지 설치 이후 `systemctl enable/disable/start/stop/restart`를 idempotent하게 실행하고 nginx 예시와 회귀 테스트 반영
-- stock-company prod 운영 deploy에 `bo-web1`, `bo-web2` nginx 전용 서버 항목 추가: JDK 설치 제외, `nginx` 패키지 설치 및 서비스 enable/start 선언
+- stock-company prod 운영 deploy에 AWS 리소스명과 맞춘 `bo-app1`, `bo-app2` nginx 전용 서버 항목 추가: JDK 설치 제외, `nginx` 패키지 설치 및 서비스 enable/start 선언
 - `bootstrap.docker_compose` 수동 설치 옵션 추가: 패키지 매니저 대신 지정 URL에서 Docker Compose v2 바이너리를 받아 CLI plugin 경로에 설치하고 버전/idempotency 검증을 수행하도록 구현
 - istock mall dev Docker Compose 서버 설정 보정: `devbuild`/`devapp`에서 `docker-compose-plugin` 패키지 의존을 제거하고 Docker 서비스 enable/start 및 Compose v2 수동 설치를 선언, `devbuild`는 host JDK 설치 제외
 - `infra/istock-mall` inventory에서 기존 `istockmall-VPC-prd`(`10.0.0.0/16`) 관련 VPC/NAT/Route Table/ALB/NLB/RDS 항목 제외
@@ -123,6 +129,7 @@
 - swap bootstrap 보강: `/swapfile`이 없거나 swap 서명이 없을 때도 단일 sudo 단계에서 생성/권한 보정/mkswap/swapon을 보장하도록 수정
 - stock-company dev/prod `OLD_yamls` 기준 application YAML env placeholder 분리본 추가: `NEW_yamls`에 Redis host/port/password/sentinel node, MongoDB nodes, datasource 접속 정보, 내부 API URL, Hazelcast/AWS 접속 값을 `${...}` 형태로 치환
 - iSTOCK-MALL AWS 인프라 Terraform 디렉토리(`infra/istock-mall/`)는 main 브랜치 추적 대상에서 제외하고, 별도 운영 브랜치/저장소에서 관리하는 방향으로 정리
+- 2026-05-27 기준 prod bastion 경유로 `cache1/cache2/search1/search2` 파일 배포 완료: MongoDB/Hazelcast/Elasticsearch tar checksum 일치와 압축 해제 경로 확인
 
 ## Next To-Do
 - `TEST/` 독립 저장소의 원격(origin) 연결 여부와 ignore 규칙을 실제 팀 운영 방식에 맞게 확정
@@ -165,6 +172,8 @@
 - stock-company dev 서버별 Kafka/Redis/MongoDB/Hazelcast/Elasticsearch 압축 해제 및 compose 실행 절차를 후속 스크립트로 정리
 - istock dev build 서버에서 Docker Compose 수동 설치 후 `docker compose version`, Docker 권한(`jenkins` user/group), Jenkins `aws --version`, GitLab external URL/IP, 80/443/8080/8081/2222 포트 충돌 여부를 실제 서버 기준으로 검증
 - 보류 중인 ScyllaDB compose/config/manager-agent 배포 파일 구성을 확정한 뒤 `devapm2`에 재반영
-- bo-web EC2 2대에 nginx bootstrap을 `--server-tag bo-web` 기준으로 dry-run/실배포 검증
+- bo-app EC2 2대에 nginx bootstrap을 `--server-tag bo-app` 기준으로 dry-run/실배포 검증
 - WAS가 실행되는 EC2별 `.env` 파일에 `NEW_yamls`의 `${...}` 변수 값을 채우고, systemd `EnvironmentFile` 또는 실행 스크립트 `source` 방식으로 Spring Boot 프로세스에 주입되는지 검증
 - iSTOCK-MALL AWS 인프라 Terraform 코드는 main이 아닌 별도 운영 브랜치/저장소에서 state/import 정책과 함께 관리
+- search1/search2에서 target-side bastion `known_hosts` 등록 warning의 네트워크/보안그룹 원인을 확인하고 필요 시 예외 처리 또는 SG 규칙을 정리
+- `/app/elasticsearch`처럼 서비스 유저가 소유한 경로에 대용량 archive를 반영할 때 deployer가 staging path + sudo extract + 최종 chown 흐름을 선언적으로 지원하도록 개선
