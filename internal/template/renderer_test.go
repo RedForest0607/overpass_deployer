@@ -10,7 +10,7 @@ func TestRenderUsesEmbeddedTemplateAndSubstitutesVariables(t *testing.T) {
 	tmpFile, err := Render("embedded:server.sh.tmpl", "server.sh", map[string]any{
 		"AppName":       "sample-app",
 		"BaseDir":       "/opt/sample",
-		"JarPath":       "/opt/sample/bin/app.jar",
+		"JarPath":       "/opt/sample/lib/app.jar",
 		"Port":          8080,
 		"JvmMin":        "256m",
 		"JvmMax":        "1g",
@@ -33,13 +33,19 @@ func TestRenderUsesEmbeddedTemplateAndSubstitutesVariables(t *testing.T) {
 	for _, fragment := range []string{
 		`APP_NAME="sample-app"`,
 		`# 1. 애플리케이션 설정 (이 부분의 값만 수정하세요)`,
-		`JAR_FILE="/opt/sample/bin/app.jar"`,
+		`JAR_FILE="/opt/sample/lib/app.jar"`,
 		`CONTEXT_PATH="${CONTEXT_PATH:-health}"`,
 		`ACTIVE_PROFILE="${ACTIVE_PROFILE:-prod}"`,
 		`#hamonica`,
 		`HAMONICA_HOME="${HAMONICA_HOME:-/app/software/hamonica2-agent}"`,
 		`HAMONICA_JAVA_AGENT="${HAMONICA_JAVA_AGENT:-}"`,
 		`HAMONICA_CONFIG_FILE="${HAMONICA_CONFIG_FILE:-}"`,
+		`CONF_DIR="${BASE_DIR}/config"`,
+		`ENV_FILE="${ENV_FILE:-${CONF_DIR}/${APP_NAME}.env}"`,
+		`. "${ENV_FILE}"`,
+		`echo "환경변수 파일 로드: ${ENV_FILE}"`,
+		`SPRING_CONFIG_LOCATION="${SPRING_CONFIG_LOCATION:-}"`,
+		`SPRING_OPTS+=" --spring.config.additional-location=file:${CONF_DIR}/application.yml"`,
 		`JAVA_OPTS+="-Dspring.profiles.active=prod "`,
 		`SPRING_OPTS+=" --debug"`,
 		`status() {`,
@@ -53,11 +59,47 @@ func TestRenderUsesEmbeddedTemplateAndSubstitutesVariables(t *testing.T) {
 	}
 }
 
+func TestRenderUsesCustomSpringConfigLocation(t *testing.T) {
+	tmpFile, err := Render("embedded:server.sh.tmpl", "server.sh", map[string]any{
+		"AppName":                "sample-app",
+		"BaseDir":                "/opt/sample",
+		"JarPath":                "/opt/sample/lib/app.jar",
+		"Port":                   8080,
+		"JvmMin":                 "256m",
+		"JvmMax":                 "1g",
+		"JavaOpts":               []string{},
+		"ExtraOpts":              []string{},
+		"ActiveProfile":          "prd",
+		"ContextPath":            "",
+		"SPRING_CONFIG_LOCATION": "classpath:/application-commons.yml,file:${CONF_DIR}/application.yml",
+	})
+	if err != nil {
+		t.Fatalf("render failed: %v", err)
+	}
+	defer os.Remove(tmpFile)
+
+	content, err := os.ReadFile(tmpFile)
+	if err != nil {
+		t.Fatalf("reading rendered file: %v", err)
+	}
+
+	rendered := string(content)
+	for _, fragment := range []string{
+		`SPRING_CONFIG_LOCATION="${SPRING_CONFIG_LOCATION:-classpath:/application-commons.yml,file:${CONF_DIR}/application.yml}"`,
+		`SPRING_OPTS+=" --spring.config.location=${SPRING_CONFIG_LOCATION}"`,
+		`SPRING_OPTS+=" --spring.config.additional-location=file:${CONF_DIR}/application.yml"`,
+	} {
+		if !strings.Contains(rendered, fragment) {
+			t.Fatalf("expected rendered template to contain %q, got:\n%s", fragment, rendered)
+		}
+	}
+}
+
 func TestRenderUsesTemplateValuesForHamonicaVariables(t *testing.T) {
 	tmpFile, err := Render("embedded:server.sh.tmpl", "server.sh", map[string]any{
 		"AppName":              "sample-app",
 		"BaseDir":              "/opt/sample",
-		"JarPath":              "/opt/sample/bin/app.jar",
+		"JarPath":              "/opt/sample/lib/app.jar",
 		"Port":                 8080,
 		"JvmMin":               "256m",
 		"JvmMax":               "1g",

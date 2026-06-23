@@ -40,9 +40,14 @@ func Run(cfg *config.Config) error {
 
 // RunWithOptions는 태그 필터와 dry-run 옵션을 적용한 뒤 서버별 배포와 배스천 동기화를 수행한다.
 func RunWithOptions(cfg *config.Config, opts RunOptions) error {
+	opts.DirectoryRules = cfg.DirectoryDefaults.Rules
+
 	filteredCfg, err := filterConfig(cfg, opts)
 	if err != nil {
 		return err
+	}
+	if opts.BastionOnly {
+		return syncBastionWithOptions(filteredCfg, opts)
 	}
 	estimate, err := estimateConfigDeployment(filteredCfg)
 	if err != nil {
@@ -63,7 +68,7 @@ func RunWithOptions(cfg *config.Config, opts RunOptions) error {
 		return err
 	}
 
-	if err := syncBastionWithOptions(cfg, opts); err != nil {
+	if err := syncBastionWithOptions(filteredCfg, opts); err != nil {
 		return err
 	}
 

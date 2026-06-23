@@ -36,6 +36,12 @@ bootstrap:
       enabled: true
       state: started
 
+directory_defaults:
+  rules:
+    - prefix: /app
+      owner: ec2-user
+      group: ec2-user
+
 servers:
   - host: 10.0.1.10
     # 사용자가 정하는 논리 이름입니다.
@@ -59,7 +65,7 @@ servers:
         - --spring.profiles.active=prod
       jar:
         local_path: ./dist/sample-api.jar
-        remote_path: /app/overpass/sample-api/bin/sample-api.jar
+        remote_path: /app/overpass/sample-api/lib/sample-api.jar
       jvm:
         min_heap: 256m
         max_heap: 1g
@@ -90,7 +96,7 @@ servers:
       port: 8081
       jar:
         local_path: ./dist/sample-api-copy-script.jar
-        remote_path: /app/overpass/sample-api-copy-script/bin/sample-api-copy-script.jar
+        remote_path: /app/overpass/sample-api-copy-script/lib/sample-api-copy-script.jar
       config_files:
         - local_path: ./configs/application-prod.yml
           remote_path: /app/overpass/sample-api-copy-script/config/application.yml

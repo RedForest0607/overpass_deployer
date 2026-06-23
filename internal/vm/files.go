@@ -50,7 +50,8 @@ func DeployServerExtraFiles(client *ssh.Client, extraFiles []config.ExtraFile, o
 func deployExtraFiles(client *ssh.Client, extraFiles []config.ExtraFile, opts RunOptions, host string) error {
 	host = runnerHost(client, host)
 	for _, ef := range extraFiles {
-		if err := scp.Transfer(client, ef.LocalPath, ef.RemotePath, scp.TransferOptions{
+		transferPath := extraFileTransferPath(ef)
+		if err := scp.Transfer(client, ef.LocalPath, transferPath, scp.TransferOptions{
 			DryRun:  opts.DryRun,
 			Host:    host,
 			Session: opts.TransferSession,
@@ -60,9 +61,9 @@ func deployExtraFiles(client *ssh.Client, extraFiles []config.ExtraFile, opts Ru
 
 		if ef.Chmod != "" {
 			if opts.DryRun {
-				logger.Info(host, "DRY-RUN: would chmod %s %s", ef.Chmod, ef.RemotePath)
-			} else if err := applyRemoteFileMode(client, ef.RemotePath, ef.Chmod); err != nil {
-				return fmt.Errorf("chmod extra file %s: %w", ef.RemotePath, err)
+				logger.Info(host, "DRY-RUN: would chmod %s %s", ef.Chmod, transferPath)
+			} else if err := applyRemoteFileMode(client, transferPath, ef.Chmod); err != nil {
+				return fmt.Errorf("chmod extra file %s: %w", transferPath, err)
 			}
 		}
 
@@ -71,7 +72,14 @@ func deployExtraFiles(client *ssh.Client, extraFiles []config.ExtraFile, opts Ru
 		}
 
 		if opts.DryRun {
-			logger.Info(host, "DRY-RUN: would extract %s to %s", ef.RemotePath, ef.Extract.RemoteDir)
+			action := "extract"
+			if ef.Extract.Sudo {
+				action = "sudo extract"
+			}
+			logger.Info(host, "DRY-RUN: would %s %s to %s", action, transferPath, ef.Extract.RemoteDir)
+			if ef.Extract.Owner != "" {
+				logger.Info(host, "DRY-RUN: would chown %s to %s:%s (recursive=%t)", ef.Extract.RemoteDir, ef.Extract.Owner, ef.Extract.Group, ef.Extract.ChownRecursive)
+			}
 			continue
 		}
 
@@ -80,6 +88,13 @@ func deployExtraFiles(client *ssh.Client, extraFiles []config.ExtraFile, opts Ru
 		}
 	}
 	return nil
+}
+
+func extraFileTransferPath(extraFile config.ExtraFile) string {
+	if extraFile.Extract.Enabled && extraFile.Extract.Sudo && extraFile.Extract.StagingPath != "" {
+		return extraFile.Extract.StagingPath
+	}
+	return extraFile.RemotePath
 }
 
 // applyRemoteFileMode는 원격 파일에 검증된 chmod 모드를 적용한다.
@@ -91,7 +106,7 @@ func applyRemoteFileMode(runner ssh.Runner, remotePath string, mode string) erro
 
 // applyRemoteArchiveExtraction은 전송된 tar 파일을 지정된 원격 디렉터리에 압축 해제한다.
 func applyRemoteArchiveExtraction(runner ssh.Runner, extraFile config.ExtraFile) error {
-	setupCmd := buildExtractDirectorySetupCommand(extraFile.Extract.RemoteDir)
+	setupCmd := buildExtractDirectorySetupCommand(extraFile.Extract.RemoteDir, !extraFile.Extract.Sudo)
 	if _, err := runner.RunSudo(setupCmd); err != nil {
 		return fmt.Errorf("prepare extract directory %s: %w", extraFile.Extract.RemoteDir, err)
 	}
@@ -100,29 +115,38 @@ func applyRemoteArchiveExtraction(runner ssh.Runner, extraFile config.ExtraFile)
 	if err != nil {
 		return err
 	}
+	if extraFile.Extract.Sudo || extraFile.Extract.Owner != "" {
+		_, err = runner.RunSudo(cmd)
+		return err
+	}
 	_, err = runner.Run(cmd)
 	return err
 }
 
 // buildExtractDirectorySetupCommand는 압축 해제 대상 디렉터리만 준비한다.
 // 하위 전체를 chown하지 않아 기존 파일 권한을 넓게 바꾸지 않는다.
-func buildExtractDirectorySetupCommand(remoteDir string) string {
+func buildExtractDirectorySetupCommand(remoteDir string, writableBySudoUser bool) string {
 	quotedRemoteDir := ssh.ShellQuote(remoteDir)
 	innerCommand := strings.Join([]string{
 		"set -eu",
 		fmt.Sprintf("base_dir=%s", quotedRemoteDir),
-		`owner_name="${SUDO_USER:-$(id -un)}"`,
-		`owner_group="$(id -gn "${owner_name}")"`,
 		`mkdir -p "${base_dir}"`,
-		`chown "${owner_name}:${owner_group}" "${base_dir}"`,
 	}, "; ")
+	if writableBySudoUser {
+		innerCommand += "; " + strings.Join([]string{
+			`owner_name="${SUDO_USER:-$(id -un)}"`,
+			`owner_group="$(id -gn "${owner_name}")"`,
+			`chown "${owner_name}:${owner_group}" "${base_dir}"`,
+		}, "; ")
+	}
 
 	return "sh -lc " + ssh.ShellQuote(innerCommand)
 }
 
 // buildRemoteArchiveExtractionCommand는 지원하는 tar 계열 아카이브만 안전하게 압축 해제하는 명령을 만든다.
 func buildRemoteArchiveExtractionCommand(extraFile config.ExtraFile) (string, error) {
-	flags, err := tarExtractionFlags(extraFile.RemotePath)
+	archivePath := extraFileTransferPath(extraFile)
+	flags, err := tarExtractionFlags(archivePath)
 	if err != nil {
 		return "", err
 	}
@@ -130,13 +154,26 @@ func buildRemoteArchiveExtractionCommand(extraFile config.ExtraFile) (string, er
 	parts := []string{
 		fmt.Sprintf("tar %s %s -C %s",
 			flags,
-			ssh.ShellQuote(extraFile.RemotePath),
+			ssh.ShellQuote(archivePath),
 			ssh.ShellQuote(extraFile.Extract.RemoteDir),
 		),
 	}
 
 	if extraFile.Extract.StripComponents > 0 {
 		parts[0] += fmt.Sprintf(" --strip-components=%d", extraFile.Extract.StripComponents)
+	}
+	if extraFile.Extract.Owner != "" {
+		target := ssh.ShellQuote(extraFile.Extract.RemoteDir)
+		owner := extraFile.Extract.Owner
+		group := extraFile.Extract.Group
+		if group == "" {
+			group = owner
+		}
+		chownFlag := ""
+		if extraFile.Extract.ChownRecursive {
+			chownFlag = "-R "
+		}
+		parts = append(parts, fmt.Sprintf("chown %s%s %s", chownFlag, ssh.ShellQuote(owner+":"+group), target))
 	}
 
 	return strings.Join(parts, " && "), nil

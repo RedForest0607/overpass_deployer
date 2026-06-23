@@ -84,6 +84,50 @@ func TestBootstrapHostInstallsOnlyMissingPackages(t *testing.T) {
 	}
 }
 
+func TestBootstrapHostEnsuresUsersAndSysctls(t *testing.T) {
+	t.Helper()
+
+	runner := &bootstrapRunner{}
+	system := true
+	createHome := false
+
+	err := BootstrapHost(runner, config.BootstrapConfig{
+		Users: []config.UserConfig{
+			{
+				Name:       "elasticsearch",
+				Group:      "elasticsearch",
+				UID:        992,
+				GID:        992,
+				Home:       "/home/elasticsearch",
+				Shell:      "/sbin/nologin",
+				System:     &system,
+				CreateHome: &createHome,
+			},
+		},
+		Sysctls: []config.SysctlConfig{
+			{Name: "vm.max_map_count", Value: "262144", PersistPath: "/etc/sysctl.d/99-elasticsearch.conf"},
+		},
+	}, RunOptions{}, "search-01")
+	if err != nil {
+		t.Fatalf("expected user/sysctl bootstrap to succeed, got %v", err)
+	}
+	if len(runner.sudoCommands) != 2 {
+		t.Fatalf("expected two sudo commands, got %v", runner.sudoCommands)
+	}
+	userCommand := runner.sudoCommands[0]
+	for _, expected := range []string{"groupadd -r -g", "useradd -r -u", "992", "-g \"${group_name}\"", "-M", "/home/elasticsearch", "/sbin/nologin"} {
+		if !strings.Contains(userCommand, expected) {
+			t.Fatalf("expected user command to contain %q, got %q", expected, userCommand)
+		}
+	}
+	sysctlCommand := runner.sudoCommands[1]
+	for _, expected := range []string{"sysctl -w", "vm.max_map_count", "262144", "/etc/sysctl.d/99-elasticsearch.conf"} {
+		if !strings.Contains(sysctlCommand, expected) {
+			t.Fatalf("expected sysctl command to contain %q, got %q", expected, sysctlCommand)
+		}
+	}
+}
+
 func TestPackagesForBootstrapSkipsDisabledJDK(t *testing.T) {
 	t.Helper()
 

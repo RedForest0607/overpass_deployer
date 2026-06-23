@@ -85,7 +85,7 @@ func TestRunWithOptionsDryRunSkipsSSHConnect(t *testing.T) {
 					BaseDir: "/srv/app",
 					Jar: config.JarConfig{
 						LocalPath:  tempFile(t, "app.jar"),
-						RemotePath: "/srv/app/bin/app.jar",
+						RemotePath: "/srv/app/lib/app.jar",
 					},
 					ConfigFiles: []config.ConfigFile{
 						{LocalPath: tempFile(t, "application.yml"), RemotePath: "/srv/app/config/application.yml"},
@@ -103,6 +103,43 @@ func TestRunWithOptionsDryRunSkipsSSHConnect(t *testing.T) {
 	}
 	if connectCalled {
 		t.Fatalf("expected dry-run to skip ssh connect")
+	}
+}
+
+func TestRunWithOptionsBastionOnlySkipsServerDeployment(t *testing.T) {
+	t.Helper()
+
+	originalConnect := connectSSH
+	originalBootstrap := bootstrapHostStep
+	t.Cleanup(func() {
+		connectSSH = originalConnect
+		bootstrapHostStep = originalBootstrap
+	})
+
+	connectCalled := false
+	connectSSH = func(sshCfg config.SSHConfig, host string) (*ssh.Client, error) {
+		connectCalled = true
+		return nil, nil
+	}
+	bootstrapHostStep = func(runner ssh.Runner, bootstrap config.BootstrapConfig, opts RunOptions, host string) error {
+		t.Fatalf("expected bastion-only run to skip server deployment")
+		return nil
+	}
+
+	cfg := &config.Config{
+		Bastion: config.BastionConfig{
+			Host: "bastion.example.internal",
+		},
+		Servers: []config.ServerConfig{
+			{Name: "app-01", Host: "10.0.0.10"},
+		},
+	}
+
+	if err := RunWithOptions(cfg, RunOptions{BastionOnly: true, DryRun: true}); err != nil {
+		t.Fatalf("expected bastion-only dry-run to succeed, got %v", err)
+	}
+	if connectCalled {
+		t.Fatalf("expected bastion-only dry-run to skip server ssh connect")
 	}
 }
 
@@ -175,7 +212,7 @@ func TestRunWithOptionsDryRunBootstrapsBeforeOtherSteps(t *testing.T) {
 					BaseDir: "/srv/app",
 					Jar: config.JarConfig{
 						LocalPath:  tempFile(t, "app.jar"),
-						RemotePath: "/srv/app/bin/app.jar",
+						RemotePath: "/srv/app/lib/app.jar",
 					},
 				},
 			},
@@ -234,7 +271,7 @@ func TestRunWithOptionsStopsWhenBootstrapFails(t *testing.T) {
 					BaseDir: "/srv/app",
 					Jar: config.JarConfig{
 						LocalPath:  tempFile(t, "app.jar"),
-						RemotePath: "/srv/app/bin/app.jar",
+						RemotePath: "/srv/app/lib/app.jar",
 					},
 				},
 			},
@@ -321,7 +358,7 @@ func TestRunWithOptionsDryRunDeploysEachAppOnServer(t *testing.T) {
 						BaseDir: "/srv/app-a",
 						Jar: config.JarConfig{
 							LocalPath:  tempFile(t, "app-a.jar"),
-							RemotePath: "/srv/app-a/bin/app.jar",
+							RemotePath: "/srv/app-a/lib/app.jar",
 						},
 					},
 					{
@@ -329,7 +366,7 @@ func TestRunWithOptionsDryRunDeploysEachAppOnServer(t *testing.T) {
 						BaseDir: "/srv/app-b",
 						Jar: config.JarConfig{
 							LocalPath:  tempFile(t, "app-b.jar"),
-							RemotePath: "/srv/app-b/bin/app.jar",
+							RemotePath: "/srv/app-b/lib/app.jar",
 						},
 					},
 				},

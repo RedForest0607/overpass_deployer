@@ -1,6 +1,6 @@
 AppName: sample-api
 BaseDir: /opt/sample-api
-JarPath: /app/overpass/sample-api/bin/sample-api.jar
+JarPath: /app/overpass/sample-api/lib/sample-api.jar
 Port: 8080
 JvmMin: 256m
 JvmMax: 1g

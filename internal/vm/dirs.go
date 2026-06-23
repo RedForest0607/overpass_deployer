@@ -15,6 +15,7 @@ func CreateDirectories(runner ssh.Runner, app *config.AppConfig, opts RunOptions
 	dirs := []string{
 		filepath.ToSlash(filepath.Join(app.BaseDir, "bin")),
 		filepath.ToSlash(filepath.Join(app.BaseDir, "config")),
+		filepath.ToSlash(filepath.Join(app.BaseDir, "lib")),
 		filepath.ToSlash(filepath.Join(app.BaseDir, "logs")),
 	}
 
@@ -44,7 +45,7 @@ func createDirectoryPaths(runner ssh.Runner, directories []string, opts RunOptio
 	host = runnerHost(runner, host)
 	logger.Info(host, "%s directories in %s...", actionLabel(opts, "creating"), ownerBase)
 
-	setupCmd := buildPrivilegedDirectorySetupCommand(ownerBase)
+	setupCmd := buildPrivilegedDirectorySetupCommandWithRules(ownerBase, opts.DirectoryRules)
 	if opts.DryRun {
 		logger.Info(host, "DRY-RUN: would try sudo setup command: %s", setupCmd)
 	} else if _, err := runner.RunSudo(setupCmd); err != nil {
@@ -68,14 +69,92 @@ func createDirectoryPaths(runner ssh.Runner, directories []string, opts RunOptio
 
 // buildPrivilegedDirectorySetupCommand는 sudo로 기준 디렉터리 생성과 소유권 보정을 수행할 명령을 만든다.
 func buildPrivilegedDirectorySetupCommand(baseDir string) string {
+	return buildPrivilegedDirectorySetupCommandWithRules(baseDir, nil)
+}
+
+func buildPrivilegedDirectorySetupCommandWithRules(baseDir string, rules []config.DirectoryOwnershipRule) string {
 	quotedBaseDir := ssh.ShellQuote(baseDir)
-	innerCommand := strings.Join([]string{
+	parts := []string{
 		"set -eu",
 		fmt.Sprintf("base_dir=%s", quotedBaseDir),
-		`owner_name="${SUDO_USER:-$(id -un)}"`,
-		`owner_group="$(id -gn "${owner_name}")"`,
-		`if [ ! -d "${base_dir}" ]; then mkdir -p "${base_dir}" && chown "${owner_name}:${owner_group}" "${base_dir}"; fi`,
-	}, "; ")
+	}
+
+	if rule, ok := selectDirectoryOwnershipRule(baseDir, rules); ok {
+		managedDirs := managedDirectoriesForRule(rule.Prefix, baseDir)
+		quotedDirs := make([]string, 0, len(managedDirs))
+		for _, dir := range managedDirs {
+			quotedDirs = append(quotedDirs, ssh.ShellQuote(dir))
+		}
+		ownerSpec := ssh.ShellQuote(rule.Owner + ":" + rule.Group)
+		parts = append(parts,
+			fmt.Sprintf("owner_spec=%s", ownerSpec),
+			`mkdir -p "${base_dir}"`,
+			fmt.Sprintf(`for managed_dir in %s; do [ -d "${managed_dir}" ] && chown "${owner_spec}" "${managed_dir}"; done`, strings.Join(quotedDirs, " ")),
+		)
+	} else {
+		parts = append(parts,
+			`owner_name="${SUDO_USER:-$(id -un)}"`,
+			`owner_group="$(id -gn "${owner_name}")"`,
+			`if [ ! -d "${base_dir}" ]; then mkdir -p "${base_dir}" && chown "${owner_name}:${owner_group}" "${base_dir}"; fi`,
+		)
+	}
+
+	innerCommand := strings.Join(parts, "; ")
 
 	return "sh -lc " + ssh.ShellQuote(innerCommand)
+}
+
+func selectDirectoryOwnershipRule(path string, rules []config.DirectoryOwnershipRule) (config.DirectoryOwnershipRule, bool) {
+	cleanPath := cleanDirectoryPath(path)
+	var selected config.DirectoryOwnershipRule
+	selectedLength := -1
+
+	for _, rule := range rules {
+		prefix := cleanDirectoryPath(rule.Prefix)
+		if !pathMatchesPrefix(cleanPath, prefix) {
+			continue
+		}
+		if len(prefix) > selectedLength {
+			rule.Prefix = prefix
+			selected = rule
+			selectedLength = len(prefix)
+		}
+	}
+
+	return selected, selectedLength >= 0
+}
+
+func managedDirectoriesForRule(prefix, path string) []string {
+	cleanPrefix := cleanDirectoryPath(prefix)
+	cleanPath := cleanDirectoryPath(path)
+	if !pathMatchesPrefix(cleanPath, cleanPrefix) {
+		return []string{cleanPath}
+	}
+	if cleanPath == cleanPrefix {
+		return []string{cleanPrefix}
+	}
+
+	relativePath := strings.TrimPrefix(cleanPath, cleanPrefix+"/")
+	parts := strings.Split(relativePath, "/")
+	dirs := []string{cleanPrefix}
+	current := cleanPrefix
+	for _, part := range parts {
+		if part == "" {
+			continue
+		}
+		current = filepath.ToSlash(filepath.Join(current, part))
+		dirs = append(dirs, current)
+	}
+	return dirs
+}
+
+func cleanDirectoryPath(path string) string {
+	return filepath.ToSlash(filepath.Clean(strings.TrimSpace(path)))
+}
+
+func pathMatchesPrefix(path, prefix string) bool {
+	if prefix == "/" {
+		return strings.HasPrefix(path, "/")
+	}
+	return path == prefix || strings.HasPrefix(path, prefix+"/")
 }

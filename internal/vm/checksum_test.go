@@ -13,11 +13,19 @@ func TestCollectRemoteFilePathsDeduplicatesServerAndAppFiles(t *testing.T) {
 	paths := collectRemoteFilePaths(config.ServerConfig{
 		ExtraFiles: []config.ExtraFile{
 			{RemotePath: "/opt/shared/software.tar"},
+			{
+				RemotePath: "/app/elasticsearch/elasticsearch.tar.gz",
+				Extract: config.ExtractConfig{
+					Enabled:     true,
+					Sudo:        true,
+					StagingPath: "/tmp/elasticsearch.tar.gz",
+				},
+			},
 		},
 		App: config.AppConfig{
 			BaseDir: "/app/sample",
 			Jar: config.JarConfig{
-				RemotePath: "/app/sample/bin/app.jar",
+				RemotePath: "/app/sample/lib/app.jar",
 			},
 			ConfigFiles: []config.ConfigFile{
 				{RemotePath: "/app/sample/config/application.yml"},
@@ -33,7 +41,8 @@ func TestCollectRemoteFilePathsDeduplicatesServerAndAppFiles(t *testing.T) {
 
 	want := strings.Join([]string{
 		"/opt/shared/software.tar",
-		"/app/sample/bin/app.jar",
+		"/tmp/elasticsearch.tar.gz",
+		"/app/sample/lib/app.jar",
 		"/app/sample/config/application.yml",
 		"/app/sample/bin/server.sh",
 	}, "\n")
@@ -46,23 +55,23 @@ func TestFetchRemoteSHA256BatchInitializesMissingFiles(t *testing.T) {
 	t.Helper()
 
 	runner := &checksumRunner{
-		output: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  /app/sample/bin/app.jar\n",
+		output: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  /app/sample/lib/app.jar\n",
 	}
 
 	hashes, err := fetchRemoteSHA256Batch(runner, []string{
-		"/app/sample/bin/app.jar",
-		"/app/sample/bin/missing.jar",
+		"/app/sample/lib/app.jar",
+		"/app/sample/lib/missing.jar",
 	})
 	if err != nil {
 		t.Fatalf("expected batch checksum to succeed, got %v", err)
 	}
-	if hashes["/app/sample/bin/app.jar"] != "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" {
-		t.Fatalf("expected existing hash to be parsed, got %q", hashes["/app/sample/bin/app.jar"])
+	if hashes["/app/sample/lib/app.jar"] != "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" {
+		t.Fatalf("expected existing hash to be parsed, got %q", hashes["/app/sample/lib/app.jar"])
 	}
-	if hashes["/app/sample/bin/missing.jar"] != "" {
-		t.Fatalf("expected missing hash to be empty, got %q", hashes["/app/sample/bin/missing.jar"])
+	if hashes["/app/sample/lib/missing.jar"] != "" {
+		t.Fatalf("expected missing hash to be empty, got %q", hashes["/app/sample/lib/missing.jar"])
 	}
-	if !strings.Contains(runner.command, "sha256sum") || !strings.Contains(runner.command, "/app/sample/bin/app.jar") {
+	if !strings.Contains(runner.command, "sha256sum") || !strings.Contains(runner.command, "/app/sample/lib/app.jar") {
 		t.Fatalf("expected batched sha256sum command, got %q", runner.command)
 	}
 }

@@ -33,7 +33,7 @@ func TestValidateAndApplyDefaultsRejectsInvalidInputs(t *testing.T) {
 					ExtraOpts: StringList{"", "--debug"},
 					Jar: JarConfig{
 						LocalPath:  jarPath,
-						RemotePath: "/opt/sample/bin/app.jar",
+						RemotePath: "/opt/sample/lib/app.jar",
 					},
 					ConfigFiles: []ConfigFile{
 						{LocalPath: configPath, RemotePath: "/opt/sample/config/application.yml"},
@@ -118,7 +118,7 @@ func TestValidateAndApplyDefaultsMergesBootstrapSettings(t *testing.T) {
 					Port:    8080,
 					Jar: JarConfig{
 						LocalPath:  jarPath,
-						RemotePath: "/opt/sample/bin/app.jar",
+						RemotePath: "/opt/sample/lib/app.jar",
 					},
 				},
 			},
@@ -174,6 +174,64 @@ func TestValidateAndApplyDefaultsMergesBootstrapSettings(t *testing.T) {
 	}
 	if gotCompose.InstallPath != "/usr/local/lib/docker/cli-plugins/docker-compose" {
 		t.Fatalf("expected overridden docker compose install path, got %q", gotCompose.InstallPath)
+	}
+}
+
+func TestValidateAndApplyDefaultsMergesBootstrapUsersAndSysctls(t *testing.T) {
+	keyPath := writeTempFile(t, "id_rsa", "key")
+
+	cfg := &Config{
+		SSH: SSHConfig{
+			User:    "deploy",
+			KeyPath: keyPath,
+		},
+		Bootstrap: BootstrapConfig{
+			Users: []UserConfig{
+				{Name: "elasticsearch", Group: "elastic", Shell: "/sbin/nologin"},
+			},
+			Sysctls: []SysctlConfig{
+				{Name: "vm.max_map_count", Value: "65530"},
+			},
+		},
+		Servers: []ServerConfig{
+			{
+				Host: "search.example.com",
+				Bootstrap: BootstrapConfig{
+					Users: []UserConfig{
+						{Name: "elasticsearch", Group: "elasticsearch", Home: "/home/elasticsearch"},
+					},
+					Sysctls: []SysctlConfig{
+						{Name: "vm.max_map_count", Value: "262144", PersistPath: "/etc/sysctl.d/99-elasticsearch.conf"},
+					},
+				},
+			},
+		},
+	}
+
+	if err := ValidateAndApplyDefaults(cfg); err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+
+	users := cfg.Servers[0].Bootstrap.Users
+	if len(users) != 1 {
+		t.Fatalf("expected one merged user, got %#v", users)
+	}
+	if users[0].Group != "elasticsearch" || users[0].Home != "/home/elasticsearch" {
+		t.Fatalf("unexpected merged user: %#v", users[0])
+	}
+	if users[0].System == nil || !*users[0].System {
+		t.Fatalf("expected system user default true, got %#v", users[0].System)
+	}
+	if users[0].CreateHome == nil || *users[0].CreateHome {
+		t.Fatalf("expected create_home default false, got %#v", users[0].CreateHome)
+	}
+
+	sysctls := cfg.Servers[0].Bootstrap.Sysctls
+	if len(sysctls) != 1 {
+		t.Fatalf("expected one merged sysctl, got %#v", sysctls)
+	}
+	if sysctls[0].Value != "262144" || sysctls[0].PersistPath != "/etc/sysctl.d/99-elasticsearch.conf" {
+		t.Fatalf("unexpected merged sysctl: %#v", sysctls[0])
 	}
 }
 
@@ -287,7 +345,7 @@ func TestValidateAndApplyDefaultsRejectsInvalidBootstrapSettings(t *testing.T) {
 					Port:    8080,
 					Jar: JarConfig{
 						LocalPath:  jarPath,
-						RemotePath: "/opt/sample/bin/app.jar",
+						RemotePath: "/opt/sample/lib/app.jar",
 					},
 				},
 			},
@@ -317,6 +375,48 @@ func TestValidateAndApplyDefaultsRejectsInvalidBootstrapSettings(t *testing.T) {
 	}
 }
 
+func TestValidateAndApplyDefaultsRejectsInvalidBootstrapUsersAndSysctls(t *testing.T) {
+	keyPath := writeTempFile(t, "id_rsa", "key")
+
+	cfg := &Config{
+		SSH: SSHConfig{
+			User:    "deploy",
+			KeyPath: keyPath,
+		},
+		Bootstrap: BootstrapConfig{
+			Users: []UserConfig{
+				{Name: "bad user", UID: -1, GID: -1, Home: "home/elasticsearch", Shell: "nologin"},
+			},
+			Sysctls: []SysctlConfig{
+				{Name: "vm max", Value: "", PersistPath: "etc/sysctl.conf"},
+			},
+		},
+		Servers: []ServerConfig{
+			{Host: "search.example.com"},
+		},
+	}
+
+	err := ValidateAndApplyDefaults(cfg)
+	if err == nil {
+		t.Fatal("expected bootstrap users/sysctl validation error")
+	}
+
+	for _, fragment := range []string{
+		"bootstrap.users[0].name contains unsupported characters",
+		"bootstrap.users[0].uid must be greater than or equal to zero",
+		"bootstrap.users[0].gid must be greater than or equal to zero",
+		"bootstrap.users[0].home must be an absolute path",
+		"bootstrap.users[0].shell must be an absolute path",
+		"bootstrap.sysctl[0].name contains unsupported characters",
+		"bootstrap.sysctl[0].value is required",
+		"bootstrap.sysctl[0].persist_path must be an absolute path",
+	} {
+		if !strings.Contains(err.Error(), fragment) {
+			t.Fatalf("expected error to contain %q, got %v", fragment, err)
+		}
+	}
+}
+
 func TestValidateAndApplyDefaultsAcceptsEmbeddedTemplateReference(t *testing.T) {
 	keyPath := writeTempFile(t, "id_rsa", "key")
 	jarPath := writeTempFile(t, "app.jar", "jar")
@@ -336,7 +436,7 @@ func TestValidateAndApplyDefaultsAcceptsEmbeddedTemplateReference(t *testing.T) 
 					Port:    8080,
 					Jar: JarConfig{
 						LocalPath:  jarPath,
-						RemotePath: "/opt/sample/bin/app.jar",
+						RemotePath: "/opt/sample/lib/app.jar",
 					},
 					Script: ScriptConfig{
 						Template:   "embedded:server.sh.tmpl",
@@ -370,7 +470,7 @@ func TestValidateAndApplyDefaultsRejectsUnknownEmbeddedTemplateReference(t *test
 					Port:    8080,
 					Jar: JarConfig{
 						LocalPath:  jarPath,
-						RemotePath: "/opt/sample/bin/app.jar",
+						RemotePath: "/opt/sample/lib/app.jar",
 					},
 					Script: ScriptConfig{
 						Template: "embedded:missing-template.tmpl",
@@ -404,7 +504,7 @@ func TestValidateAndApplyDefaultsAppliesDefaults(t *testing.T) {
 					Port:    8080,
 					Jar: JarConfig{
 						LocalPath:  jarPath,
-						RemotePath: "/opt/sample/bin/app.jar",
+						RemotePath: "/opt/sample/lib/app.jar",
 					},
 				},
 			},
@@ -467,7 +567,7 @@ func TestValidateAndApplyDefaultsStrictRequiresKnownHostsFile(t *testing.T) {
 					Port:    8080,
 					Jar: JarConfig{
 						LocalPath:  jarPath,
-						RemotePath: "/opt/sample/bin/app.jar",
+						RemotePath: "/opt/sample/lib/app.jar",
 					},
 				},
 			},
@@ -502,7 +602,7 @@ func TestValidateAndApplyDefaultsAppliesBastionDefaults(t *testing.T) {
 					Port:    8080,
 					Jar: JarConfig{
 						LocalPath:  jarPath,
-						RemotePath: "/opt/sample/bin/app.jar",
+						RemotePath: "/opt/sample/lib/app.jar",
 					},
 				},
 			},
@@ -552,7 +652,7 @@ func TestValidateAndApplyDefaultsRejectsInvalidBastionAliasName(t *testing.T) {
 					Port:    8080,
 					Jar: JarConfig{
 						LocalPath:  jarPath,
-						RemotePath: "/opt/sample/bin/app.jar",
+						RemotePath: "/opt/sample/lib/app.jar",
 					},
 				},
 			},
@@ -584,7 +684,7 @@ func TestValidateAndApplyDefaultsRejectsDuplicateServerNames(t *testing.T) {
 					Port:    8080,
 					Jar: JarConfig{
 						LocalPath:  jarPath,
-						RemotePath: "/opt/sample-a/bin/app.jar",
+						RemotePath: "/opt/sample-a/lib/app.jar",
 					},
 				},
 			},
@@ -597,7 +697,7 @@ func TestValidateAndApplyDefaultsRejectsDuplicateServerNames(t *testing.T) {
 					Port:    8081,
 					Jar: JarConfig{
 						LocalPath:  jarPath,
-						RemotePath: "/opt/sample-b/bin/app.jar",
+						RemotePath: "/opt/sample-b/lib/app.jar",
 					},
 				},
 			},
@@ -629,7 +729,7 @@ func TestValidateAndApplyDefaultsRejectsInvalidServerSSHPort(t *testing.T) {
 					Port:    8080,
 					Jar: JarConfig{
 						LocalPath:  jarPath,
-						RemotePath: "/opt/sample/bin/app.jar",
+						RemotePath: "/opt/sample/lib/app.jar",
 					},
 				},
 			},
@@ -663,7 +763,7 @@ func TestValidateAndApplyDefaultsRejectsInvalidServerBastionSSHPort(t *testing.T
 					Port:    8080,
 					Jar: JarConfig{
 						LocalPath:  jarPath,
-						RemotePath: "/opt/sample/bin/app.jar",
+						RemotePath: "/opt/sample/lib/app.jar",
 					},
 				},
 			},
@@ -1063,6 +1163,53 @@ func TestValidateAndApplyDefaultsSupportsExtraFiles(t *testing.T) {
 	}
 }
 
+func TestValidateAndApplyDefaultsRejectsProdSampleEnvPaths(t *testing.T) {
+	keyPath := writeTempFile(t, "id_rsa", "key")
+	jarPath := writeTempFile(t, "app.jar", "jar")
+	envSamplePath := writeTempFile(t, ".env.sample", "APP_ENV=sample\n")
+
+	cfg := &Config{
+		SSH: SSHConfig{
+			User:    "deploy",
+			KeyPath: keyPath,
+		},
+		Servers: []ServerConfig{
+			{
+				Host: "prd-app.example.com",
+				Tags: []string{"prd"},
+				App: AppConfig{
+					Name:    "sample",
+					BaseDir: "/opt/sample",
+					Port:    8080,
+					Jar: JarConfig{
+						LocalPath:  jarPath,
+						RemotePath: "/opt/sample/lib/app.jar",
+					},
+					ConfigFiles: []ConfigFile{
+						{LocalPath: envSamplePath, RemotePath: "/opt/sample/.env"},
+					},
+					ExtraFiles: []ExtraFile{
+						{LocalPath: envSamplePath, RemotePath: "/opt/sample/.env.backup"},
+					},
+				},
+			},
+		},
+	}
+
+	err := ValidateAndApplyDefaults(cfg)
+	if err == nil {
+		t.Fatal("expected prod sample env validation error")
+	}
+	for _, fragment := range []string{
+		"servers[0].app.config_files[0].local_path cannot reference .env.sample for prod/prd servers",
+		"servers[0].app.extra_files[0].local_path cannot reference .env.sample for prod/prd servers",
+	} {
+		if !strings.Contains(err.Error(), fragment) {
+			t.Fatalf("expected error to contain %q, got %v", fragment, err)
+		}
+	}
+}
+
 func TestValidateAndApplyDefaultsRejectsInvalidExtraFileMode(t *testing.T) {
 	keyPath := writeTempFile(t, "id_rsa", "key")
 	jarPath := writeTempFile(t, "app.jar", "jar")
@@ -1130,6 +1277,79 @@ func TestValidateAndApplyDefaultsRejectsUnsupportedExtractArchive(t *testing.T) 
 	err := ValidateAndApplyDefaults(cfg)
 	if err == nil || !strings.Contains(err.Error(), "servers[0].extra_files[0].extract.enabled supports only .tar, .tar.gz, or .tgz archives") {
 		t.Fatalf("expected unsupported archive error, got %v", err)
+	}
+}
+
+func TestValidateAndApplyDefaultsNormalizesDirectoryDefaultRules(t *testing.T) {
+	keyPath := writeTempFile(t, "id_rsa", "key")
+
+	cfg := &Config{
+		SSH: SSHConfig{
+			User:    "deploy",
+			KeyPath: keyPath,
+		},
+		DirectoryDefaults: DirectoryDefaultsConfig{
+			Rules: []DirectoryOwnershipRule{
+				{Prefix: "/app/overpass/..", Owner: "ec2-user"},
+			},
+		},
+		Servers: []ServerConfig{
+			{
+				Host:        "app.example.com",
+				Directories: []string{"/app/overpass/sample"},
+			},
+		},
+	}
+
+	if err := ValidateAndApplyDefaults(cfg); err != nil {
+		t.Fatalf("unexpected validation error: %v", err)
+	}
+
+	got := cfg.DirectoryDefaults.Rules[0]
+	if got.Prefix != "/app" {
+		t.Fatalf("expected normalized prefix /app, got %q", got.Prefix)
+	}
+	if got.Group != "ec2-user" {
+		t.Fatalf("expected group to default to owner, got %q", got.Group)
+	}
+}
+
+func TestValidateAndApplyDefaultsRejectsInvalidDirectoryDefaultRules(t *testing.T) {
+	keyPath := writeTempFile(t, "id_rsa", "key")
+
+	cfg := &Config{
+		SSH: SSHConfig{
+			User:    "deploy",
+			KeyPath: keyPath,
+		},
+		DirectoryDefaults: DirectoryDefaultsConfig{
+			Rules: []DirectoryOwnershipRule{
+				{Prefix: "app", Owner: "ec2-user"},
+				{Prefix: "/app", Owner: "bad user"},
+				{Prefix: "/app", Owner: "ec2-user"},
+			},
+		},
+		Servers: []ServerConfig{
+			{
+				Host:        "app.example.com",
+				Directories: []string{"/app/overpass/sample"},
+			},
+		},
+	}
+
+	err := ValidateAndApplyDefaults(cfg)
+	if err == nil {
+		t.Fatal("expected directory defaults validation error")
+	}
+
+	for _, fragment := range []string{
+		"directory_defaults.rules[0].prefix must be an absolute path",
+		"directory_defaults.rules[1].owner contains unsupported characters",
+		"directory_defaults.rules[2].prefix must be unique: /app",
+	} {
+		if !strings.Contains(err.Error(), fragment) {
+			t.Fatalf("expected error to contain %q, got %v", fragment, err)
+		}
 	}
 }
 

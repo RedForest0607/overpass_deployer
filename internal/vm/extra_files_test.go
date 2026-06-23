@@ -44,6 +44,30 @@ func TestBuildRemoteArchiveExtractionCommand(t *testing.T) {
 	}
 }
 
+func TestBuildRemoteArchiveExtractionCommandSupportsSudoStagingAndOwnership(t *testing.T) {
+	cmd, err := buildRemoteArchiveExtractionCommand(config.ExtraFile{
+		RemotePath: "/app/elasticsearch/elasticsearch.tar.gz",
+		Extract: config.ExtractConfig{
+			Enabled:         true,
+			RemoteDir:       "/app/elasticsearch",
+			StripComponents: 1,
+			StagingPath:     "/tmp/elasticsearch.tar.gz",
+			Sudo:            true,
+			Owner:           "elasticsearch",
+			Group:           "elasticsearch",
+			ChownRecursive:  true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected extraction command to build, got %v", err)
+	}
+
+	want := "tar -xzf '/tmp/elasticsearch.tar.gz' -C '/app/elasticsearch' --strip-components=1 && chown -R 'elasticsearch:elasticsearch' '/app/elasticsearch'"
+	if cmd != want {
+		t.Fatalf("unexpected extraction command: got %q want %q", cmd, want)
+	}
+}
+
 func TestApplyRemoteArchiveExtractionPreparesExtractDirectory(t *testing.T) {
 	runner := &extraFilesRunner{}
 
@@ -71,6 +95,37 @@ func TestApplyRemoteArchiveExtractionPreparesExtractDirectory(t *testing.T) {
 	}
 	if want := "tar -xzf '/home/ec2-user/software/elasticsearch/elasticsearch.tar.gz' -C '/home/ec2-user/software'"; runner.commands[0] != want {
 		t.Fatalf("unexpected extraction command: got %q want %q", runner.commands[0], want)
+	}
+}
+
+func TestApplyRemoteArchiveExtractionUsesSudoForPrivilegedExtract(t *testing.T) {
+	runner := &extraFilesRunner{}
+
+	err := applyRemoteArchiveExtraction(runner, config.ExtraFile{
+		RemotePath: "/app/elasticsearch/elasticsearch.tar.gz",
+		Extract: config.ExtractConfig{
+			Enabled:     true,
+			RemoteDir:   "/app/elasticsearch",
+			StagingPath: "/tmp/elasticsearch.tar.gz",
+			Sudo:        true,
+			Owner:       "elasticsearch",
+			Group:       "elasticsearch",
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected privileged archive extraction to succeed, got %v", err)
+	}
+	if len(runner.commands) != 0 {
+		t.Fatalf("expected no non-sudo extraction commands, got %v", runner.commands)
+	}
+	if len(runner.sudoCommands) != 2 {
+		t.Fatalf("expected setup and extraction sudo commands, got %v", runner.sudoCommands)
+	}
+	if strings.Contains(runner.sudoCommands[0], "chown") {
+		t.Fatalf("expected privileged setup not to chown extract directory, got %q", runner.sudoCommands[0])
+	}
+	if !strings.Contains(runner.sudoCommands[1], "/tmp/elasticsearch.tar.gz") {
+		t.Fatalf("expected extraction to use staging path, got %q", runner.sudoCommands[1])
 	}
 }
 

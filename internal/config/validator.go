@@ -117,6 +117,7 @@ func ValidateAndApplyDefaults(cfg *Config) error {
 	// 1.1 Bastion Config
 	validateBastionConfig(cfg, &errs, checkUnresolvedEnv)
 	validateBootstrapConfig(&cfg.Bootstrap, "bootstrap", &errs, checkUnresolvedEnv)
+	validateDirectoryDefaultsConfig(&cfg.DirectoryDefaults, "directory_defaults", &errs, checkUnresolvedEnv)
 
 	// 2. Server Configs
 	if len(cfg.Servers) == 0 {
@@ -142,7 +143,8 @@ func ValidateAndApplyDefaults(cfg *Config) error {
 		}
 		validateBootstrapConfig(&cfg.Servers[i].Bootstrap, prefix+".bootstrap", &errs, checkUnresolvedEnv)
 		validateDirectories(&cfg.Servers[i].Directories, prefix+".directories", &errs, checkUnresolvedEnv)
-		validateExtraFiles(&cfg.Servers[i].ExtraFiles, prefix+".extra_files", &errs, checkUnresolvedEnv)
+		prodLikeServer := hasProdLikeTags(cfg.Servers[i].Tags)
+		validateExtraFiles(&cfg.Servers[i].ExtraFiles, prefix+".extra_files", &errs, checkUnresolvedEnv, prodLikeServer)
 
 		if s.UsesLegacyApp() && len(s.Apps) > 0 {
 			errs = append(errs, prefix+" cannot define both app and apps")
@@ -152,10 +154,10 @@ func ValidateAndApplyDefaults(cfg *Config) error {
 		}
 
 		if s.UsesLegacyApp() {
-			validateAppConfig(&cfg.Servers[i].App, prefix+".app", &errs, checkUnresolvedEnv)
+			validateAppConfig(&cfg.Servers[i].App, prefix+".app", &errs, checkUnresolvedEnv, prodLikeServer)
 		}
 		for j := range cfg.Servers[i].Apps {
-			validateAppConfig(&cfg.Servers[i].Apps[j], fmt.Sprintf("%s.apps[%d]", prefix, j), &errs, checkUnresolvedEnv)
+			validateAppConfig(&cfg.Servers[i].Apps[j], fmt.Sprintf("%s.apps[%d]", prefix, j), &errs, checkUnresolvedEnv, prodLikeServer)
 		}
 
 		// If Name is not given, default it to Host to help logging
@@ -183,6 +185,52 @@ func ValidateAndApplyDefaults(cfg *Config) error {
 	return nil
 }
 
+// validateDirectoryDefaultsConfig는 경로 prefix별 기본 소유권 규칙을 검증하고 정규화한다.
+func validateDirectoryDefaultsConfig(cfg *DirectoryDefaultsConfig, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
+	if cfg == nil {
+		return
+	}
+
+	seenPrefixes := make(map[string]struct{}, len(cfg.Rules))
+	for i := range cfg.Rules {
+		rule := &cfg.Rules[i]
+		fieldPrefix := fmt.Sprintf("%s.rules[%d]", prefix, i)
+
+		rule.Prefix = filepath.ToSlash(filepath.Clean(strings.TrimSpace(rule.Prefix)))
+		rule.Owner = strings.TrimSpace(rule.Owner)
+		rule.Group = strings.TrimSpace(rule.Group)
+
+		checkUnresolvedEnv(rule.Prefix, fieldPrefix+".prefix")
+		checkUnresolvedEnv(rule.Owner, fieldPrefix+".owner")
+		checkUnresolvedEnv(rule.Group, fieldPrefix+".group")
+
+		if rule.Prefix == "." || rule.Prefix == "" {
+			*errs = append(*errs, fieldPrefix+".prefix is required")
+			continue
+		}
+		if !strings.HasPrefix(rule.Prefix, "/") {
+			*errs = append(*errs, fieldPrefix+".prefix must be an absolute path")
+		}
+		if _, ok := seenPrefixes[rule.Prefix]; ok {
+			*errs = append(*errs, fmt.Sprintf("%s.prefix must be unique: %s", fieldPrefix, rule.Prefix))
+		}
+		seenPrefixes[rule.Prefix] = struct{}{}
+
+		if rule.Owner == "" {
+			*errs = append(*errs, fieldPrefix+".owner is required")
+		}
+		if rule.Group == "" {
+			rule.Group = rule.Owner
+		}
+		if !isSafeOwnerToken(rule.Owner) {
+			*errs = append(*errs, fieldPrefix+".owner contains unsupported characters")
+		}
+		if !isSafeOwnerToken(rule.Group) {
+			*errs = append(*errs, fieldPrefix+".group contains unsupported characters")
+		}
+	}
+}
+
 // validateDirectories는 서버 레벨 디렉터리 목록의 빈 값과 미해결 환경 변수를 검사하고 경로 표기를 정리한다.
 func validateDirectories(directories *[]string, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
 	if directories == nil {
@@ -201,7 +249,7 @@ func validateDirectories(directories *[]string, prefix string, errs *[]string, c
 }
 
 // validateExtraFiles는 추가 파일 배포 항목의 로컬/원격 경로, chmod, 압축 해제 설정을 검증한다.
-func validateExtraFiles(extraFiles *[]ExtraFile, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
+func validateExtraFiles(extraFiles *[]ExtraFile, prefix string, errs *[]string, checkUnresolvedEnv func(string, string), prodLike bool) {
 	if extraFiles == nil {
 		return
 	}
@@ -216,6 +264,7 @@ func validateExtraFiles(extraFiles *[]ExtraFile, prefix string, errs *[]string, 
 			if strings.HasPrefix(ef.LocalPath, "~/") {
 				ef.LocalPath = expandHome(ef.LocalPath)
 			}
+			rejectProdSampleFile(ef.LocalPath, fieldPrefix+".local_path", prodLike, errs)
 			validateExistingFile(ef.LocalPath, fieldPrefix+".local_path", errs)
 		}
 
@@ -251,9 +300,35 @@ func validateExtractConfig(ef *ExtraFile, prefix string, errs *[]string, checkUn
 	} else {
 		ef.Extract.RemoteDir = filepath.ToSlash(strings.TrimSpace(ef.Extract.RemoteDir))
 	}
+	if !strings.HasPrefix(ef.Extract.RemoteDir, "/") {
+		*errs = append(*errs, prefix+".remote_dir must be an absolute path")
+	}
 
 	if ef.Extract.StripComponents < 0 {
 		*errs = append(*errs, prefix+".strip_components must be greater than or equal to zero")
+	}
+
+	checkUnresolvedEnv(ef.Extract.StagingPath, prefix+".staging_path")
+	ef.Extract.StagingPath = filepath.ToSlash(strings.TrimSpace(ef.Extract.StagingPath))
+	if ef.Extract.StagingPath != "" && !strings.HasPrefix(ef.Extract.StagingPath, "/") {
+		*errs = append(*errs, prefix+".staging_path must be an absolute path")
+	}
+	if ef.Extract.Sudo && ef.Extract.StagingPath == "" {
+		ef.Extract.StagingPath = filepath.ToSlash(filepath.Join("/tmp", filepath.Base(ef.RemotePath)))
+	}
+
+	ef.Extract.Owner = strings.TrimSpace(ef.Extract.Owner)
+	ef.Extract.Group = strings.TrimSpace(ef.Extract.Group)
+	checkUnresolvedEnv(ef.Extract.Owner, prefix+".owner")
+	checkUnresolvedEnv(ef.Extract.Group, prefix+".group")
+	if ef.Extract.Group == "" {
+		ef.Extract.Group = ef.Extract.Owner
+	}
+	if ef.Extract.Owner != "" && !isSafeOwnerToken(ef.Extract.Owner) {
+		*errs = append(*errs, prefix+".owner contains unsupported characters")
+	}
+	if ef.Extract.Group != "" && !isSafeOwnerToken(ef.Extract.Group) {
+		*errs = append(*errs, prefix+".group contains unsupported characters")
 	}
 }
 
@@ -268,6 +343,12 @@ func isSupportedTarArchive(path string) bool {
 // hasBootstrapSettings는 앱 없이 서버 초기화만 수행할 수 있는 bootstrap 설정이 있는지 판단한다.
 func hasBootstrapSettings(bootstrap BootstrapConfig) bool {
 	if len(bootstrap.Packages) > 0 {
+		return true
+	}
+	if len(bootstrap.Users) > 0 {
+		return true
+	}
+	if len(bootstrap.Sysctls) > 0 {
 		return true
 	}
 	if len(bootstrap.Services) > 0 {
@@ -289,7 +370,7 @@ func hasBootstrapSettings(bootstrap BootstrapConfig) bool {
 }
 
 // validateAppConfig는 앱 배포에 필요한 jar, JVM, 포트, 설정 파일, 스크립트 값을 검증하고 기본값을 적용한다.
-func validateAppConfig(app *AppConfig, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
+func validateAppConfig(app *AppConfig, prefix string, errs *[]string, checkUnresolvedEnv func(string, string), prodLike bool) {
 	checkUnresolvedEnv(app.Name, prefix+".name")
 	if app.Name == "" {
 		*errs = append(*errs, prefix+".name is required")
@@ -352,6 +433,7 @@ func validateAppConfig(app *AppConfig, prefix string, errs *[]string, checkUnres
 			if strings.HasPrefix(cf.LocalPath, "~/") {
 				cf.LocalPath = expandHome(cf.LocalPath)
 			}
+			rejectProdSampleFile(cf.LocalPath, cfPrefix+".local_path", prodLike, errs)
 			validateExistingFile(cf.LocalPath, cfPrefix+".local_path", errs)
 		}
 		checkUnresolvedEnv(cf.RemotePath, cfPrefix+".remote_path")
@@ -360,7 +442,7 @@ func validateAppConfig(app *AppConfig, prefix string, errs *[]string, checkUnres
 		}
 	}
 
-	validateExtraFiles(&app.ExtraFiles, prefix+".extra_files", errs, checkUnresolvedEnv)
+	validateExtraFiles(&app.ExtraFiles, prefix+".extra_files", errs, checkUnresolvedEnv, prodLike)
 
 	validateScriptConfig(app, prefix, errs, checkUnresolvedEnv)
 }
@@ -449,6 +531,9 @@ func validateBootstrapConfig(cfg *BootstrapConfig, prefix string, errs *[]string
 		cfg.Packages[i] = strings.TrimSpace(pkg)
 	}
 
+	validateBootstrapUsers(cfg.Users, prefix+".users", errs, checkUnresolvedEnv)
+	validateBootstrapSysctls(cfg.Sysctls, prefix+".sysctl", errs, checkUnresolvedEnv)
+
 	for i := range cfg.Services {
 		field := fmt.Sprintf("%s.services[%d]", prefix, i)
 		cfg.Services[i].Name = strings.TrimSpace(cfg.Services[i].Name)
@@ -522,6 +607,92 @@ func validateBootstrapConfig(cfg *BootstrapConfig, prefix string, errs *[]string
 	}
 
 	validateDockerComposeConfig(&cfg.DockerCompose, prefix+".docker_compose", errs, checkUnresolvedEnv)
+}
+
+func validateBootstrapUsers(users []UserConfig, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
+	seen := make(map[string]struct{}, len(users))
+	for i := range users {
+		user := &users[i]
+		field := fmt.Sprintf("%s[%d]", prefix, i)
+		user.Name = strings.TrimSpace(user.Name)
+		user.Group = strings.TrimSpace(user.Group)
+		user.Home = filepath.ToSlash(strings.TrimSpace(user.Home))
+		user.Shell = filepath.ToSlash(strings.TrimSpace(user.Shell))
+		checkUnresolvedEnv(user.Name, field+".name")
+		checkUnresolvedEnv(user.Group, field+".group")
+		checkUnresolvedEnv(user.Home, field+".home")
+		checkUnresolvedEnv(user.Shell, field+".shell")
+
+		if user.Name == "" {
+			*errs = append(*errs, field+".name is required")
+		} else if !isSafeOwnerToken(user.Name) {
+			*errs = append(*errs, field+".name contains unsupported characters")
+		}
+		if user.Group == "" {
+			user.Group = user.Name
+		} else if !isSafeOwnerToken(user.Group) {
+			*errs = append(*errs, field+".group contains unsupported characters")
+		}
+		if user.Name != "" {
+			if _, ok := seen[user.Name]; ok {
+				*errs = append(*errs, field+".name must be unique")
+			}
+			seen[user.Name] = struct{}{}
+		}
+		if user.UID < 0 {
+			*errs = append(*errs, field+".uid must be greater than or equal to zero")
+		}
+		if user.GID < 0 {
+			*errs = append(*errs, field+".gid must be greater than or equal to zero")
+		}
+		if user.Home != "" && !strings.HasPrefix(user.Home, "/") {
+			*errs = append(*errs, field+".home must be an absolute path")
+		}
+		if user.Shell != "" && !strings.HasPrefix(user.Shell, "/") {
+			*errs = append(*errs, field+".shell must be an absolute path")
+		}
+		if user.CreateHome == nil {
+			user.CreateHome = boolPtr(false)
+		}
+		if user.System == nil {
+			user.System = boolPtr(true)
+		}
+	}
+}
+
+func validateBootstrapSysctls(sysctls []SysctlConfig, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
+	seen := make(map[string]struct{}, len(sysctls))
+	for i := range sysctls {
+		sysctl := &sysctls[i]
+		field := fmt.Sprintf("%s[%d]", prefix, i)
+		sysctl.Name = strings.TrimSpace(sysctl.Name)
+		sysctl.Value = strings.TrimSpace(sysctl.Value)
+		sysctl.PersistPath = filepath.ToSlash(strings.TrimSpace(sysctl.PersistPath))
+		checkUnresolvedEnv(sysctl.Name, field+".name")
+		checkUnresolvedEnv(sysctl.Value, field+".value")
+		checkUnresolvedEnv(sysctl.PersistPath, field+".persist_path")
+
+		if sysctl.Name == "" {
+			*errs = append(*errs, field+".name is required")
+		} else if !sysctlNamePattern.MatchString(sysctl.Name) {
+			*errs = append(*errs, field+".name contains unsupported characters")
+		}
+		if sysctl.Value == "" {
+			*errs = append(*errs, field+".value is required")
+		}
+		if sysctl.Name != "" {
+			if _, ok := seen[sysctl.Name]; ok {
+				*errs = append(*errs, field+".name must be unique")
+			}
+			seen[sysctl.Name] = struct{}{}
+		}
+		if sysctl.PersistPath == "" {
+			sysctl.PersistPath = "/etc/sysctl.d/99-overpass.conf"
+		}
+		if !strings.HasPrefix(sysctl.PersistPath, "/") {
+			*errs = append(*errs, field+".persist_path must be an absolute path")
+		}
+	}
 }
 
 func validateDockerComposeConfig(cfg *DockerComposeConfig, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
@@ -649,6 +820,7 @@ func normalizeTag(value string) string {
 
 var bastionAliasPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 var fileModePattern = regexp.MustCompile(`^[0-7]{3,4}$`)
+var sysctlNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
 
 // isValidBastionAlias는 SSH alias로 안전하게 사용할 수 있는 문자만 포함하는지 확인한다.
 func isValidBastionAlias(value string) bool {
@@ -658,6 +830,34 @@ func isValidBastionAlias(value string) bool {
 // isValidTag는 태그 필터에 사용할 수 있는 안전한 문자 집합인지 확인한다.
 func isValidTag(value string) bool {
 	return bastionAliasPattern.MatchString(strings.TrimSpace(value))
+}
+
+func isSafeOwnerToken(value string) bool {
+	return bastionAliasPattern.MatchString(strings.TrimSpace(value))
+}
+
+func hasProdLikeTags(tags []string) bool {
+	for _, tag := range tags {
+		switch normalizeTag(tag) {
+		case "prod", "prd":
+			return true
+		}
+	}
+	return false
+}
+
+func rejectProdSampleFile(path string, fieldName string, prodLike bool, errs *[]string) {
+	if !prodLike {
+		return
+	}
+	base := strings.ToLower(filepath.Base(path))
+	if strings.HasSuffix(base, ".env.sample") {
+		*errs = append(*errs, fieldName+" cannot reference .env.sample for prod/prd servers")
+		return
+	}
+	if strings.Contains(strings.ToLower(path), string(filepath.Separator)+"env"+string(filepath.Separator)) && strings.HasSuffix(base, ".sample") {
+		*errs = append(*errs, fieldName+" cannot reference sample env files for prod/prd servers")
+	}
 }
 
 // validateBastionConfig는 배스천 사용 여부에 따라 필수 SSH 값과 alias 파일 경로 기본값을 검증한다.

@@ -26,13 +26,25 @@ SPRING_OPTS+=" {{ . }}"
 PID_PATH="${BASE_DIR}/app.pid"
 LOG_DIR="${BASE_DIR}/logs"
 LOG_FILE="${LOG_DIR}/${APP_NAME}.log"
-CONF_DIR="${BASE_DIR}/conf"
+CONF_DIR="${BASE_DIR}/config"
+ENV_FILE="${ENV_FILE:-${CONF_DIR}/${APP_NAME}.env}"
 
 # Java 실행 경로 확인
 if [ -n "$JAVA_HOME" ]; then
     JAVA_BIN="${JAVA_HOME}/bin/java"
 else
     JAVA_BIN="$(command -v java)"
+fi
+
+# 서비스별 환경변수 파일 로드
+if [ -f "${ENV_FILE}" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    . "${ENV_FILE}"
+    set +a
+    echo "환경변수 파일 로드: ${ENV_FILE}"
+else
+    echo "환경변수 파일 없음: ${ENV_FILE}"
 fi
 
 # JVM 옵션 구성
@@ -67,8 +79,13 @@ fi
 
 
 # Logging 설정 추가
+SPRING_CONFIG_LOCATION="${SPRING_CONFIG_LOCATION:-{{ defaultString (lookup . "SPRING_CONFIG_LOCATION") "" }}}"
 SPRING_OPTS+=" --logging.config=file:${CONF_DIR}/logback-spring.xml"
-SPRING_OPTS+=" --spring.config.additional-location=file:${CONF_DIR}/application.yml"
+if [ -n "${SPRING_CONFIG_LOCATION}" ]; then
+    SPRING_OPTS+=" --spring.config.location=${SPRING_CONFIG_LOCATION}"
+else
+    SPRING_OPTS+=" --spring.config.additional-location=file:${CONF_DIR}/application.yml"
+fi
 
 # =================================================================
 # 3. 핵심 로직 함수

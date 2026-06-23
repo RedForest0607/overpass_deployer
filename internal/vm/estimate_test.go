@@ -40,7 +40,7 @@ func TestEstimateConfigDeploymentIncludesBootstrapAndFiles(t *testing.T) {
 					BaseDir: "/app/sample",
 					Jar: config.JarConfig{
 						LocalPath:  jarPath,
-						RemotePath: "/app/sample/bin/app.jar",
+						RemotePath: "/app/sample/lib/app.jar",
 					},
 					ExtraFiles: []config.ExtraFile{
 						{
@@ -97,7 +97,7 @@ func TestEstimateConfigDeploymentReturnsFileErrors(t *testing.T) {
 					Name: "sample",
 					Jar: config.JarConfig{
 						LocalPath:  filepath.Join(t.TempDir(), "missing.jar"),
-						RemotePath: "/app/sample/bin/app.jar",
+						RemotePath: "/app/sample/lib/app.jar",
 					},
 				},
 			},

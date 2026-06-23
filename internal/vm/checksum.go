@@ -25,7 +25,7 @@ func collectRemoteFilePaths(server config.ServerConfig) []string {
 	}
 
 	for _, ef := range server.ExtraFiles {
-		add(ef.RemotePath)
+		add(extraFileTransferPath(ef))
 	}
 	for _, app := range server.EffectiveApps() {
 		add(app.Jar.RemotePath)
@@ -34,7 +34,7 @@ func collectRemoteFilePaths(server config.ServerConfig) []string {
 			add(cf.RemotePath)
 		}
 		for _, ef := range app.ExtraFiles {
-			add(ef.RemotePath)
+			add(extraFileTransferPath(ef))
 		}
 		app.Script.Normalize(app.BaseDir)
 		add(app.Script.RemotePath)

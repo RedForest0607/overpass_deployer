@@ -34,7 +34,7 @@ func TestLoadSubstitutesEnvAndAppliesDefaults(t *testing.T) {
 		"      port: 8080",
 		"      jar:",
 		"        local_path: " + jarPath,
-		"        remote_path: /opt/sample/bin/app.jar",
+		"        remote_path: /opt/sample/lib/app.jar",
 		"      config_files:",
 		"        - local_path: " + configPath,
 		"          remote_path: /opt/sample/config/application.yml",
@@ -99,7 +99,7 @@ func TestLoadReportsUnresolvedEnvironmentVariables(t *testing.T) {
 		"      port: 8080",
 		"      jar:",
 		"        local_path: " + jarPath,
-		"        remote_path: /opt/sample/bin/app.jar",
+		"        remote_path: /opt/sample/lib/app.jar",
 	}, "\n")
 
 	path := writeTempFile(t, "deploy.yml", configYAML)

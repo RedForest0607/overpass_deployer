@@ -3,10 +3,11 @@ package config
 import "path/filepath"
 
 type Config struct {
-	SSH       SSHConfig       `yaml:"ssh"`
-	Bastion   BastionConfig   `yaml:"bastion"`
-	Bootstrap BootstrapConfig `yaml:"bootstrap"`
-	Servers   []ServerConfig  `yaml:"servers"`
+	SSH               SSHConfig               `yaml:"ssh"`
+	Bastion           BastionConfig           `yaml:"bastion"`
+	Bootstrap         BootstrapConfig         `yaml:"bootstrap"`
+	DirectoryDefaults DirectoryDefaultsConfig `yaml:"directory_defaults"`
+	Servers           []ServerConfig          `yaml:"servers"`
 }
 
 type SSHConfig struct {
@@ -49,6 +50,8 @@ type ServerConfig struct {
 
 type BootstrapConfig struct {
 	Packages      []string            `yaml:"packages"`
+	Users         []UserConfig        `yaml:"users"`
+	Sysctls       []SysctlConfig      `yaml:"sysctl"`
 	Services      []ServiceConfig     `yaml:"services"`
 	JDK           JDKConfig           `yaml:"jdk"`
 	OSUpdate      OSUpdateConfig      `yaml:"os_update"`
@@ -85,10 +88,37 @@ type DockerComposeConfig struct {
 	InstallPath string `yaml:"install_path"`
 }
 
+type UserConfig struct {
+	Name       string `yaml:"name"`
+	Group      string `yaml:"group"`
+	UID        int    `yaml:"uid"`
+	GID        int    `yaml:"gid"`
+	Home       string `yaml:"home"`
+	Shell      string `yaml:"shell"`
+	System     *bool  `yaml:"system"`
+	CreateHome *bool  `yaml:"create_home"`
+}
+
+type SysctlConfig struct {
+	Name        string `yaml:"name"`
+	Value       string `yaml:"value"`
+	PersistPath string `yaml:"persist_path"`
+}
+
 type ServiceConfig struct {
 	Name    string `yaml:"name"`
 	Enabled *bool  `yaml:"enabled"`
 	State   string `yaml:"state"`
+}
+
+type DirectoryDefaultsConfig struct {
+	Rules []DirectoryOwnershipRule `yaml:"rules"`
+}
+
+type DirectoryOwnershipRule struct {
+	Prefix string `yaml:"prefix"`
+	Owner  string `yaml:"owner"`
+	Group  string `yaml:"group"`
 }
 
 type AppConfig struct {
@@ -130,9 +160,15 @@ type ExtraFile struct {
 }
 
 type ExtractConfig struct {
-	Enabled         bool   `yaml:"enabled"`
-	RemoteDir       string `yaml:"remote_dir"`
-	StripComponents int    `yaml:"strip_components"`
+	Enabled           bool   `yaml:"enabled"`
+	RemoteDir         string `yaml:"remote_dir"`
+	StripComponents   int    `yaml:"strip_components"`
+	StagingPath       string `yaml:"staging_path"`
+	Sudo              bool   `yaml:"sudo"`
+	Owner             string `yaml:"owner"`
+	Group             string `yaml:"group"`
+	ChownRecursive    bool   `yaml:"chown_recursive"`
+	KeepStagedArchive bool   `yaml:"keep_staged_archive"`
 }
 
 type ScriptConfig struct {
@@ -273,6 +309,8 @@ func (c ServerConfig) EffectiveApps() []AppConfig {
 func mergeBootstrapConfig(global BootstrapConfig, override BootstrapConfig) BootstrapConfig {
 	merged := BootstrapConfig{
 		Packages:      mergePackages(global.Packages, override.Packages),
+		Users:         mergeUsers(global.Users, override.Users),
+		Sysctls:       mergeSysctls(global.Sysctls, override.Sysctls),
 		Services:      mergeServices(global.Services, override.Services),
 		JDK:           global.JDK,
 		OSUpdate:      global.OSUpdate,
@@ -325,6 +363,54 @@ func mergeBootstrapConfig(global BootstrapConfig, override BootstrapConfig) Boot
 	}
 	if override.DockerCompose.InstallPath != "" {
 		merged.DockerCompose.InstallPath = override.DockerCompose.InstallPath
+	}
+
+	return merged
+}
+
+// mergeUsers는 같은 name을 가진 서버별 사용자 설정이 전역 설정을 덮어쓰도록 병합한다.
+func mergeUsers(global []UserConfig, override []UserConfig) []UserConfig {
+	if len(global) == 0 && len(override) == 0 {
+		return nil
+	}
+
+	merged := append([]UserConfig{}, global...)
+	indexByName := make(map[string]int, len(merged))
+	for i, user := range merged {
+		indexByName[user.Name] = i
+	}
+
+	for _, user := range override {
+		if idx, ok := indexByName[user.Name]; ok {
+			merged[idx] = user
+			continue
+		}
+		indexByName[user.Name] = len(merged)
+		merged = append(merged, user)
+	}
+
+	return merged
+}
+
+// mergeSysctls는 같은 name을 가진 서버별 sysctl 설정이 전역 설정을 덮어쓰도록 병합한다.
+func mergeSysctls(global []SysctlConfig, override []SysctlConfig) []SysctlConfig {
+	if len(global) == 0 && len(override) == 0 {
+		return nil
+	}
+
+	merged := append([]SysctlConfig{}, global...)
+	indexByName := make(map[string]int, len(merged))
+	for i, sysctl := range merged {
+		indexByName[sysctl.Name] = i
+	}
+
+	for _, sysctl := range override {
+		if idx, ok := indexByName[sysctl.Name]; ok {
+			merged[idx] = sysctl
+			continue
+		}
+		indexByName[sysctl.Name] = len(merged)
+		merged = append(merged, sysctl)
 	}
 
 	return merged

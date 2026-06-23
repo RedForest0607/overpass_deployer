@@ -1,6 +1,37 @@
 # Progress
 
 ## Completed
+- 2026-06-23 기준 서버 수동 변경 흡수 1차 구현 완료: `bootstrap.users[]`/`bootstrap.sysctl[]`, privileged archive staging/sudo extract/owner 선언, prod/prd `.env.sample` 배포 차단 validator, DEV `overpass-payments-api` 앱 선언, batch JVM `-Dbatch.server.no`와 DEV `fo-api` 1g heap 선언, Elasticsearch common archive 복구 및 DEV dry-run 검증 완료
+- 2026-06-09 기준 DEV bastion(`54.116.159.65`) 경유 PostgreSQL 서버(`10.20.30.87`)에 PostgreSQL 17.6 custom dump를 신규 UTF-8 `istockdev` DB로 복원 완료: SHA-256/아카이브 검증, `pldbgapi` 소스 빌드 설치, USER MAPPING 제외, `--no-owner --no-acl --exit-on-error --jobs=4` 복원, 단계별 ANALYZE 및 DB/객체/invalid index/대형 테이블 행 수 검증 완료
+- 2026-06-09 기준 DEV `batch-api1`/`batch-api2`를 `devapp(10.20.10.202)`에서 `devwas(10.20.10.41)`로 이전 완료: 배포 대상 선언 변경, 전체 파일 SHA256 일치, `server.sh` 문법과 `25251`/`25252` 포트 미사용 확인 후 devapp 원본 및 전송 임시파일 삭제
+- 2026-06-09 기준 DEV `devwas`/`devapp`의 실제 앱 env 9개와 로컬 env sample의 MongoDB 주소를 `10.20.20.102:20001,10.20.20.46:20001/?replicaSet=istockdevReplicaSet`으로 변경하고 원격 파일별 백업 생성 완료; `fo-api` Hazelcast 노드는 `10.20.20.102:5701`, `10.20.20.46:5701`로 유지 및 sample에 명시
+- 2026-06-09 기준 AK DEV Redis 구성을 iSTOCK DEV용으로 변환해 `devapp(10.20.10.202)`에 Redis 7 + Sentinel을 Docker Compose/systemd로 배포 완료: 컨테이너명 `istock-redis*`, 비밀번호 `istockdev`, Sentinel master `istockdev-cluster`, AOF/`volatile-lru`/keyspace notification 적용, `6379`/`26379` 리스너와 Redis 읽기·쓰기 및 `devwas`/`devapp` AUTH/PING 검증 완료
+- 2026-06-09 기준 운영 FO 최종 실행 파일을 기준으로 DEV `fo-api`, `fo-mobile`, `fo-pcweb`의 `application.yml`, 서비스 env, `logback-spring.xml`, `global-bundle.pem`, `server.sh`를 DEV 프로필/주소로 변환해 `devwas`에 배포 완료: 주석 포함 운영 구조 유지, 기존 DEV 비밀값 보존, `.bak.20260609-130629` 백업, 원격 SHA256/ENV source/`bash -n`/권한 검증 완료
+- 2026-06-09 기준 PRD 실제 실행 파일을 기준으로 DEV Overpass 공통 6개 앱(`batch-api1`, `batch-api2`, `bo-pcweb`, `po-pcweb`, `oa`, `po-mobile`)의 `application.yml` 구조와 주석, `server.sh`를 DEV 값/프로필로 변환해 `devwas`/`devapp`에 배포 완료: build 및 대용량 서버 자산/JAR 제외, 기존 DEV env 실값 보존, 배포 전 파일 백업, 원격 SHA256 및 `bash -n` 검증 완료
+- 2026-06-09 기준 PRD bastion(`15.164.12.24`)에 `kibana-forward.service`를 등록해 공인 `0.0.0.0:5601` 트래픽을 `search1(10.10.50.106):5601`로 전달하고, systemd 자동 시작 및 공인 주소 HTTP 302 응답 검증 완료
+- 2026-06-08 기준 iSTOCK-MALL PRD Valkey7 ElastiCache parameter group `prd-redis-elasticache-pg-cluster-on` 생성 완료: 기존 `prd-redis-elasticache-pg`의 사용자 설정(`cluster-allow-reads-when-down`, `latency-tracking`, `maxmemory-policy`, `notify-keyspace-events`)을 반영하고 `cluster-enabled: yes` 적용 검증
+- 2026-06-05 기준 stock-company PRD Redis ElastiCache primary endpoint를 `prd-redis-elasticache.ayvhif.ng.0001.apn2.cache.amazonaws.com:6379`로 반영하고, Spring Boot 4/Spring Session Redis가 관리형 Redis에서 `CONFIG GET notify-keyspace-events`를 실행해 기동 실패하지 않도록 prod `NEW_yamls`에 `spring.session.data.redis.configure-action: none` 설정 추가
+- 2026-06-05 기준 stock-company STG `fo-pcweb`/`fo-mobile` 배포 자산에 stage 전용 `application.yml`과 서비스별 env sample을 추가하고, `stage/deploy.yml`이 `application.yml`/`logback-spring.xml`/`<service>.env`를 함께 배포하도록 반영
+- 2026-06-04 기준 stock-company PRD `bo-app1/bo-app2`용 nginx 설정 자산 추가: 정적 파일은 `/app/overpass/www-data/bo-webroot`에서 서빙하고 나머지는 BO PC web ALB로 프록시하는 `bo-app.conf`, 공통 proxy header include, bo-app 서버별 `/app/overpass/nginx` staging 배포 경로를 구성하고 dry-run 및 임시 `nginx -t` 문법 검증 완료
+- 2026-06-04 기준 PRD payments API JAR 내부 `application-datasource-overpass.yml`의 Redis Sentinel 설정이 외부 `application.yml`과 병합되는 문제를 조치: `server.sh` 템플릿에 앱별 `SPRING_CONFIG_LOCATION` override를 추가하고 payments는 `classpath:/application-commons.yml,file:/app/overpass/overpass-payments-api/config/application.yml` 단독 로딩으로 전환, app1/app2 원격 `server.sh` 보정 및 `bash -n` 검증 완료
+- 2026-06-04 기준 PRD payments API의 Spring Boot 4 Redis Sentinel 오인식 오류를 조치: prod `NEW_yamls` Redis 설정을 `spring.data.redis.url: ${SPRING_DATA_REDIS_URL}` 방식으로 전환하고 env sample에 `SPRING_DATA_REDIS_URL=redis://...:6379`를 추가, app1/app2 payments 및 bastion 운영 자산 반영 검증 완료
+- 2026-06-04 기준 PRD payments API의 `${DATASOURCE_OVERPASS_URL}` 미치환 오류를 조치: shell source 대상 env sample의 URL 값을 quote 처리하고 `overpass-payments-api` DB SSL 인증서 경로를 `/app/overpass/overpass-payments-api/config/global-bundle.pem`로 보정, app1/app2 원격 env 및 bastion env 자산 반영 후 source 검증 완료
+- 2026-06-04 기준 stock-company PRD Overpass `server.values.yml`의 `ActiveProfile`을 `NEW_yamls`의 `spring.config.activate.on-profile: prd`와 일치하도록 `prd`로 보정하고, bastion values 및 `app1/app2/bo1/bo2` 원격 `server.sh`의 `ACTIVE_PROFILE` 기본값 반영을 검증
+- 2026-06-04 기준 stock-company PRD `app1/app2/bo1/bo2`의 Overpass `application.yml` 배포 소스를 `NEW_yamls` 기준으로 전환하고, bastion 및 대상 서버의 원격 checksum 일치를 검증: `batch-api1`, `batch-api2`, `overpass-payments-api`, `bo-pcweb`, `po-pcweb`, `oa`, `po-mobile` 반영 완료
+- 2026-06-04 기준 PRD/DEV bastion 경유 read-only audit 완료 및 `docs/stock-company-bastion-audit-2026-06-04.md` 작성: PRD/DEV bastion deploy 파일이 로컬 최신 정책보다 오래되어 Kafka 항목과 구 `conf/` 경로가 남은 것을 확인하고, 실제 미반영 파일/부트스트랩(`app1/app2/bo1/bo2`, `devwas/devapp/devbuild`, search checksum diff 등)과 재배포 제외 대상(Kafka/ScyllaDB/Redis Sentinel)을 분리 정리
+- 2026-06-04 기준 stock-company DEV/PRD 안전 배포 실행 완료: 최신 bastion 자산 동기화, 제외 항목(Kafka/Kafka Connect/ScyllaDB/Redis Sentinel) 검증, DEV `devwas/devapp/devbuild` 및 PRD `app1/app2/bo1/bo2` subset 배포, 전체 bastion alias 복구, read-only checksum/bootstrap audit 통과
+- 2026-06-02 기준 `deploy vm --bastion-only` 옵션을 추가하고 stock-company prod `deploy.yml`의 prd bastion 접속 정보를 `15.164.12.24`/`ops/stock_company/keys/prd-istockmall.pem` 기준으로 보정한 뒤, bastion에 prod 서버 10개 alias(`cache1/cache2/app1/app2/bo1/bo2/bo-app1/bo-app2/search1/search2`) 등록 및 원격 managed block 검증 완료
+- 2026-06-02 기준 stock-company dev/prod 서비스별 `NEW_yamls`와 `env/*.env.sample`의 Redis/MongoDB/overpass datasource env 파라미터명을 공통 YAML 기준(`SPRING_DATA_REDIS_*`, `SPRING_MONGODB_CACHE_NODES`, `DATASOURCE_OVERPASS_*`)으로 표준화
+- 2026-06-02 기준 stock-company prod 서비스별 env sample과 `NEW_yamls` Redis 설정을 iSTOCK-MALL 리소스 기준으로 갱신: Elasticache primary endpoint, prd PostgreSQL/MySQL RDS endpoint, prd payment/api ALB DNS, prod cache/search IP, prod target group ARN 반영 및 Redis Sentinel 설정 제거
+- 2026-05-29 기준 `infra/istock-mall/target_groups.tf` 추가 및 apply 완료: prd Elasticsearch(`9200`)와 Kibana(`5601`) 접근용 target group(`prd-tg-elasticsearch`, `prd-tg-kibana`), `search1/search2` attachment, prd search ALB -> prd search SG ingress rule을 Terraform으로 생성하고 `Service=NewProject` 태그 기준으로 정리
+- 2026-05-29 기준 prd bastion(`15.164.12.24`, private `10.10.0.187`) 경유로 stock-company STG `stg-fo-api`/`stg-fo-mobile`/`stg-fo-pcweb` 배포 완료: STG target SG 3개에 prd bastion SG source `tcp/22` ingress를 추가하고, bootstrap/JDK 25/swap/app 파일 배포 및 재실행 checksum skip 검증 완료
+- 2026-05-29 기준 전체 deploy 설정과 템플릿 values 샘플에서 JAR 원격 경로가 `bin/*.jar`로 남지 않도록 `lib/*.jar` 기준으로 재확인 및 정리
+- 2026-05-29 기준 server.sh 템플릿 렌더링 테스트와 배포 예시의 JAR 경로 기준을 `bin/`에서 `lib/`로 정리해 생성 스크립트의 `JAR_FILE`도 `lib/*.jar`를 가리키도록 검증
+- 2026-05-29 기준 stock-company dev/prod/stage deploy 설정의 Overpass jar 원격 경로를 `bin/`에서 `lib/`로 변경하고, 앱 기본 디렉터리 자동 생성에서 불필요한 `config` 디렉터리를 제거
+- 2026-05-29 기준 devwas의 `/app/overpass/*/config` 중복 디렉터리를 삭제하고 앱별 `conf` 디렉터리만 남은 것을 검증
+- 2026-05-28 기준 `/app` 하위 디렉토리 기본 소유권 정책을 코드 하드코딩 대신 `directory_defaults.rules` 설정으로 분리하고, dev/stage/prod/example 및 dev/prod bastion deploy 파일과 deploy 바이너리를 동기화한 뒤 dev/prod bastion dry-run 검증 완료
+- 2026-05-28 기준 stock-company dev build 서버 제외 실배포 완료: `devwas`, `devbo-app`, `devapp`, `hamonica`, `hamonica-adm`, `postgresql`에 bootstrap/package/file 배포를 완료하고 nginx active/enabled, Docker Compose v2.29.7, PostgreSQL 17 패키지 및 주요 archive 파일 존재를 검증
+- 2026-05-28 기준 stock-company dev deploy에 `devbo-app`(`dev-bo-nginx-ec2-01-a`, `10.20.10.149`) nginx 전용 서버 항목 추가: prd `bo-app`과 동일하게 JDK 설치 제외, `nginx` 패키지 설치 및 서비스 enable/start 선언
 - 2026-05-27 기준 stock-company prod 배포 및 Elasticsearch 복구 중 발견한 문제를 `docs/stock-company-prod-deployment-issues.md`에 별도 트러블슈팅 문서로 정리
 - 2026-05-27 기준 stock-company prod bo-app1/bo-app2에 nginx bootstrap 배포를 완료하고, nginx active/enabled 및 localhost HTTP 200 응답을 검증
 - 2026-05-27 기준 기존 서버 원본 `infra/istock-mall/elasticsearch.tar`를 기반으로 `ops/stock_company/common|prod/extra_files/elasticsearch.tar.gz` 정리본 재생성 및 교체 완료: Elasticsearch/Kibana `data`/`logs`/`tmp`/`pid`/`optimize` 하위 런타임 파일과 macOS 메타데이터를 제거하고 JDK/실행 스크립트 보존, prod search dry-run 통과
@@ -87,7 +118,7 @@
 - `docs/M1-PLAN.md`, `PLAN.md`를 현재 코드 기준으로 정리해 obsolete 체크리스트를 실제 구현 형태로 교체하고 M1 상태를 완료로 승격
 - 루트 `README.md` 추가: 운영/사용자 온보딩 중심으로 현재 지원 범위, 빠른 시작, 핵심 설정 구조, 주요 명령, 관련 문서 링크를 정리
 - `ops/` 운영 자산 스캐폴딩 추가: 서비스 기준(`stock_company`, `sample_api`) 1차 분리 후 각 서비스 아래 `common/`, 환경별(`dev`, `stage`, `prod`) 디렉터리 구조를 생성하고, 상위 저장소와 분리된 독립 Git 저장소로 초기화
-- stock-company dev 배포 자산 추가: `ops/stock_company/dev/deploy.yml`, Kafka/Redis compose 파일, 공통 대용량 extra_files hard link 기준 정리 및 전체/태그별 dry-run 검증 완료
+- stock-company dev 배포 자산 추가: `ops/stock_company/dev/deploy.yml`, Redis compose 파일, 공통 대용량 extra_files hard link 기준 정리 및 전체/태그별 dry-run 검증 완료
 - stock-company dev ScyllaDB 배포는 보류 처리: `devapm2` 배포 대상에서 Scylla compose/bootstrap/directory를 제외하고 MongoDB/Hazelcast만 유지
 - stock-company prod 배포 자산 추가: `cache1/cache2/app1/app2/app3/search1/search2` 서버 배치를 `ops/stock_company/prod/deploy.yml`로 이전하고 dev deploy는 `devapp1/devapp2/devapm1/devapm2`만 유지
 - stock-company prod Redis Sentinel 설정 추가: `redis-sentinel.conf`를 prod app 서버 Redis 자산에 포함하고 compose 마운트 경로를 파일 단위로 보정
@@ -128,10 +159,32 @@
 - 디렉토리 생성 단계 보수화: 기존 디렉토리는 소유권 변경 없이 그대로 두고, 없는 디렉토리만 생성 후 생성 지점만 소유권 보정
 - swap bootstrap 보강: `/swapfile`이 없거나 swap 서명이 없을 때도 단일 sudo 단계에서 생성/권한 보정/mkswap/swapon을 보장하도록 수정
 - stock-company dev/prod `OLD_yamls` 기준 application YAML env placeholder 분리본 추가: `NEW_yamls`에 Redis host/port/password/sentinel node, MongoDB nodes, datasource 접속 정보, 내부 API URL, Hazelcast/AWS 접속 값을 `${...}` 형태로 치환
+- `NEW_yamls/env-parameters.yml` 갱신: dev/prod application placeholder 204개를 서비스별 YAML 구조로 정리하고, 공유 값은 `PROD_REDIS_*`, `PROD_REDIS_SENTINEL_NODES`, `DEV_BATCH_API_*`처럼 공통 파라미터명으로 통합해 unique 변수 79개로 축소
+- `NEW_yamls/parameter-summary.yml` 추가: 공통 파라미터와 개별 파라미터를 분리해 사용 파일, NEW/OLD 위치, OLD 원본 값을 함께 정리
+- `NEW_yamls/.env.sample` 추가: dev/prod 환경별 shared/individual 파라미터를 WAS `EnvironmentFile`에 넣기 쉬운 `KEY=value` 샘플로 정리
+- stock-company dev/prod `env/` 디렉토리 추가: 각 환경별 서비스 단위 `*.env.sample`을 생성하고, 서비스 YAML에서 실제 참조하는 `${...}` 변수만 포함하도록 분리
+- stock-company dev/prod 앱 배포에 `config/<service>.env` 전송을 추가하고, 공통 `server.sh` 템플릿이 `${BASE_DIR}/config/${APP_NAME}.env`를 로드한 뒤 Spring Boot를 실행하도록 반영
+- stock-company dev/prod 배포 자산에서 미사용 메시지 브로커 compose/archive 참조와 application YAML의 관련 사용 플래그를 제거하고, 남은 관련 문자열이 없는지 dry-run 및 검색으로 검증
 - iSTOCK-MALL AWS 인프라 Terraform 디렉토리(`infra/istock-mall/`)는 main 브랜치 추적 대상에서 제외하고, 별도 운영 브랜치/저장소에서 관리하는 방향으로 정리
 - 2026-05-27 기준 prod bastion 경유로 `cache1/cache2/search1/search2` 파일 배포 완료: MongoDB/Hazelcast/Elasticsearch tar checksum 일치와 압축 해제 경로 확인
 
 ## Next To-Do
+- PRD 운영 private env와 `global-bundle.pem`을 git 추적 밖 경로로 확보한 뒤 `ops/stock_company/prod/deploy.yml`의 `.env.sample` 참조를 실제 private 자산으로 교체하고 PRD `--server-tag search` dry-run을 재시도
+- 원격 PRD/DEV running process와 배포 대상 checksum을 read-only로 재확인한 뒤 bastion deploy.yml checksum 동기화 여부를 승인받아 반영
+- DEV `istockdev` 원격 JDBC 접속이 필요하면 접속 역할/비밀번호와 허용 CIDR을 확정한 뒤 `listen_addresses`, `pg_hba.conf`, 보안그룹을 별도 승인 하에 구성하고 애플리케이션 연결 테스트 수행
+- DEV `istockdev`의 복원된 publication 5개를 실제 logical replication에 사용할 경우 `wal_level=logical` 전환과 publication table 매핑 범위를 확정한 뒤 재시작 영향 검토
+- DEV `batch-api1`/`batch-api2`의 24바이트 mock JAR를 실제 DEV 빌드 산출물로 교체한 뒤 `devwas`에서 `25251`/`25252` 기동 및 로그/의존 서비스 smoke test 수행
+- `hamonica`/`hamonica-adm`의 `cache-sh.service`를 `hz-start` 직접 실행 방식으로 정상화한 뒤 `devwas`/`devapp`에서 두 Hazelcast 노드의 `5701` 연결을 재검증
+- DEV FO 3개 앱은 현재 중지 상태이므로 의존 서비스(PostgreSQL, Elasticsearch, payments API) 접근성을 확인하고 새 iSTOCK Redis 연결을 포함해 `fo-api` -> `fo-mobile`/`fo-pcweb` 순서로 기동 smoke test 수행
+- DEV Overpass 6개 앱의 환경별 batch server 번호와 검색/AWS target group endpoint를 확정한 뒤 현재 주석 처리된 설정을 필요한 앱만 활성화하고 순차 기동 smoke test 수행
+- PRD `fo-pcweb`/`fo-mobile` 등 Redis 세션 사용 앱에 갱신된 `application.yml`과 `<service>.env`를 배포한 뒤 `CONFIG GET notify-keyspace-events` 오류가 사라졌는지 기동 smoke test 수행
+- STG `fo-pcweb`/`fo-mobile`의 `DATASOURCE_OVERPASS_USERNAME/PASSWORD` 실제 값을 확정하고, 필요하면 `global-bundle.pem` 인증서 배포 항목을 추가한 뒤 앱 기동 smoke test 수행
+- `prd-bo-external-alb` 실제 DNS를 운영 계정에서 확인해 `ops/stock_company/prod/nginx/sites/bo-app.conf`의 `REPLACE_WITH_PRD_BO_PCWEB_ALB_DNS`를 교체하고, `/etc/nginx/conf.d/bo-app.conf` symlink/copy 및 `nginx -t && systemctl reload nginx` 반영 절차 자동화 여부 결정
+- PRD Overpass 앱 재기동 전 `logback-spring.xml` appender 구성과 DB SSL `global-bundle.pem` 경로를 현재 `/app/overpass/*/config` 배포 구조에 맞게 확인한 뒤 payments API smoke test 수행
+- 실제 DEV/PRD 서비스별 `config/<service>.env` 값을 확정한 뒤 앱 프로세스 start/restart 순서와 smoke test 범위 결정
+- PRD `search1/search2` Elasticsearch archive checksum diff는 의도한 운영 artifact 기준으로 별도 승인 후 반영 여부 결정
+- prd bastion에서 새 셸 또는 `source ~/.bashrc` 후 등록된 prod alias로 각 target SSH 접속 smoke test를 필요 범위만 선별해 확인
+- prd search ALB listener rule의 host/path 조건을 확정해 Elasticsearch/Kibana target group을 실제 ALB 트래픽 경로에 연결
 - `TEST/` 독립 저장소의 원격(origin) 연결 여부와 ignore 규칙을 실제 팀 운영 방식에 맞게 확정
 - 실제 저장소 owner/repo에 맞는 `RELEASE_OWNER`, `RELEASE_REPO` CI 주입값 확정
 - 실제 GitHub Release 태그 기준으로 `goreleaser release --clean` 한 번 검증
@@ -165,15 +218,15 @@
 - stock-company dev 운영 자산의 실제 host/bastion 값을 확정하고 placeholder를 치환한 뒤 bastion에서 dry-run/실배포 검증
 - stock-company prod 운영 자산의 실제 host/bastion 값을 확정하고 placeholder를 치환한 뒤 bastion에서 dry-run/실배포 검증
 - stock-company overpass 운영 자산의 실제 서버별 기동 순서/포트 충돌 여부 검증
-- stock-company stage 운영 자산을 prod bastion 경유 기준으로 실제 dry-run/실배포 검증
+- STG target SG에 추가한 prd bastion source `tcp/22` ingress를 `infra/istock-mall` Terraform 명시 rule로 정리
 - AWS dev-test 검증 완료 후 test 리소스 destroy 범위가 dev-test 리소스만 포함하는지 재확인
 - 새로 생성된 AWS dev-test 인프라에 stock-company dev placeholder를 반영하고 bastion dry-run/실배포 smoke test 재검증
 - `devapp` 단일 구조와 `devbuild`/`hamonica`/`hamonica-adm`/`postgresql` 기준으로 stock-company dev placeholder를 다시 치환하고 bastion에서 재검증
-- stock-company dev 서버별 Kafka/Redis/MongoDB/Hazelcast/Elasticsearch 압축 해제 및 compose 실행 절차를 후속 스크립트로 정리
+- stock-company dev 서버별 Redis/MongoDB/Hazelcast/Elasticsearch 압축 해제 및 실행 절차를 후속 스크립트로 정리
 - istock dev build 서버에서 Docker Compose 수동 설치 후 `docker compose version`, Docker 권한(`jenkins` user/group), Jenkins `aws --version`, GitLab external URL/IP, 80/443/8080/8081/2222 포트 충돌 여부를 실제 서버 기준으로 검증
 - 보류 중인 ScyllaDB compose/config/manager-agent 배포 파일 구성을 확정한 뒤 `devapm2`에 재반영
 - bo-app EC2 2대에 nginx bootstrap을 `--server-tag bo-app` 기준으로 dry-run/실배포 검증
-- WAS가 실행되는 EC2별 `.env` 파일에 `NEW_yamls`의 `${...}` 변수 값을 채우고, systemd `EnvironmentFile` 또는 실행 스크립트 `source` 방식으로 Spring Boot 프로세스에 주입되는지 검증
+- WAS가 실행되는 EC2별 실제 `config/<service>.env` 값을 서비스별 `env/*.env.sample` 기준으로 채운 뒤 Spring Boot 프로세스에서 placeholder가 정상 해석되는지 검증
 - iSTOCK-MALL AWS 인프라 Terraform 코드는 main이 아닌 별도 운영 브랜치/저장소에서 state/import 정책과 함께 관리
 - search1/search2에서 target-side bastion `known_hosts` 등록 warning의 네트워크/보안그룹 원인을 확인하고 필요 시 예외 처리 또는 SG 규칙을 정리
 - `/app/elasticsearch`처럼 서비스 유저가 소유한 경로에 대용량 archive를 반영할 때 deployer가 staging path + sudo extract + 최종 chown 흐름을 선언적으로 지원하도록 개선

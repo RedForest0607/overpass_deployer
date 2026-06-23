@@ -66,6 +66,7 @@ func runVM(args []string, deps dependencies) int {
 
 	configPath := vmCmd.String("config", "deploy.yml", "Path to deploy.yml configuration file")
 	dryRun := vmCmd.Bool("dry-run", false, "Print planned actions without making remote changes")
+	bastionOnly := vmCmd.Bool("bastion-only", false, "Sync bastion aliases and known_hosts without deploying servers")
 	serverTags := vmCmd.String("server-tag", "", "Deploy only servers matching any provided tags (comma-separated)")
 	appTags := vmCmd.String("app-tag", "", "Deploy only apps matching any provided tags (comma-separated)")
 	parallelServers := vmCmd.Int("parallel", 1, "Maximum number of servers to deploy concurrently")
@@ -82,6 +83,7 @@ func runVM(args []string, deps dependencies) int {
 
 	if err := deps.runVM(cfg, vm.RunOptions{
 		DryRun:          *dryRun,
+		BastionOnly:     *bastionOnly,
 		ServerTags:      parseTagFilter(*serverTags),
 		AppTags:         parseTagFilter(*appTags),
 		ParallelServers: *parallelServers,
@@ -164,6 +166,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintf(w, "Flags for 'vm':\n")
 	fmt.Fprintf(w, "  --config string   Path to configuration file (default: deploy.yml)\n")
 	fmt.Fprintf(w, "  --dry-run         Print planned actions without remote changes\n")
+	fmt.Fprintf(w, "  --bastion-only    Sync bastion aliases and known_hosts without deploying servers\n")
 	fmt.Fprintf(w, "  --server-tag      Deploy only servers matching any provided tags (comma-separated)\n")
 	fmt.Fprintf(w, "  --app-tag         Deploy only apps matching any provided tags (comma-separated)\n")
 	fmt.Fprintf(w, "  --parallel int    Maximum number of servers to deploy concurrently (default: 1)\n")
