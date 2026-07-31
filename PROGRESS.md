@@ -1,6 +1,9 @@
 # Progress
 
 ## Completed
+- 2026-07-27 기준 DEV `oa-exp.istockmall.com` Route53 Alias 전환 완료: 기존 `dev-external-alb-554037108.ap-northeast-2.elb.amazonaws.com`에서 `dev-oa-external-alb-1065898717.ap-northeast-2.elb.amazonaws.com`으로 A Alias 변경, Terraform state import 및 관리 전환 완료, 새 OA TG target `healthy`와 실제 `https://oa-exp.istockmall.com/` HTTP/2 200 검증 완료
+- 2026-07-27 기준 DEV OA 전용 ALB 1차 생성 완료: Terraform apply로 `dev-oa-external-alb`/HTTPS 443 listener/`dev-oa-external-tg`/전용 SG 및 `dev_was:25205` ingress 생성 완료, 새 ALB 상태 `active`, `devwas(i-03b1b81af986a7fbe):25205` target health `healthy` 확인; `oa-exp.istockmall.com` Route53 Alias는 아직 기존 `dev-external-alb` 유지
+- 2026-07-27 기준 DEV `oa-exp.istockmall.com`을 기존 `dev-external-alb`에서 전용 `dev-oa-external-alb`로 분리하기 위한 Terraform 초안 추가: 전용 ALB/HTTPS listener/TG/SG, `devwas:25205` ingress, Route53 hosted zone 조회 및 cutover용 output 구성을 분리 파일로 작성하고, 실제 Route53 Alias 전환은 새 ALB 검증 이후 별도 단계로 보류
 - 2026-06-23 기준 서버 수동 변경 흡수 1차 구현 완료: `bootstrap.users[]`/`bootstrap.sysctl[]`, privileged archive staging/sudo extract/owner 선언, prod/prd `.env.sample` 배포 차단 validator, DEV `overpass-payments-api` 앱 선언, batch JVM `-Dbatch.server.no`와 DEV `fo-api` 1g heap 선언, Elasticsearch common archive 복구 및 DEV dry-run 검증 완료
 - 2026-06-09 기준 DEV bastion(`54.116.159.65`) 경유 PostgreSQL 서버(`10.20.30.87`)에 PostgreSQL 17.6 custom dump를 신규 UTF-8 `istockdev` DB로 복원 완료: SHA-256/아카이브 검증, `pldbgapi` 소스 빌드 설치, USER MAPPING 제외, `--no-owner --no-acl --exit-on-error --jobs=4` 복원, 단계별 ANALYZE 및 DB/객체/invalid index/대형 테이블 행 수 검증 완료
 - 2026-06-09 기준 DEV `batch-api1`/`batch-api2`를 `devapp(10.20.10.202)`에서 `devwas(10.20.10.41)`로 이전 완료: 배포 대상 선언 변경, 전체 파일 SHA256 일치, `server.sh` 문법과 `25251`/`25252` 포트 미사용 확인 후 devapp 원본 및 전송 임시파일 삭제
@@ -169,6 +172,7 @@
 - 2026-05-27 기준 prod bastion 경유로 `cache1/cache2/search1/search2` 파일 배포 완료: MongoDB/Hazelcast/Elasticsearch tar checksum 일치와 압축 해제 경로 확인
 
 ## Next To-Do
+- DEV OA 전용 ALB 전환 안정화 후 기존 `dev-external-alb` priority `50` OA rule 및 old ALB -> `dev_was:25205` SG rule cleanup 여부 결정
 - PRD 운영 private env와 `global-bundle.pem`을 git 추적 밖 경로로 확보한 뒤 `ops/stock_company/prod/deploy.yml`의 `.env.sample` 참조를 실제 private 자산으로 교체하고 PRD `--server-tag search` dry-run을 재시도
 - 원격 PRD/DEV running process와 배포 대상 checksum을 read-only로 재확인한 뒤 bastion deploy.yml checksum 동기화 여부를 승인받아 반영
 - DEV `istockdev` 원격 JDBC 접속이 필요하면 접속 역할/비밀번호와 허용 CIDR을 확정한 뒤 `listen_addresses`, `pg_hba.conf`, 보안그룹을 별도 승인 하에 구성하고 애플리케이션 연결 테스트 수행
