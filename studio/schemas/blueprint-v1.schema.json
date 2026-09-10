@@ -1,0 +1,266 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://studio.overpass.dev/schemas/blueprint-v1.schema.json",
+  "title": "Overpass Studio Blueprint v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["apiVersion", "nodes", "placements", "connections"],
+  "properties": {
+    "apiVersion": { "const": "studio.deployer/v1" },
+    "nodes": {
+      "type": "array",
+      "maxItems": 500,
+      "items": { "$ref": "#/$defs/node" }
+    },
+    "placements": {
+      "type": "array",
+      "maxItems": 500,
+      "items": { "$ref": "#/$defs/placement" }
+    },
+    "connections": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": { "$ref": "#/$defs/connection" }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+    "name": { "type": "string", "maxLength": 128 },
+    "port": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "servicePort", "protocol"],
+      "properties": {
+        "name": { "type": "string", "maxLength": 63 },
+        "servicePort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "protocol": { "enum": ["TCP", "UDP"] }
+      }
+    },
+    "vmSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "host"],
+      "properties": {
+        "provider": { "enum": ["on-prem", "aws-ec2"] },
+        "host": { "type": "string", "maxLength": 253 }
+      }
+    },
+    "javaSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactRef", "javaVersion", "maxHeap", "ports"],
+      "properties": {
+        "artifactRef": {
+          "oneOf": [
+            { "$ref": "#/$defs/id" },
+            { "type": "null" }
+          ]
+        },
+        "javaVersion": { "type": "string", "maxLength": 32 },
+        "maxHeap": { "type": "string", "maxLength": 32 },
+        "ports": { "type": "array", "items": { "$ref": "#/$defs/port" } }
+      }
+    },
+    "hostedServiceSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["location", "ports"],
+      "properties": {
+        "location": { "enum": ["hosted", "external"] },
+        "endpoint": { "type": "string", "maxLength": 2048 },
+        "ports": { "type": "array", "items": { "$ref": "#/$defs/port" } },
+        "secretRef": { "type": "string", "maxLength": 128 }
+      }
+    },
+    "databaseSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["engine", "endpoint", "ports"],
+      "properties": {
+        "engine": { "const": "postgresql" },
+        "endpoint": { "type": "string", "maxLength": 2048 },
+        "ports": { "type": "array", "items": { "$ref": "#/$defs/port" } },
+        "secretRef": { "type": "string", "maxLength": 128 }
+      }
+    },
+    "kubernetesSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["namespace"],
+      "properties": { "namespace": { "type": "string", "maxLength": 253 } }
+    },
+    "registrySpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["endpoint"],
+      "properties": {
+        "endpoint": { "type": "string", "maxLength": 2048 },
+        "secretRef": { "type": "string", "maxLength": 128 }
+      }
+    },
+    "ingressSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["host"],
+      "properties": { "host": { "type": "string", "maxLength": 253 } }
+    },
+    "node": {
+      "oneOf": [
+        { "$ref": "#/$defs/vmNode" },
+        { "$ref": "#/$defs/javaNode" },
+        { "$ref": "#/$defs/redisNode" },
+        { "$ref": "#/$defs/elasticsearchNode" },
+        { "$ref": "#/$defs/databaseNode" },
+        { "$ref": "#/$defs/kubernetesNode" },
+        { "$ref": "#/$defs/registryNode" },
+        { "$ref": "#/$defs/ingressNode" }
+      ]
+    },
+    "nodeBase": {
+      "type": "object",
+      "required": ["id", "kind", "name", "spec"]
+    },
+    "vmNode": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": { "$ref": "#/$defs/id" },
+            "kind": { "const": "vm" },
+            "name": { "$ref": "#/$defs/name" },
+            "spec": { "$ref": "#/$defs/vmSpec" }
+          }
+        }
+      ]
+    },
+    "javaNode": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": { "$ref": "#/$defs/id" },
+            "kind": { "const": "java" },
+            "name": { "$ref": "#/$defs/name" },
+            "spec": { "$ref": "#/$defs/javaSpec" }
+          }
+        }
+      ]
+    },
+    "redisNode": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": { "$ref": "#/$defs/id" },
+            "kind": { "const": "redis" },
+            "name": { "$ref": "#/$defs/name" },
+            "spec": { "$ref": "#/$defs/hostedServiceSpec" }
+          }
+        }
+      ]
+    },
+    "elasticsearchNode": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": { "$ref": "#/$defs/id" },
+            "kind": { "const": "elasticsearch" },
+            "name": { "$ref": "#/$defs/name" },
+            "spec": { "$ref": "#/$defs/hostedServiceSpec" }
+          }
+        }
+      ]
+    },
+    "databaseNode": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": { "$ref": "#/$defs/id" },
+            "kind": { "const": "database" },
+            "name": { "$ref": "#/$defs/name" },
+            "spec": { "$ref": "#/$defs/databaseSpec" }
+          }
+        }
+      ]
+    },
+    "kubernetesNode": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": { "$ref": "#/$defs/id" },
+            "kind": { "const": "kubernetes" },
+            "name": { "$ref": "#/$defs/name" },
+            "spec": { "$ref": "#/$defs/kubernetesSpec" }
+          }
+        }
+      ]
+    },
+    "registryNode": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": { "$ref": "#/$defs/id" },
+            "kind": { "const": "registry" },
+            "name": { "$ref": "#/$defs/name" },
+            "spec": { "$ref": "#/$defs/registrySpec" }
+          }
+        }
+      ]
+    },
+    "ingressNode": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": { "$ref": "#/$defs/id" },
+            "kind": { "const": "ingress" },
+            "name": { "$ref": "#/$defs/name" },
+            "spec": { "$ref": "#/$defs/ingressSpec" }
+          }
+        }
+      ]
+    },
+    "placement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workloadRef", "targetRef", "mode"],
+      "properties": {
+        "workloadRef": { "$ref": "#/$defs/id" },
+        "targetRef": { "$ref": "#/$defs/id" },
+        "mode": { "enum": ["process", "compose", "kubernetes"] }
+      }
+    },
+    "connection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "sourceRef", "targetRef"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "kind": { "enum": ["connects_to", "routes_to", "publishes_to"] },
+        "sourceRef": { "$ref": "#/$defs/id" },
+        "targetRef": { "$ref": "#/$defs/id" },
+        "targetPortName": { "type": "string", "maxLength": 63 }
+      }
+    }
+  }
+}

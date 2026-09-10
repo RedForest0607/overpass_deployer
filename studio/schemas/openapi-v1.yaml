@@ -1,0 +1,480 @@
+openapi: 3.1.0
+info:
+  title: Overpass Studio API
+  version: 1.0.0-draft
+  description: Studio project, topology, artifact, validation, and package API.
+servers:
+  - url: /api/v1
+paths:
+  /capabilities:
+    get:
+      operationId: getCapabilities
+      responses:
+        '200':
+          description: Implemented server features and limits.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Capabilities' }
+        default: { $ref: '#/components/responses/Error' }
+  /projects:
+    get:
+      operationId: listProjects
+      parameters:
+        - { $ref: '#/components/parameters/Limit' }
+        - { $ref: '#/components/parameters/Cursor' }
+      responses:
+        '200':
+          description: Project page.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Project' } }
+                  nextCursor: { type: [string, 'null'] }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      operationId: createProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateProject' }
+      responses:
+        '201':
+          description: Created project.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        default: { $ref: '#/components/responses/Error' }
+  /projects/{projectId}:
+    parameters:
+      - { $ref: '#/components/parameters/ProjectId' }
+    get:
+      operationId: getProject
+      responses:
+        '200':
+          description: Project.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        default: { $ref: '#/components/responses/Error' }
+    patch:
+      operationId: updateProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateProject' }
+      responses:
+        '200':
+          description: Updated project.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        default: { $ref: '#/components/responses/Error' }
+  /projects/{projectId}/artifacts:
+    parameters:
+      - { $ref: '#/components/parameters/ProjectId' }
+    get:
+      operationId: listArtifacts
+      responses:
+        '200':
+          description: Artifacts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Artifact' } }
+                  nextCursor: { type: [string, 'null'] }
+        default: { $ref: '#/components/responses/Error' }
+    post:
+      operationId: createArtifact
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, kind]
+              properties:
+                file: { type: string, format: binary }
+                kind: { $ref: '#/components/schemas/ArtifactKind' }
+                displayName: { type: string, maxLength: 255 }
+      responses:
+        '201':
+          description: Immutable artifact metadata.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Artifact' }
+        default: { $ref: '#/components/responses/Error' }
+  /projects/{projectId}/topologies/{environment}:
+    parameters:
+      - { $ref: '#/components/parameters/ProjectId' }
+      - { $ref: '#/components/parameters/Environment' }
+    get:
+      operationId: getTopology
+      responses:
+        '200':
+          description: Environment topology.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Topology' }
+        default: { $ref: '#/components/responses/Error' }
+    put:
+      operationId: putTopology
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SaveTopology' }
+      responses:
+        '200':
+          description: Saved topology.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Topology' }
+        default: { $ref: '#/components/responses/Error' }
+  /projects/{projectId}/validations:
+    parameters:
+      - { $ref: '#/components/parameters/ProjectId' }
+    post:
+      operationId: validateBlueprint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ValidationRequest' }
+      responses:
+        '200':
+          description: Validation result; invalid designs also use HTTP 200.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ValidationResult' }
+        default: { $ref: '#/components/responses/Error' }
+  /projects/{projectId}/generations:
+    parameters:
+      - { $ref: '#/components/parameters/ProjectId' }
+    post:
+      operationId: createGeneration
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateGeneration' }
+      responses:
+        '202':
+          description: Queued generation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Generation' }
+        default: { $ref: '#/components/responses/Error' }
+  /projects/{projectId}/generations/{generationId}:
+    parameters:
+      - { $ref: '#/components/parameters/ProjectId' }
+      - name: generationId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: getGeneration
+      responses:
+        '200':
+          description: Generation status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Generation' }
+        default: { $ref: '#/components/responses/Error' }
+  /projects/{projectId}/packages/{packageId}:
+    parameters:
+      - { $ref: '#/components/parameters/ProjectId' }
+      - { $ref: '#/components/parameters/PackageId' }
+    get:
+      operationId: getPackage
+      responses:
+        '200':
+          description: Package and file manifest.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Package' }
+        default: { $ref: '#/components/responses/Error' }
+  /projects/{projectId}/packages/{packageId}/files/{fileId}:
+    parameters:
+      - { $ref: '#/components/parameters/ProjectId' }
+      - { $ref: '#/components/parameters/PackageId' }
+      - name: fileId
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      operationId: previewPackageFile
+      responses:
+        '200':
+          description: UTF-8 preview.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FilePreview' }
+        default: { $ref: '#/components/responses/Error' }
+  /projects/{projectId}/packages/{packageId}/download:
+    parameters:
+      - { $ref: '#/components/parameters/ProjectId' }
+      - { $ref: '#/components/parameters/PackageId' }
+    get:
+      operationId: downloadPackage
+      responses:
+        '200':
+          description: Package ZIP.
+          headers:
+            Content-Disposition: { schema: { type: string } }
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+        default: { $ref: '#/components/responses/Error' }
+components:
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema: { type: string }
+    PackageId:
+      name: packageId
+      in: path
+      required: true
+      schema: { type: string }
+    Environment:
+      name: environment
+      in: path
+      required: true
+      schema: { $ref: '#/components/schemas/Environment' }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+  responses:
+    Error:
+      description: Error response.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+  schemas:
+    Environment: { type: string, enum: [dev, qa, prod] }
+    ArtifactKind: { type: string, enum: [jar, config-template, env-example] }
+    Output: { type: string, enum: [draft, package] }
+    Project:
+      type: object
+      required: [id, name, description, revision, createdAt, updatedAt]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        description: { type: string }
+        revision: { type: integer, minimum: 1 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    CreateProject:
+      type: object
+      additionalProperties: false
+      required: [name, description]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 128 }
+        description: { type: string, maxLength: 2000 }
+    UpdateProject:
+      type: object
+      additionalProperties: false
+      required: [expectedRevision]
+      properties:
+        expectedRevision: { type: integer, minimum: 1 }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        description: { type: string, maxLength: 2000 }
+    Artifact:
+      type: object
+      required: [id, projectId, kind, originalName, sizeBytes, sha256, createdAt]
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        kind: { $ref: '#/components/schemas/ArtifactKind' }
+        originalName: { type: string }
+        sizeBytes: { type: integer, minimum: 0 }
+        sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
+        createdAt: { type: string, format: date-time }
+    Blueprint:
+      $ref: './blueprint-v1.schema.json'
+    Position:
+      type: object
+      additionalProperties: false
+      required: [x, y]
+      properties:
+        x: { type: number }
+        y: { type: number }
+    Layout:
+      type: object
+      additionalProperties: false
+      required: [nodes, viewport]
+      properties:
+        nodes:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [nodeId, position]
+            properties:
+              nodeId: { type: string }
+              position: { $ref: '#/components/schemas/Position' }
+        viewport:
+          type: object
+          additionalProperties: false
+          required: [x, y, zoom]
+          properties:
+            x: { type: number }
+            y: { type: number }
+            zoom: { type: number, exclusiveMinimum: 0 }
+    SaveTopology:
+      type: object
+      additionalProperties: false
+      required: [expectedRevision, blueprint, layout]
+      properties:
+        expectedRevision: { type: integer, minimum: 0 }
+        blueprint: { $ref: '#/components/schemas/Blueprint' }
+        layout: { $ref: '#/components/schemas/Layout' }
+    Topology:
+      type: object
+      required: [projectId, environment, revision, updatedAt, blueprint, layout]
+      properties:
+        projectId: { type: string }
+        environment: { $ref: '#/components/schemas/Environment' }
+        revision: { type: integer, minimum: 1 }
+        updatedAt: { type: string, format: date-time }
+        blueprint: { $ref: '#/components/schemas/Blueprint' }
+        layout: { $ref: '#/components/schemas/Layout' }
+    ValidationRequest:
+      type: object
+      additionalProperties: false
+      required: [environment, clientRequestId, blueprint, purpose]
+      properties:
+        environment: { $ref: '#/components/schemas/Environment' }
+        clientRequestId: { type: string, maxLength: 128 }
+        blueprint: { $ref: '#/components/schemas/Blueprint' }
+        generator: { type: string }
+        purpose: { type: string, enum: [design, package] }
+    Issue:
+      type: object
+      required: [code, severity, stage, nodeIds, connectionIds, path, message]
+      properties:
+        code: { type: string }
+        severity: { type: string, enum: [warning, error] }
+        stage: { type: string, enum: [model, deployment, artifact, generator] }
+        nodeIds: { type: array, items: { type: string } }
+        connectionIds: { type: array, items: { type: string } }
+        path: { type: string }
+        message: { type: string }
+        suggestion: { type: string }
+    ValidationResult:
+      type: object
+      required: [clientRequestId, valid, issues]
+      properties:
+        clientRequestId: { type: string }
+        valid: { type: boolean }
+        issues: { type: array, items: { $ref: '#/components/schemas/Issue' } }
+    CreateGeneration:
+      type: object
+      additionalProperties: false
+      required: [environment, revision, generator, output]
+      properties:
+        environment: { $ref: '#/components/schemas/Environment' }
+        revision: { type: integer, minimum: 1 }
+        generator: { type: string, enum: [crosswalk-vm] }
+        output: { $ref: '#/components/schemas/Output' }
+    Generation:
+      type: object
+      required: [id, projectId, environment, revision, status, packageId, error]
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        environment: { $ref: '#/components/schemas/Environment' }
+        revision: { type: integer }
+        status: { type: string, enum: [queued, running, succeeded, failed] }
+        packageId: { type: [string, 'null'] }
+        error:
+          oneOf:
+            - { $ref: '#/components/schemas/ErrorBody' }
+            - { type: 'null' }
+    PackageFile:
+      type: object
+      required: [id, path, mediaType, sizeBytes, previewable]
+      properties:
+        id: { type: string }
+        path: { type: string }
+        mediaType: { type: string }
+        sizeBytes: { type: integer, minimum: 0 }
+        previewable: { type: boolean }
+    Package:
+      type: object
+      required: [id, projectId, environment, revision, output, generator, generatorVersion, chartFormat, createdAt, files]
+      properties:
+        id: { type: string }
+        projectId: { type: string }
+        environment: { $ref: '#/components/schemas/Environment' }
+        revision: { type: integer }
+        output: { $ref: '#/components/schemas/Output' }
+        generator: { type: string }
+        generatorVersion: { type: string }
+        chartFormat: { type: string }
+        createdAt: { type: string, format: date-time }
+        files: { type: array, items: { $ref: '#/components/schemas/PackageFile' } }
+    FilePreview:
+      type: object
+      required: [id, content, encoding, truncated]
+      properties:
+        id: { type: string }
+        content: { type: string }
+        encoding: { const: utf-8 }
+        truncated: { type: boolean }
+    GeneratorCapability:
+      type: object
+      required: [id, outputs, supportedKinds, supportedModes]
+      properties:
+        id: { type: string }
+        outputs: { type: array, items: { $ref: '#/components/schemas/Output' } }
+        supportedKinds: { type: array, items: { type: string } }
+        supportedModes: { type: array, items: { type: string } }
+    Limits:
+      type: object
+      required: [jarBytes, textArtifactBytes, previewBytes, topologyNodes, topologyConnections]
+      properties:
+        jarBytes: { type: integer }
+        textArtifactBytes: { type: integer }
+        previewBytes: { type: integer }
+        topologyNodes: { type: integer }
+        topologyConnections: { type: integer }
+    Capabilities:
+      type: object
+      required: [blueprintVersions, generators, limits]
+      properties:
+        blueprintVersions: { type: array, items: { type: string } }
+        generators: { type: array, items: { $ref: '#/components/schemas/GeneratorCapability' } }
+        limits: { $ref: '#/components/schemas/Limits' }
+    ErrorBody:
+      type: object
+      required: [code, message, requestId]
+      properties:
+        code: { type: string }
+        message: { type: string }
+        requestId: { type: string }
+        details: { type: object, additionalProperties: true }
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error: { $ref: '#/components/schemas/ErrorBody' }
