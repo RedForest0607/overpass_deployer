@@ -197,6 +197,31 @@ func TestRunVersionPrintsBuildMetadata(t *testing.T) {
 	}
 }
 
+func TestRunDashboardUsesMonitoringConfigLoader(t *testing.T) {
+	var loadedPath string
+	var ranDashboard bool
+
+	exitCode := run([]string{"dashboard", "--config", "dashboard.yml"}, dependencies{
+		stdout: &bytes.Buffer{},
+		stderr: &bytes.Buffer{},
+		loadMonitorConfig: func(path string) (*config.Config, error) {
+			loadedPath = path
+			return &config.Config{}, nil
+		},
+		runDashboard: func(*config.Config) error {
+			ranDashboard = true
+			return nil
+		},
+	})
+
+	if exitCode != 0 {
+		t.Fatalf("expected success exit code, got %d", exitCode)
+	}
+	if loadedPath != "dashboard.yml" || !ranDashboard {
+		t.Fatalf("dashboard should load %q and run: path=%q ran=%t", "dashboard.yml", loadedPath, ranDashboard)
+	}
+}
+
 func TestRunUpdateRoutesCheckOnlyOption(t *testing.T) {
 	t.Helper()
 

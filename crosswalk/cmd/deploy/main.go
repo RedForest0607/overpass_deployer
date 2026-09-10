@@ -10,6 +10,7 @@ import (
 
 	"go-deployer/internal/buildinfo"
 	"go-deployer/internal/config"
+	"go-deployer/internal/dashboard"
 	"go-deployer/internal/update"
 	"go-deployer/internal/vm"
 )
@@ -17,22 +18,26 @@ import (
 // main은 실제 OS 입출력과 구현체 의존성을 연결한 뒤 CLI 실행 결과를 종료 코드로 반환한다.
 func main() {
 	os.Exit(run(os.Args[1:], dependencies{
-		stdout:     os.Stdout,
-		stderr:     os.Stderr,
-		loadConfig: config.Load,
-		runVM:      vm.RunWithOptions,
-		runUpdate:  update.Execute,
-		buildInfo:  buildinfo.Current,
+		stdout:            os.Stdout,
+		stderr:            os.Stderr,
+		loadConfig:        config.Load,
+		loadMonitorConfig: config.LoadForMonitoring,
+		runVM:             vm.RunWithOptions,
+		runUpdate:         update.Execute,
+		runDashboard:      dashboard.Run,
+		buildInfo:         buildinfo.Current,
 	}))
 }
 
 type dependencies struct {
-	stdout     io.Writer
-	stderr     io.Writer
-	loadConfig func(path string) (*config.Config, error)
-	runVM      func(cfg *config.Config, opts vm.RunOptions) error
-	runUpdate  func(ctx context.Context, cfg update.Config, opts update.Options) (*update.Result, error)
-	buildInfo  func() buildinfo.Info
+	stdout            io.Writer
+	stderr            io.Writer
+	loadConfig        func(path string) (*config.Config, error)
+	loadMonitorConfig func(path string) (*config.Config, error)
+	runVM             func(cfg *config.Config, opts vm.RunOptions) error
+	runUpdate         func(ctx context.Context, cfg update.Config, opts update.Options) (*update.Result, error)
+	runDashboard      func(cfg *config.Config) error
+	buildInfo         func() buildinfo.Info
 }
 
 // run은 최상위 서브커맨드를 해석하고 각 실행 경로로 라우팅한다.
@@ -49,6 +54,8 @@ func run(args []string, deps dependencies) int {
 		return runVersion(deps)
 	case "update":
 		return runUpdate(args[1:], deps)
+	case "dashboard":
+		return runDashboard(args[1:], deps)
 	case "docker":
 		fmt.Fprintln(deps.stderr, "docker mode is not implemented yet (M3)")
 		return 1
@@ -57,6 +64,27 @@ func run(args []string, deps dependencies) int {
 		printUsage(deps.stderr)
 		return 1
 	}
+}
+
+// runDashboard는 설정을 읽어 대화형 상태/로그/배포 대시보드를 시작한다.
+func runDashboard(args []string, deps dependencies) int {
+	dashboardCmd := flag.NewFlagSet("dashboard", flag.ContinueOnError)
+	dashboardCmd.SetOutput(deps.stderr)
+	configPath := dashboardCmd.String("config", "deploy.yml", "Path to deploy.yml configuration file")
+	if err := dashboardCmd.Parse(args); err != nil {
+		return 1
+	}
+
+	cfg, err := deps.loadMonitorConfig(*configPath)
+	if err != nil {
+		fmt.Fprintf(deps.stderr, "Failed to load configuration: %v\n", err)
+		return 1
+	}
+	if err := deps.runDashboard(cfg); err != nil {
+		fmt.Fprintf(deps.stderr, "Dashboard failed: %v\n", err)
+		return 1
+	}
+	return 0
 }
 
 // runVM은 VM 배포 옵션을 파싱하고 설정 로드 후 배포 워크플로를 실행한다.
@@ -162,6 +190,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintf(w, "  vm      Run VM mode deployment\n")
 	fmt.Fprintf(w, "  version Print build metadata\n")
 	fmt.Fprintf(w, "  update  Check for or install a newer release\n")
+	fmt.Fprintf(w, "  dashboard  Open the interactive deployment dashboard\n")
 	fmt.Fprintf(w, "  docker  Not implemented yet (M3)\n\n")
 	fmt.Fprintf(w, "Flags for 'vm':\n")
 	fmt.Fprintf(w, "  --config string   Path to configuration file (default: deploy.yml)\n")
@@ -173,6 +202,8 @@ func printUsage(w io.Writer) {
 	fmt.Fprintf(w, "\nFlags for 'update':\n")
 	fmt.Fprintf(w, "  --check           Check for updates without replacing the current binary\n")
 	fmt.Fprintf(w, "  --version string  Install a specific release tag\n")
+	fmt.Fprintf(w, "\nFlags for 'dashboard':\n")
+	fmt.Fprintf(w, "  --config string   Path to deploy.yml configuration file (default: deploy.yml)\n")
 }
 
 // parseTagFilter는 쉼표로 구분된 태그 입력을 소문자 중복 없는 목록으로 정규화한다.
