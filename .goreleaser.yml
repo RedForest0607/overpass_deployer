@@ -4,6 +4,7 @@ project_name: deploy
 
 builds:
   - id: deploy
+    dir: crosswalk
     main: ./cmd/deploy
     binary: deploy
     env:
