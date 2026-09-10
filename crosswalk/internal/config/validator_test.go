@@ -417,6 +417,27 @@ func TestValidateAndApplyDefaultsRejectsInvalidBootstrapUsersAndSysctls(t *testi
 	}
 }
 
+func TestValidateUtilityConfigsRejectsDuplicateAndEmptyDeclarations(t *testing.T) {
+	utilities := []UtilityConfig{
+		{Name: "redis", Directories: []string{"/app/redis"}, Services: []ServiceConfig{{Name: "redis-server"}}},
+		{Name: "redis"},
+		{Name: ""},
+	}
+	var errs []string
+	validateUtilityConfigs(utilities, "servers[0].utils", &errs, func(string, string) {}, false)
+
+	joined := strings.Join(errs, "\n")
+	for _, fragment := range []string{
+		`servers[0].utils[1].name "redis" must be unique per server`,
+		"servers[0].utils[1] must define directories, files, or services",
+		"servers[0].utils[2].name must not be empty",
+	} {
+		if !strings.Contains(joined, fragment) {
+			t.Fatalf("expected error to contain %q, got %s", fragment, joined)
+		}
+	}
+}
+
 func TestValidateAndApplyDefaultsAcceptsEmbeddedTemplateReference(t *testing.T) {
 	keyPath := writeTempFile(t, "id_rsa", "key")
 	jarPath := writeTempFile(t, "app.jar", "jar")

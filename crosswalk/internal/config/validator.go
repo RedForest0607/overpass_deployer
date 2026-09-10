@@ -145,12 +145,13 @@ func ValidateAndApplyDefaults(cfg *Config) error {
 		validateDirectories(&cfg.Servers[i].Directories, prefix+".directories", &errs, checkUnresolvedEnv)
 		prodLikeServer := hasProdLikeTags(cfg.Servers[i].Tags)
 		validateExtraFiles(&cfg.Servers[i].ExtraFiles, prefix+".extra_files", &errs, checkUnresolvedEnv, prodLikeServer)
+		validateUtilityConfigs(cfg.Servers[i].Utils, prefix+".utils", &errs, checkUnresolvedEnv, prodLikeServer)
 
 		if s.UsesLegacyApp() && len(s.Apps) > 0 {
 			errs = append(errs, prefix+" cannot define both app and apps")
 		}
-		if !s.UsesLegacyApp() && len(s.Apps) == 0 && len(cfg.Servers[i].Directories) == 0 && len(cfg.Servers[i].ExtraFiles) == 0 && !hasBootstrapSettings(cfg.Servers[i].Bootstrap) {
-			errs = append(errs, prefix+" must define app, apps, directories, extra_files, or bootstrap settings")
+		if !s.UsesLegacyApp() && len(s.Apps) == 0 && len(cfg.Servers[i].Directories) == 0 && len(cfg.Servers[i].ExtraFiles) == 0 && len(cfg.Servers[i].Utils) == 0 && !hasBootstrapSettings(cfg.Servers[i].Bootstrap) {
+			errs = append(errs, prefix+" must define app, apps, directories, extra_files, utils, or bootstrap settings")
 		}
 
 		if s.UsesLegacyApp() {
@@ -183,6 +184,116 @@ func ValidateAndApplyDefaults(cfg *Config) error {
 	}
 
 	return nil
+}
+
+// ValidateForMonitoring은 대시보드가 원격 상태와 로그를 조회하는 데 필요한 설정만 검증한다.
+// 이 검증 경로에서는 JAR와 설정 파일 같은 배포 원본의 로컬 존재 여부를 요구하지 않는다.
+func ValidateForMonitoring(cfg *Config) error {
+	var errs []string
+	checkUnresolvedEnv := func(value, fieldName string) {
+		if strings.Contains(value, "${") && strings.Contains(value, "}") {
+			errs = append(errs, fmt.Sprintf("%s contains unresolved environment variable: %s", fieldName, value))
+		}
+	}
+
+	checkUnresolvedEnv(cfg.SSH.User, "ssh.user")
+	checkUnresolvedEnv(cfg.SSH.KeyPath, "ssh.key_path")
+	if cfg.SSH.User == "" {
+		errs = append(errs, "ssh.user is required")
+	}
+	if cfg.SSH.KeyPath == "" {
+		errs = append(errs, "ssh.key_path is required")
+	} else {
+		cfg.SSH.KeyPath = expandHome(cfg.SSH.KeyPath)
+		validateExistingFile(cfg.SSH.KeyPath, "ssh.key_path", &errs)
+	}
+	if cfg.SSH.Port == 0 {
+		cfg.SSH.Port = DefaultSSHPort
+	} else {
+		validatePort(cfg.SSH.Port, "ssh.port", &errs)
+	}
+	if cfg.SSH.TimeoutSec == 0 {
+		cfg.SSH.TimeoutSec = DefaultSSHTimeout
+	} else if cfg.SSH.TimeoutSec < 0 {
+		errs = append(errs, "ssh.timeout_sec must be zero or greater")
+	}
+	cfg.SSH.HostKeyChecking = validateHostKeyCheckingMode(cfg.SSH.HostKeyChecking, &errs)
+	if cfg.SSH.HostKeyChecking != HostKeyInsecure {
+		if cfg.SSH.KnownHosts == "" {
+			cfg.SSH.KnownHosts = "~/.ssh/known_hosts"
+		}
+		cfg.SSH.KnownHosts = expandHome(cfg.SSH.KnownHosts)
+		if cfg.SSH.HostKeyChecking == HostKeyStrict {
+			validateExistingFile(cfg.SSH.KnownHosts, "ssh.known_hosts_path", &errs)
+		}
+	}
+
+	if len(cfg.Servers) == 0 {
+		errs = append(errs, "at least one server must be specified")
+	}
+	serverNames := make(map[string]struct{}, len(cfg.Servers))
+	for serverIndex := range cfg.Servers {
+		server := &cfg.Servers[serverIndex]
+		prefix := fmt.Sprintf("servers[%d]", serverIndex)
+		server.Host = strings.TrimSpace(server.Host)
+		server.Name = strings.TrimSpace(server.Name)
+		if server.Host == "" {
+			errs = append(errs, prefix+".host is required")
+		}
+		if server.Name == "" {
+			server.Name = server.Host
+		}
+		if !isValidBastionAlias(server.Name) {
+			errs = append(errs, prefix+".name must contain only letters, numbers, dots, hyphens, or underscores")
+		}
+		if _, exists := serverNames[server.Name]; exists {
+			errs = append(errs, fmt.Sprintf("server name %q must be unique", server.Name))
+		}
+		serverNames[server.Name] = struct{}{}
+		if server.SSHPort == 0 {
+			server.SSHPort = cfg.SSH.Port
+		} else {
+			validatePort(server.SSHPort, prefix+".ssh_port", &errs)
+		}
+		if server.UsesLegacyApp() && len(server.Apps) > 0 {
+			errs = append(errs, prefix+" cannot define both app and apps")
+		}
+		if server.UsesLegacyApp() {
+			validateMonitoringApp(&server.App, prefix+".app", &errs, checkUnresolvedEnv)
+		}
+		for appIndex := range server.Apps {
+			validateMonitoringApp(&server.Apps[appIndex], fmt.Sprintf("%s.apps[%d]", prefix, appIndex), &errs, checkUnresolvedEnv)
+		}
+		if len(server.EffectiveApps()) == 0 {
+			errs = append(errs, prefix+" must define app or apps for monitoring")
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("configuration errors:\n- %s", strings.Join(errs, "\n- "))
+	}
+	return nil
+}
+
+func validateMonitoringApp(app *AppConfig, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
+	app.Name = strings.TrimSpace(app.Name)
+	app.BaseDir = filepath.ToSlash(strings.TrimSpace(app.BaseDir))
+	app.Script.RemotePath = filepath.ToSlash(strings.TrimSpace(app.Script.RemotePath))
+	checkUnresolvedEnv(app.Name, prefix+".name")
+	checkUnresolvedEnv(app.BaseDir, prefix+".base_dir")
+	checkUnresolvedEnv(app.Script.RemotePath, prefix+".script.remote_path")
+	if app.Name == "" {
+		*errs = append(*errs, prefix+".name is required")
+	}
+	if app.BaseDir == "" || !strings.HasPrefix(app.BaseDir, "/") {
+		*errs = append(*errs, prefix+".base_dir must be an absolute path")
+	}
+	if app.Script.RemotePath == "" || !strings.HasPrefix(app.Script.RemotePath, "/") {
+		*errs = append(*errs, prefix+".script.remote_path must be an absolute path")
+	}
+	if app.Port != 0 {
+		validatePort(app.Port, prefix+".port", errs)
+	}
 }
 
 // validateDirectoryDefaultsConfig는 경로 prefix별 기본 소유권 규칙을 검증하고 정규화한다.
@@ -534,28 +645,7 @@ func validateBootstrapConfig(cfg *BootstrapConfig, prefix string, errs *[]string
 	validateBootstrapUsers(cfg.Users, prefix+".users", errs, checkUnresolvedEnv)
 	validateBootstrapSysctls(cfg.Sysctls, prefix+".sysctl", errs, checkUnresolvedEnv)
 
-	for i := range cfg.Services {
-		field := fmt.Sprintf("%s.services[%d]", prefix, i)
-		cfg.Services[i].Name = strings.TrimSpace(cfg.Services[i].Name)
-		cfg.Services[i].State = strings.ToLower(strings.TrimSpace(cfg.Services[i].State))
-		checkUnresolvedEnv(cfg.Services[i].Name, field+".name")
-		checkUnresolvedEnv(cfg.Services[i].State, field+".state")
-
-		if cfg.Services[i].Name == "" {
-			*errs = append(*errs, field+".name must not be empty")
-		}
-		if cfg.Services[i].State == "" {
-			cfg.Services[i].State = defaultServiceState(cfg.Services[i])
-		}
-		switch cfg.Services[i].State {
-		case ServiceStateStarted, ServiceStateStopped, ServiceStateRestarted:
-		default:
-			*errs = append(*errs, fmt.Sprintf("%s.state must be one of %q, %q, or %q", field, ServiceStateStarted, ServiceStateStopped, ServiceStateRestarted))
-		}
-		if cfg.Services[i].Enabled == nil {
-			cfg.Services[i].Enabled = boolPtr(true)
-		}
-	}
+	validateServiceConfigs(cfg.Services, prefix+".services", errs, checkUnresolvedEnv)
 
 	if cfg.JDK.Enabled != nil && !*cfg.JDK.Enabled {
 		if cfg.JDK.Vendor != "" || cfg.JDK.Major != 0 || cfg.JDK.Headless != nil {
@@ -607,6 +697,58 @@ func validateBootstrapConfig(cfg *BootstrapConfig, prefix string, errs *[]string
 	}
 
 	validateDockerComposeConfig(&cfg.DockerCompose, prefix+".docker_compose", errs, checkUnresolvedEnv)
+}
+
+// validateUtilityConfigs는 유틸리티 이름의 중복과 파일/디렉터리/서비스 선언을 검증한다.
+func validateUtilityConfigs(utils []UtilityConfig, prefix string, errs *[]string, checkUnresolvedEnv func(string, string), prodLikeServer bool) {
+	seen := make(map[string]struct{}, len(utils))
+	for i := range utils {
+		utilityPrefix := fmt.Sprintf("%s[%d]", prefix, i)
+		utils[i].Name = strings.TrimSpace(utils[i].Name)
+		checkUnresolvedEnv(utils[i].Name, utilityPrefix+".name")
+		if utils[i].Name == "" {
+			*errs = append(*errs, utilityPrefix+".name must not be empty")
+		} else if !isValidBastionAlias(utils[i].Name) {
+			*errs = append(*errs, utilityPrefix+".name must contain only letters, numbers, dots, hyphens, or underscores")
+		} else if _, exists := seen[utils[i].Name]; exists {
+			*errs = append(*errs, fmt.Sprintf("%s.name %q must be unique per server", utilityPrefix, utils[i].Name))
+		} else {
+			seen[utils[i].Name] = struct{}{}
+		}
+
+		validateDirectories(&utils[i].Directories, utilityPrefix+".directories", errs, checkUnresolvedEnv)
+		validateExtraFiles(&utils[i].Files, utilityPrefix+".files", errs, checkUnresolvedEnv, prodLikeServer)
+		validateServiceConfigs(utils[i].Services, utilityPrefix+".services", errs, checkUnresolvedEnv)
+		if len(utils[i].Directories) == 0 && len(utils[i].Files) == 0 && len(utils[i].Services) == 0 {
+			*errs = append(*errs, utilityPrefix+" must define directories, files, or services")
+		}
+	}
+}
+
+// validateServiceConfigs는 bootstrap과 utils가 공유하는 systemd 서비스 선언을 정규화하고 검증한다.
+func validateServiceConfigs(services []ServiceConfig, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
+	for i := range services {
+		field := fmt.Sprintf("%s[%d]", prefix, i)
+		services[i].Name = strings.TrimSpace(services[i].Name)
+		services[i].State = strings.ToLower(strings.TrimSpace(services[i].State))
+		checkUnresolvedEnv(services[i].Name, field+".name")
+		checkUnresolvedEnv(services[i].State, field+".state")
+
+		if services[i].Name == "" {
+			*errs = append(*errs, field+".name must not be empty")
+		}
+		if services[i].State == "" {
+			services[i].State = defaultServiceState(services[i])
+		}
+		switch services[i].State {
+		case ServiceStateStarted, ServiceStateStopped, ServiceStateRestarted:
+		default:
+			*errs = append(*errs, fmt.Sprintf("%s.state must be one of %q, %q, or %q", field, ServiceStateStarted, ServiceStateStopped, ServiceStateRestarted))
+		}
+		if services[i].Enabled == nil {
+			services[i].Enabled = boolPtr(true)
+		}
+	}
 }
 
 func validateBootstrapUsers(users []UserConfig, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {

@@ -13,4 +13,5 @@ type RunOptions struct {
 	ParallelServers int
 	TransferSession *scp.TransferSession
 	DirectoryRules  []config.DirectoryOwnershipRule
+	outcomes        *operationOutcomes
 }

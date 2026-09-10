@@ -1,13 +1,16 @@
 package vm
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 	"testing"
 
 	"go-deployer/internal/config"
 	"go-deployer/internal/ssh"
+	"go-deployer/pkg/logger"
 )
 
 func TestRunWithOptionsDryRunSkipsSSHConnect(t *testing.T) {
@@ -284,6 +287,48 @@ func TestRunWithOptionsStopsWhenBootstrapFails(t *testing.T) {
 	}
 	if createCalled {
 		t.Fatalf("expected create directories step to be skipped after bootstrap failure")
+	}
+}
+
+func TestRunWithOptionsContinuesAndSummarizesServerFailures(t *testing.T) {
+	originalBootstrap := bootstrapHostStep
+	t.Cleanup(func() {
+		bootstrapHostStep = originalBootstrap
+	})
+
+	var attempted []string
+	bootstrapHostStep = func(_ ssh.Runner, _ config.BootstrapConfig, _ RunOptions, host string) error {
+		attempted = append(attempted, host)
+		if host == "10.0.0.10" {
+			return fmt.Errorf("bootstrap failed")
+		}
+		return nil
+	}
+
+	var output bytes.Buffer
+	restoreOutput := logger.SetOutput(&output)
+	t.Cleanup(restoreOutput)
+
+	cfg := &config.Config{Servers: []config.ServerConfig{
+		{Name: "failed-server", Host: "10.0.0.10"},
+		{Name: "done-server", Host: "10.0.0.11"},
+	}}
+
+	err := RunWithOptions(cfg, RunOptions{DryRun: true})
+	if err == nil || err.Error() != "plan bootstrap: bootstrap failed" {
+		t.Fatalf("expected first server failure, got %v", err)
+	}
+	if !reflect.DeepEqual(attempted, []string{"10.0.0.10", "10.0.0.11"}) {
+		t.Fatalf("expected both servers to be attempted, got %v", attempted)
+	}
+	for _, fragment := range []string{
+		"failed failed-server (10.0.0.10): plan bootstrap: bootstrap failed",
+		"done done-server (10.0.0.11)",
+		"Totals: done=1 skipped=0 failed=1",
+	} {
+		if !strings.Contains(output.String(), fragment) {
+			t.Fatalf("expected summary to contain %q, got %s", fragment, output.String())
+		}
 	}
 }
 

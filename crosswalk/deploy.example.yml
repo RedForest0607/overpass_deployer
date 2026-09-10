@@ -89,6 +89,18 @@ servers:
   - host: 10.0.1.11
     name: app-prod-b
     tags: [example, prod, secondary]
+    # Redis, Elasticsearch 같은 서버 유틸리티는 files 배포 후 services 상태를 적용합니다.
+    utils:
+      - name: redis
+        directories:
+          - /app/overpass/redis
+        files:
+          - local_path: ./configs/redis.conf
+            remote_path: /app/overpass/redis/redis.conf
+        services:
+          - name: redis-server
+            enabled: true
+            state: restarted
     app:
       name: sample-api-copy-script
       tags: [api, sample, local-file]

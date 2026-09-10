@@ -45,6 +45,22 @@ func createDirectoryPaths(runner ssh.Runner, directories []string, opts RunOptio
 	host = runnerHost(runner, host)
 	logger.Info(host, "%s directories in %s...", actionLabel(opts, "creating"), ownerBase)
 
+	missingDirectories := directories
+	if !opts.DryRun {
+		missingDirectories = make([]string, 0, len(directories))
+		for _, dir := range directories {
+			if remoteDirectoryExists(runner, dir) {
+				logger.Skip(host, "Directory %s already exists", dir)
+				opts.outcomes.skippedOperation()
+				continue
+			}
+			missingDirectories = append(missingDirectories, dir)
+		}
+		if len(missingDirectories) == 0 {
+			return ensureDirectoryOwnership(runner, ownerBase, opts)
+		}
+	}
+
 	setupCmd := buildPrivilegedDirectorySetupCommandWithRules(ownerBase, opts.DirectoryRules)
 	if opts.DryRun {
 		logger.Info(host, "DRY-RUN: would try sudo setup command: %s", setupCmd)
@@ -52,7 +68,7 @@ func createDirectoryPaths(runner ssh.Runner, directories []string, opts RunOptio
 		logger.Warn(host, "Failed to run sudo mkdir, falling back to normal mkdir: %v", err)
 	}
 
-	for _, dir := range directories {
+	for _, dir := range missingDirectories {
 		cmd := fmt.Sprintf("mkdir -p %s", ssh.ShellQuote(dir))
 		if opts.DryRun {
 			logger.Info(host, "DRY-RUN: would run %s", cmd)
@@ -61,10 +77,39 @@ func createDirectoryPaths(runner ssh.Runner, directories []string, opts RunOptio
 		if _, err := runner.Run(cmd); err != nil {
 			return fmt.Errorf("creating directory %s: %w", dir, err)
 		}
+		opts.outcomes.changedOperation()
 	}
 
 	logger.Ok(host, "%s directories", resultLabel(opts, "created", "planned"))
 	return nil
+}
+
+// ensureDirectoryOwnership checks the same managed paths as directory setup,
+// including existing ancestors covered by the explicit ownership rule.
+func ensureDirectoryOwnership(runner ssh.Runner, base string, opts RunOptions) error {
+	rule, ok := selectDirectoryOwnershipRule(base, opts.DirectoryRules)
+	if !ok {
+		return nil
+	}
+	for _, dir := range managedDirectoriesForRule(rule.Prefix, base) {
+		actual, err := runner.Run("stat -c '%U:%G' " + ssh.ShellQuote(dir))
+		if err != nil {
+			return fmt.Errorf("checking directory ownership %s: %w", dir, err)
+		}
+		if strings.TrimSpace(actual) == rule.Owner+":"+rule.Group {
+			continue
+		}
+		if _, err := runner.RunSudo("chown " + ssh.ShellQuote(rule.Owner+":"+rule.Group) + " " + ssh.ShellQuote(dir)); err != nil {
+			return fmt.Errorf("correcting directory ownership %s: %w", dir, err)
+		}
+		opts.outcomes.changedOperation()
+	}
+	return nil
+}
+
+func remoteDirectoryExists(runner ssh.Runner, path string) bool {
+	_, err := runner.Run("test -d " + ssh.ShellQuote(path))
+	return err == nil
 }
 
 // buildPrivilegedDirectorySetupCommand는 sudo로 기준 디렉터리 생성과 소유권 보정을 수행할 명령을 만든다.

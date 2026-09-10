@@ -15,9 +15,10 @@ import (
 // DeployJar는 앱 JAR 파일을 원격 실행 경로로 전송한다.
 func DeployJar(client *ssh.Client, app *config.AppConfig, opts RunOptions, host string) error {
 	return scp.Transfer(client, app.Jar.LocalPath, app.Jar.RemotePath, scp.TransferOptions{
-		DryRun:  opts.DryRun,
-		Host:    runnerHost(client, host),
-		Session: opts.TransferSession,
+		DryRun:   opts.DryRun,
+		Host:     runnerHost(client, host),
+		Session:  opts.TransferSession,
+		Observer: opts.outcomes.transferObserver(),
 	})
 }
 
@@ -26,9 +27,10 @@ func DeployConfigFiles(client *ssh.Client, app *config.AppConfig, opts RunOption
 	for _, cf := range app.ConfigFiles {
 		cf.Normalize()
 		if err := scp.Transfer(client, cf.LocalPath, cf.RemotePath, scp.TransferOptions{
-			DryRun:  opts.DryRun,
-			Host:    runnerHost(client, host),
-			Session: opts.TransferSession,
+			DryRun:   opts.DryRun,
+			Host:     runnerHost(client, host),
+			Session:  opts.TransferSession,
+			Observer: opts.outcomes.transferObserver(),
 		}); err != nil {
 			return fmt.Errorf("transferring config file %s: %w", cf.LocalPath, err)
 		}
@@ -52,9 +54,10 @@ func deployExtraFiles(client *ssh.Client, extraFiles []config.ExtraFile, opts Ru
 	for _, ef := range extraFiles {
 		transferPath := extraFileTransferPath(ef)
 		if err := scp.Transfer(client, ef.LocalPath, transferPath, scp.TransferOptions{
-			DryRun:  opts.DryRun,
-			Host:    host,
-			Session: opts.TransferSession,
+			DryRun:   opts.DryRun,
+			Host:     host,
+			Session:  opts.TransferSession,
+			Observer: opts.outcomes.transferObserver(),
 		}); err != nil {
 			return fmt.Errorf("transferring extra file %s: %w", ef.LocalPath, err)
 		}
@@ -62,7 +65,7 @@ func deployExtraFiles(client *ssh.Client, extraFiles []config.ExtraFile, opts Ru
 		if ef.Chmod != "" {
 			if opts.DryRun {
 				logger.Info(host, "DRY-RUN: would chmod %s %s", ef.Chmod, transferPath)
-			} else if err := applyRemoteFileMode(client, transferPath, ef.Chmod); err != nil {
+			} else if err := ensureRemoteFileMode(client, transferPath, ef.Chmod, opts.outcomes); err != nil {
 				return fmt.Errorf("chmod extra file %s: %w", transferPath, err)
 			}
 		}
@@ -86,6 +89,7 @@ func deployExtraFiles(client *ssh.Client, extraFiles []config.ExtraFile, opts Ru
 		if err := applyRemoteArchiveExtraction(client, ef); err != nil {
 			return fmt.Errorf("extract extra file %s: %w", ef.RemotePath, err)
 		}
+		opts.outcomes.changedOperation()
 	}
 	return nil
 }
@@ -212,14 +216,14 @@ func DeployScripts(client *ssh.Client, app *config.AppConfig, opts RunOptions, h
 	}
 
 	if err := scp.Transfer(client, scriptSource, serverPath, scp.TransferOptions{
-		Session: opts.TransferSession,
+		Session:  opts.TransferSession,
+		Observer: opts.outcomes.transferObserver(),
 	}); err != nil {
 		return fmt.Errorf("transferring server.sh: %w", err)
 	}
 
 	logger.Info(host, "Making scripts executable...")
-	cmd := fmt.Sprintf("chmod +x %s", ssh.ShellQuote(serverPath))
-	if _, err := client.Run(cmd); err != nil {
+	if err := ensureRemoteFileMode(client, serverPath, "+x", opts.outcomes); err != nil {
 		return fmt.Errorf("chmod scripts: %w", err)
 	}
 	logger.Ok(host, "Scripts deployed")

@@ -26,6 +26,7 @@ var (
 	bootstrapHostStep     = BootstrapHost
 	createServerDirsStep  = CreateServerDirectories
 	deployServerFilesStep = DeployServerExtraFiles
+	deployUtilitiesStep   = DeployUtilities
 	createDirectoriesStep = CreateDirectories
 	deployJarStep         = DeployJar
 	deployConfigFilesStep = DeployConfigFiles
@@ -59,12 +60,15 @@ func RunWithOptions(cfg *config.Config, opts RunOptions) error {
 	if parallelServers <= 0 {
 		parallelServers = 1
 	}
+	var summary deploymentSummary
 	if parallelServers > 1 {
 		logger.GlobalInfo("--- Running up to %d servers in parallel ---", parallelServers)
-		if err := runServersParallel(filteredCfg, opts, parallelServers); err != nil {
-			return err
-		}
-	} else if err := runServersSequential(filteredCfg, opts); err != nil {
+		summary = runServersParallel(filteredCfg, opts, parallelServers)
+	} else {
+		summary = runServersSequential(filteredCfg, opts)
+	}
+	summary.log()
+	if err := summary.err(); err != nil {
 		return err
 	}
 
@@ -75,63 +79,78 @@ func RunWithOptions(cfg *config.Config, opts RunOptions) error {
 	return nil
 }
 
-func runServersSequential(cfg *config.Config, opts RunOptions) error {
+func runServersSequential(cfg *config.Config, opts RunOptions) deploymentSummary {
+	summary := deploymentSummary{results: make([]serverResult, 0, len(cfg.Servers))}
 	for _, server := range cfg.Servers {
-		if err := runServerWithEstimate(cfg, server, opts); err != nil {
-			return err
-		}
+		summary.add(runServerWithEstimate(cfg, server, opts))
 	}
-	return nil
+	return summary
 }
 
-func runServersParallel(cfg *config.Config, opts RunOptions, parallelServers int) error {
-	jobs := make(chan config.ServerConfig)
-	errs := make(chan error, len(cfg.Servers))
+func runServersParallel(cfg *config.Config, opts RunOptions, parallelServers int) deploymentSummary {
+	type serverJob struct {
+		index  int
+		server config.ServerConfig
+	}
+
+	jobs := make(chan serverJob)
+	results := make(chan struct {
+		index  int
+		result serverResult
+	}, len(cfg.Servers))
 	var wg sync.WaitGroup
 
 	for i := 0; i < parallelServers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			for server := range jobs {
-				if err := runServerWithEstimate(cfg, server, opts); err != nil {
-					errs <- err
-				}
+			for job := range jobs {
+				results <- struct {
+					index  int
+					result serverResult
+				}{index: job.index, result: runServerWithEstimate(cfg, job.server, opts)}
 			}
 		}()
 	}
 
-	for _, server := range cfg.Servers {
-		jobs <- server
+	for index, server := range cfg.Servers {
+		jobs <- serverJob{index: index, server: server}
 	}
 	close(jobs)
 	wg.Wait()
-	close(errs)
+	close(results)
 
-	for err := range errs {
-		if err != nil {
-			return err
-		}
+	summary := deploymentSummary{results: make([]serverResult, len(cfg.Servers))}
+	for item := range results {
+		summary.results[item.index] = item.result
 	}
-	return nil
+	return summary
 }
 
-func runServerWithEstimate(cfg *config.Config, server config.ServerConfig, opts RunOptions) error {
+func runServerWithEstimate(cfg *config.Config, server config.ServerConfig, opts RunOptions) serverResult {
+	result := newServerResult(server)
+	serverOptions := opts
+	serverOptions.outcomes = newOperationOutcomes(opts.DryRun)
 	logger.GlobalInfo("--- Starting %s for %s (%s) ---", phaseLabel(opts), server.Name, server.Host)
 	serverEstimate, err := estimateServerDeployment(server)
 	if err != nil {
-		return fmt.Errorf("estimate deployment time for %s: %w", server.Name, err)
+		result.Status = serverResultFailed
+		result.Err = fmt.Errorf("estimate deployment time: %w", err)
+		return result
 	}
 	logger.Info(server.Host, "Estimated deployment time: %s", formatEstimate(serverEstimate))
 
 	serverSSH := server.SSHSettings(cfg.SSH)
-	if err := runSingle(serverSSH, cfg.Bastion, server, opts); err != nil {
+	if err := runSingle(serverSSH, cfg.Bastion, server, serverOptions); err != nil {
 		logger.Error(server.Host, "%s failed: %v", phaseTitle(opts), err)
-		return err
+		result.Status = serverResultFailed
+		result.Err = err
+		return result
 	}
+	result.Status = serverOptions.outcomes.status()
 
 	logger.GlobalInfo("--- Completed %s for %s (%s) ---", phaseLabel(opts), server.Name, server.Host)
-	return nil
+	return result
 }
 
 // runSingle은 한 서버에 대해 bootstrap, 디렉터리 생성, 파일 전송, 스크립트 배포를 순서대로 실행한다.
@@ -150,6 +169,11 @@ func runSingle(sshCfg config.SSHConfig, bastionCfg config.BastionConfig, server 
 		if len(server.ExtraFiles) > 0 {
 			if err := deployServerFilesStep(nil, server.ExtraFiles, opts, server.Host); err != nil {
 				return fmt.Errorf("plan server extra files: %w", err)
+			}
+		}
+		if len(server.Utils) > 0 {
+			if err := deployUtilitiesStep(nil, server.Utils, opts, server.Host); err != nil {
+				return fmt.Errorf("plan utilities: %w", err)
 			}
 		}
 		for i := range apps {
@@ -206,6 +230,11 @@ func runSingle(sshCfg config.SSHConfig, bastionCfg config.BastionConfig, server 
 	if len(server.ExtraFiles) > 0 {
 		if err := deployServerFilesStep(client, server.ExtraFiles, opts, server.Host); err != nil {
 			return fmt.Errorf("deploy server extra files: %w", err)
+		}
+	}
+	if len(server.Utils) > 0 {
+		if err := deployUtilitiesStep(client, server.Utils, opts, server.Host); err != nil {
+			return fmt.Errorf("deploy utilities: %w", err)
 		}
 	}
 

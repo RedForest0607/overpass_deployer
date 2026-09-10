@@ -1,0 +1,18 @@
+FROM amazonlinux:2023
+
+RUN dnf install -y openssh-server sudo shadow-utils \
+    && dnf clean all
+
+RUN useradd --create-home --shell /bin/bash deploy \
+    && printf 'deploy ALL=(ALL) NOPASSWD:ALL\n' > /etc/sudoers.d/deploy \
+    && chmod 0440 /etc/sudoers.d/deploy \
+    && install -d -m 0700 -o deploy -g deploy /home/deploy/.ssh \
+    && install -d -m 0755 -o root -g root /run/sshd \
+    && ssh-keygen -A
+
+COPY entrypoint.sh /usr/local/bin/overpass-sshd
+RUN chmod 0755 /usr/local/bin/overpass-sshd
+
+EXPOSE 22
+
+CMD ["/usr/local/bin/overpass-sshd"]

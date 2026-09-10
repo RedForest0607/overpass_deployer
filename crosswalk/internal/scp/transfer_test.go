@@ -1,6 +1,9 @@
 package scp
 
 import (
+	"bytes"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -149,6 +152,127 @@ func TestProgressWriterInteractiveReportsAfterInterval(t *testing.T) {
 	if renderCount != 2 {
 		t.Fatalf("expected initial render and interval-based render, got %d", renderCount)
 	}
+}
+
+func TestUploadFileAtomicallyReplacesTargetOnlyAfterSuccessfulClose(t *testing.T) {
+	fs := newFakeRemoteFileSystem(map[string]string{"/remote/app.jar": "old"})
+
+	if err := uploadFileAtomically(fs, strings.NewReader("new"), "/remote/app.jar", io.Discard); err != nil {
+		t.Fatalf("uploadFileAtomically() returned error: %v", err)
+	}
+	if got := fs.contents("/remote/app.jar"); got != "new" {
+		t.Fatalf("remote target = %q, want replacement contents", got)
+	}
+	if fs.temporaryFileCount() != 0 {
+		t.Fatalf("temporary remote file was not removed: %#v", fs.files)
+	}
+}
+
+func TestUploadFileAtomicallyKeepsTargetWhenWriteFails(t *testing.T) {
+	fs := newFakeRemoteFileSystem(map[string]string{"/remote/app.jar": "old"})
+	fs.writeErr = errors.New("connection reset")
+
+	err := uploadFileAtomically(fs, strings.NewReader("new"), "/remote/app.jar", io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "connection reset") {
+		t.Fatalf("expected write failure, got %v", err)
+	}
+	if got := fs.contents("/remote/app.jar"); got != "old" {
+		t.Fatalf("remote target changed after failed upload: %q", got)
+	}
+	if fs.temporaryFileCount() != 0 {
+		t.Fatalf("temporary remote file was not removed: %#v", fs.files)
+	}
+}
+
+func TestUploadFileAtomicallyKeepsTargetWhenCloseFails(t *testing.T) {
+	fs := newFakeRemoteFileSystem(map[string]string{"/remote/app.jar": "old"})
+	fs.closeErr = errors.New("remote flush failed")
+
+	err := uploadFileAtomically(fs, strings.NewReader("new"), "/remote/app.jar", io.Discard)
+	if err == nil || !strings.Contains(err.Error(), "remote flush failed") {
+		t.Fatalf("expected close failure, got %v", err)
+	}
+	if got := fs.contents("/remote/app.jar"); got != "old" {
+		t.Fatalf("remote target changed after failed close: %q", got)
+	}
+	if fs.temporaryFileCount() != 0 {
+		t.Fatalf("temporary remote file was not removed: %#v", fs.files)
+	}
+}
+
+type fakeRemoteFileSystem struct {
+	files    map[string][]byte
+	writeErr error
+	closeErr error
+}
+
+func newFakeRemoteFileSystem(files map[string]string) *fakeRemoteFileSystem {
+	converted := make(map[string][]byte, len(files))
+	for path, contents := range files {
+		converted[path] = []byte(contents)
+	}
+	return &fakeRemoteFileSystem{files: converted}
+}
+
+func (s *fakeRemoteFileSystem) MkdirAll(string) error { return nil }
+
+func (s *fakeRemoteFileSystem) OpenFile(path string, flags int) (remoteWriteFile, error) {
+	if _, exists := s.files[path]; exists && flags&os.O_EXCL != 0 {
+		return nil, os.ErrExist
+	}
+	file := &fakeRemoteWriteFile{fileSystem: s, path: path}
+	s.files[path] = nil
+	return file, nil
+}
+
+func (s *fakeRemoteFileSystem) Rename(oldPath, newPath string) error {
+	contents, exists := s.files[oldPath]
+	if !exists {
+		return os.ErrNotExist
+	}
+	s.files[newPath] = contents
+	delete(s.files, oldPath)
+	return nil
+}
+
+func (s *fakeRemoteFileSystem) Remove(path string) error {
+	delete(s.files, path)
+	return nil
+}
+
+func (s *fakeRemoteFileSystem) contents(path string) string {
+	return string(s.files[path])
+}
+
+func (s *fakeRemoteFileSystem) temporaryFileCount() int {
+	count := 0
+	for path := range s.files {
+		if strings.Contains(path, ".deploy-upload-") {
+			count++
+		}
+	}
+	return count
+}
+
+type fakeRemoteWriteFile struct {
+	fileSystem *fakeRemoteFileSystem
+	path       string
+	buffer     bytes.Buffer
+}
+
+func (f *fakeRemoteWriteFile) Write(p []byte) (int, error) {
+	if f.fileSystem.writeErr != nil {
+		return 0, f.fileSystem.writeErr
+	}
+	return f.buffer.Write(p)
+}
+
+func (f *fakeRemoteWriteFile) Close() error {
+	if f.fileSystem.closeErr != nil {
+		return f.fileSystem.closeErr
+	}
+	f.fileSystem.files[f.path] = append([]byte(nil), f.buffer.Bytes()...)
+	return nil
 }
 
 type stubRunner struct {

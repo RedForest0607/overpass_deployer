@@ -71,6 +71,14 @@ func estimateServerDeployment(server config.ServerConfig) (deploymentEstimate, e
 	}
 	estimate = mergeEstimate(estimate, filesEstimate)
 
+	for _, utility := range server.Utils {
+		utilityEstimate, err := estimateUtilityDeployment(utility)
+		if err != nil {
+			return deploymentEstimate{}, fmt.Errorf("utility %s: %w", utility.Name, err)
+		}
+		estimate = mergeEstimate(estimate, utilityEstimate)
+	}
+
 	for _, app := range server.EffectiveApps() {
 		appEstimate, err := estimateAppDeployment(app)
 		if err != nil {
@@ -80,6 +88,17 @@ func estimateServerDeployment(server config.ServerConfig) (deploymentEstimate, e
 	}
 
 	return estimate, nil
+}
+
+func estimateUtilityDeployment(utility config.UtilityConfig) (deploymentEstimate, error) {
+	estimate := deploymentEstimate{
+		Duration: time.Duration(len(utility.Directories)+len(utility.Services)) * estimatedDirectoryDuration,
+	}
+	filesEstimate, err := estimateExtraFiles(utility.Files)
+	if err != nil {
+		return deploymentEstimate{}, err
+	}
+	return mergeEstimate(estimate, filesEstimate), nil
 }
 
 func estimateBootstrapDuration(bootstrap config.BootstrapConfig) (time.Duration, error) {

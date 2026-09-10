@@ -174,6 +174,34 @@ func TestLoadSupportsMultipleAppsPerServer(t *testing.T) {
 	}
 }
 
+func TestLoadForMonitoringAllowsMinimalRemoteOnlyAppConfig(t *testing.T) {
+	keyPath := writeTempFile(t, "monitor_id_rsa", "not-used-in-this-test")
+	configYAML := strings.Join([]string{
+		"ssh:",
+		"  user: ec2-user",
+		"  key_path: " + keyPath,
+		"  host_key_checking: accept-new",
+		"servers:",
+		"  - name: monitor-target",
+		"    host: 127.0.0.1",
+		"    apps:",
+		"      - name: sample-api",
+		"        base_dir: /app/sample-api",
+		"        script:",
+		"          remote_path: /app/sample-api/bin/server.sh",
+	}, "\n")
+
+	path := writeTempFile(t, "dashboard.yml", configYAML)
+	cfg, err := LoadForMonitoring(path)
+	if err != nil {
+		t.Fatalf("LoadForMonitoring() returned error: %v", err)
+	}
+	app := cfg.Servers[0].Apps[0]
+	if app.Jar.LocalPath != "" || app.Script.RemotePath != "/app/sample-api/bin/server.sh" {
+		t.Fatalf("unexpected monitoring config: %#v", app)
+	}
+}
+
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
 

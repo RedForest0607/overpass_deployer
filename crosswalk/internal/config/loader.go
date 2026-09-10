@@ -22,6 +22,16 @@ func replaceEnvVariables(content []byte) []byte {
 
 // Load는 설정 파일을 읽고 환경 변수 치환, YAML 파싱, 기본값 적용과 검증을 한 번에 수행한다.
 func Load(path string) (*Config, error) {
+	return load(path, ValidateAndApplyDefaults)
+}
+
+// LoadForMonitoring은 원격 상태와 로그 확인에 필요한 최소 설정만 검증한다.
+// 배포 자산의 로컬 존재 여부는 확인하지 않아, 대상 bastion에서도 독립적으로 실행할 수 있다.
+func LoadForMonitoring(path string) (*Config, error) {
+	return load(path, ValidateForMonitoring)
+}
+
+func load(path string, validate func(*Config) error) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("reading config file: %w", err)
@@ -34,7 +44,7 @@ func Load(path string) (*Config, error) {
 		return nil, fmt.Errorf("unmarshaling config: %w", err)
 	}
 
-	if err := ValidateAndApplyDefaults(&cfg); err != nil {
+	if err := validate(&cfg); err != nil {
 		return nil, fmt.Errorf("validating config: %w", err)
 	}
 

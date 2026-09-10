@@ -3,7 +3,9 @@ package ssh
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -77,7 +79,7 @@ func (c *Client) Run(cmd string) (string, error) {
 	}
 	defer session.Close()
 
-	var buf bytes.Buffer
+	var buf synchronizedBuffer
 	session.Stdout = &buf
 	session.Stderr = &buf
 
@@ -88,6 +90,65 @@ func (c *Client) Run(cmd string) (string, error) {
 		return outStr, fmt.Errorf("running command '%s': %w", cmd, err)
 	}
 	return outStr, nil
+}
+
+// synchronizedBuffer는 SSH가 별도 goroutine에서 stdout과 stderr를 기록해도 안전하게 결과를 모은다.
+type synchronizedBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *synchronizedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *synchronizedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
+}
+
+// Start는 원격 명령을 비동기로 시작하고 표준 출력을 스트리밍할 reader와 세션을 반환한다.
+// 호출자는 로그 스트리밍을 멈출 때 반드시 반환된 session을 닫아야 한다.
+func (c *Client) Start(cmd string) (*StreamingSession, io.Reader, error) {
+	session, err := c.client.NewSession()
+	if err != nil {
+		return nil, nil, fmt.Errorf("creating ssh session: %w", err)
+	}
+
+	stdout, err := session.StdoutPipe()
+	if err != nil {
+		session.Close()
+		return nil, nil, fmt.Errorf("creating ssh stdout pipe: %w", err)
+	}
+
+	if err := session.Start(cmd); err != nil {
+		session.Close()
+		return nil, nil, fmt.Errorf("starting command '%s': %w", cmd, err)
+	}
+
+	return &StreamingSession{session: session}, stdout, nil
+}
+
+// StreamingSession은 종료 시 원격 프로세스에 TERM 신호를 전달한다.
+type StreamingSession struct{ session *ssh.Session }
+
+func (s *StreamingSession) Close() error {
+	_ = s.session.Signal(ssh.SIGTERM)
+	completed := make(chan struct{})
+	go func() {
+		_ = s.session.Wait()
+		close(completed)
+	}()
+
+	select {
+	case <-completed:
+		return nil
+	case <-time.After(2 * time.Second):
+		return s.session.Close()
+	}
 }
 
 // RunSudo는 주어진 원격 명령을 sudo 접두어와 함께 실행한다.

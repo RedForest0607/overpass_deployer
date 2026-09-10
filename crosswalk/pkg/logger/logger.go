@@ -2,6 +2,7 @@ package logger
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"sync"
 	"time"
@@ -17,7 +18,10 @@ const (
 	ERROR Level = "ERROR"
 )
 
-var mu sync.Mutex
+var (
+	mu     sync.Mutex
+	output io.Writer = os.Stdout
+)
 
 func logMessage(level Level, host string, format string, args ...any) {
 	msg := fmt.Sprintf(format, args...)
@@ -32,7 +36,26 @@ func logMessage(level Level, host string, format string, args ...any) {
 
 	mu.Lock()
 	defer mu.Unlock()
-	fmt.Fprintf(os.Stdout, "%s %s %s%s\n", now, levelStr, hostPart, msg)
+	fmt.Fprintf(output, "%s %s %s%s\n", now, levelStr, hostPart, msg)
+}
+
+// SetOutput은 배포 로그의 출력 대상을 교체하고, 이전 출력 대상으로 되돌리는 함수를 반환한다.
+// 대시보드는 이 함수를 이용해 기존 배포 흐름의 로그를 화면에 표시한다.
+func SetOutput(w io.Writer) func() {
+	if w == nil {
+		w = io.Discard
+	}
+
+	mu.Lock()
+	previous := output
+	output = w
+	mu.Unlock()
+
+	return func() {
+		mu.Lock()
+		output = previous
+		mu.Unlock()
+	}
 }
 
 func Info(host, format string, args ...any) {

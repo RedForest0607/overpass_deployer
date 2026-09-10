@@ -172,22 +172,54 @@ func TestBootstrapHostDetectsPackageManagerWithNoisyOutput(t *testing.T) {
 	}
 }
 
-func TestBootstrapHostReturnsErrorWhenDNFIsUnavailable(t *testing.T) {
+func TestBootstrapHostReturnsErrorWhenNoSupportedPackageManagerExists(t *testing.T) {
 	t.Helper()
 
 	runner := &bootstrapRunner{
 		runResults: map[string]commandResult{
 			packageDetectCommandForTest(packageManagerDNF): {err: fmt.Errorf("dnf missing")},
 			packageDetectCommandForTest(packageManagerYUM): {err: fmt.Errorf("yum missing")},
-			packageDetectCommandForTest("apt"):             {output: ""},
+			packageDetectCommandForTest(packageManagerAPT): {err: fmt.Errorf("apt missing")},
 		},
 	}
 
 	err := BootstrapHost(runner, config.BootstrapConfig{
 		Packages: []string{"git"},
 	}, RunOptions{}, "app-01")
-	if err == nil || !strings.Contains(err.Error(), "bootstrap requires yum/dnf-compatible host; apt support is not implemented yet") {
+	if err == nil || !strings.Contains(err.Error(), "bootstrap requires a supported package manager") {
 		t.Fatalf("expected unsupported package manager error, got %v", err)
+	}
+}
+
+func TestBootstrapHostInstallsPackagesViaApt(t *testing.T) {
+	t.Helper()
+
+	runner := &bootstrapRunner{
+		runResults: map[string]commandResult{
+			packageDetectCommandForTest(packageManagerDNF):                       {err: fmt.Errorf("dnf missing")},
+			packageDetectCommandForTest(packageManagerYUM):                       {err: fmt.Errorf("yum missing")},
+			packageDetectCommandForTest(packageManagerAPT):                       {},
+			"dpkg-query -W -f='${db:Status-Status}' 'git' | grep -Fxq installed": {err: fmt.Errorf("package git is not installed")},
+		},
+	}
+
+	err := BootstrapHost(runner, config.BootstrapConfig{Packages: []string{"git"}}, RunOptions{}, "ubuntu-01")
+	if err != nil {
+		t.Fatalf("expected apt bootstrap install to succeed, got %v", err)
+	}
+
+	if got, want := runner.sudoCommands, []string{"apt-get update", "apt-get install -y 'git'"}; strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("unexpected apt install command: %v", runner.sudoCommands)
+	}
+}
+
+func TestResolveJDKPackageForAptUsesOpenJDK(t *testing.T) {
+	packageName, err := resolveJDKPackageForManager(packageManagerAPT, config.JDKConfig{Vendor: defaultJDKVendor, Major: 17, Headless: testBoolPtr(true)})
+	if err != nil {
+		t.Fatalf("expected apt JDK package resolution to succeed, got %v", err)
+	}
+	if packageName != "openjdk-17-jdk-headless" {
+		t.Fatalf("unexpected apt JDK package: %q", packageName)
 	}
 }
 
@@ -530,7 +562,7 @@ func packageDetectCommandForTest(manager string) string {
 		return "test -x /usr/bin/dnf || test -x /bin/dnf"
 	case packageManagerYUM:
 		return "test -x /usr/bin/yum || test -x /bin/yum"
-	case "apt":
+	case packageManagerAPT:
 		return "test -x /usr/bin/apt-get || test -x /bin/apt-get"
 	default:
 		return ""

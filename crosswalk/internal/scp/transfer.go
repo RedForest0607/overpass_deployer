@@ -301,15 +301,68 @@ func formatMiB(size int64) string {
 }
 
 type TransferOptions struct {
-	DryRun  bool
-	Host    string
-	Session *TransferSession
+	DryRun   bool
+	Host     string
+	Session  *TransferSession
+	Observer TransferObserver
+}
+
+// TransferObserver receives the final outcome of a checksum-aware file transfer.
+// It allows the VM runner to summarize a server without coupling this package to VM orchestration.
+type TransferObserver interface {
+	TransferChanged(remotePath string)
+	TransferSkipped(remotePath string)
 }
 
 type TransferSession struct {
 	client       *ssh.Client
 	sftpClient   *sftp.Client
 	remoteHashes map[string]string
+}
+
+type remoteWriteFile interface {
+	io.Writer
+	Close() error
+}
+
+type remoteFileSystem interface {
+	MkdirAll(path string) error
+	OpenFile(path string, flags int) (remoteWriteFile, error)
+	Rename(oldPath, newPath string) error
+	Remove(path string) error
+}
+
+type sftpFileSystem struct{ client *sftp.Client }
+
+func (s sftpFileSystem) MkdirAll(path string) error {
+	return s.client.MkdirAll(path)
+}
+
+func (s sftpFileSystem) OpenFile(path string, flags int) (remoteWriteFile, error) {
+	return s.client.OpenFile(path, flags)
+}
+
+func (s sftpFileSystem) Rename(oldPath, newPath string) error {
+	return replaceRemoteFile(s.client, oldPath, newPath)
+}
+
+type remoteRenamer interface {
+	HasExtension(string) (string, bool)
+	PosixRename(string, string) error
+	Rename(string, string) error
+}
+
+func replaceRemoteFile(client remoteRenamer, oldPath, newPath string) error {
+	if _, supported := client.HasExtension("posix-rename@openssh.com"); supported {
+		return client.PosixRename(oldPath, newPath)
+	}
+	// Standard rename permits first uploads. On an existing target, fail safely
+	// rather than deleting it to emulate an unsupported atomic replacement.
+	return client.Rename(oldPath, newPath)
+}
+
+func (s sftpFileSystem) Remove(path string) error {
+	return s.client.Remove(path)
 }
 
 func NewTransferSession(client *ssh.Client, remoteHashes map[string]string) (*TransferSession, error) {
@@ -377,6 +430,9 @@ func Transfer(client *ssh.Client, localPath, remotePath string, opts TransferOpt
 	}
 	if localHash == remoteHash {
 		logger.Skip(host, "%s unchanged", fileName)
+		if opts.Observer != nil {
+			opts.Observer.TransferSkipped(remotePath)
+		}
 		return nil
 	}
 
@@ -394,17 +450,6 @@ func Transfer(client *ssh.Client, localPath, remotePath string, opts TransferOpt
 		defer sftpClient.Close()
 	}
 
-	remoteDir := filepath.ToSlash(filepath.Dir(remotePath))
-	if err := sftpClient.MkdirAll(remoteDir); err != nil {
-		return fmt.Errorf("creating remote directory %s: %w", remoteDir, err)
-	}
-
-	remoteFile, err := sftpClient.Create(remotePath)
-	if err != nil {
-		return fmt.Errorf("creating remote file %s: %w", remotePath, err)
-	}
-	defer remoteFile.Close()
-
 	localFile, err := os.Open(localPath)
 	if err != nil {
 		return fmt.Errorf("opening local file %s: %w", localPath, err)
@@ -413,15 +458,55 @@ func Transfer(client *ssh.Client, localPath, remotePath string, opts TransferOpt
 
 	logger.Info(host, "Transferring %s...", fileName)
 	pw := newProgressWriter(host, fileName, localInfo.Size())
-
-	writer := io.MultiWriter(remoteFile, pw)
-	if _, err := io.Copy(writer, localFile); err != nil {
+	if err := uploadFileAtomically(sftpFileSystem{client: sftpClient}, localFile, remotePath, pw); err != nil {
 		return fmt.Errorf("uploading file %s: %w", fileName, err)
 	}
 	pw.Finish()
 
 	logger.Ok(host, "Transferred %s (%.1f MB)", fileName, float64(localInfo.Size())/1024/1024)
+	if opts.Observer != nil {
+		opts.Observer.TransferChanged(remotePath)
+	}
 	return nil
+}
+
+// uploadFileAtomically는 같은 원격 디렉터리의 임시 파일로 전송한 뒤 rename으로 교체한다.
+// 전송 또는 close 오류가 나면 기존 대상 파일은 그대로 두고 임시 파일만 정리한다.
+func uploadFileAtomically(fs remoteFileSystem, source io.Reader, remotePath string, progress io.Writer) error {
+	remoteDir := filepath.ToSlash(filepath.Dir(remotePath))
+	if err := fs.MkdirAll(remoteDir); err != nil {
+		return fmt.Errorf("creating remote directory %s: %w", remoteDir, err)
+	}
+
+	temporaryPath := remoteTemporaryPath(remotePath)
+	remoteFile, err := fs.OpenFile(temporaryPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL)
+	if err != nil {
+		return fmt.Errorf("creating remote temporary file %s: %w", temporaryPath, err)
+	}
+	removeTemporary := true
+	defer func() {
+		if removeTemporary {
+			_ = fs.Remove(temporaryPath)
+		}
+	}()
+
+	if _, err := io.Copy(io.MultiWriter(remoteFile, progress), source); err != nil {
+		_ = remoteFile.Close()
+		return err
+	}
+	if err := remoteFile.Close(); err != nil {
+		return fmt.Errorf("closing remote temporary file %s: %w", temporaryPath, err)
+	}
+	if err := fs.Rename(temporaryPath, remotePath); err != nil {
+		return fmt.Errorf("replacing remote file %s: %w", remotePath, err)
+	}
+
+	removeTemporary = false
+	return nil
+}
+
+func remoteTemporaryPath(remotePath string) string {
+	return fmt.Sprintf("%s.deploy-upload-%d-%d", remotePath, os.Getpid(), time.Now().UnixNano())
 }
 
 func (opts TransferOptions) SessionRemoteHash(remotePath string) (string, bool) {

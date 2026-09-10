@@ -11,6 +11,7 @@ import (
 
 const packageManagerDNF = "dnf"
 const packageManagerYUM = "yum"
+const packageManagerAPT = "apt-get"
 const defaultJDKVendor = "corretto"
 
 // BootstrapHost는 서버의 OS 업데이트와 필수 패키지/JDK 설치를 준비하거나 실행한다.
@@ -34,6 +35,7 @@ func BootstrapHost(runner ssh.Runner, bootstrap config.BootstrapConfig, opts Run
 		return nil
 	}
 
+	runner = mutationTrackingRunner{Runner: runner, outcomes: opts.outcomes}
 	if err := applyPackageBootstrap(runner, bootstrap, packages, host); err != nil {
 		return err
 	}
@@ -89,11 +91,11 @@ func bootstrapEnabled(bootstrap config.BootstrapConfig, packages []string) bool 
 // logBootstrapPlan은 dry-run에서 실행 예정인 bootstrap 명령을 원격 변경 없이 출력한다.
 func logBootstrapPlan(host string, bootstrap config.BootstrapConfig, packages []string) {
 	if bootstrap.OSUpdate.Enabled != nil && *bootstrap.OSUpdate.Enabled {
-		logger.Info(host, "DRY-RUN: would run sudo yum/dnf update -y")
+		logger.Info(host, "DRY-RUN: would update packages through the detected OS package manager")
 	}
 	if len(packages) > 0 {
-		logger.Info(host, "DRY-RUN: would check installed packages via rpm -q for %s", strings.Join(packages, ", "))
-		logger.Info(host, "DRY-RUN: would run sudo yum/dnf install -y %s", strings.Join(packages, " "))
+		logger.Info(host, "DRY-RUN: would check installed packages for %s", strings.Join(packages, ", "))
+		logger.Info(host, "DRY-RUN: would install missing packages through the detected OS package manager")
 	} else {
 		logger.Info(host, "DRY-RUN: no bootstrap packages to install")
 	}
@@ -126,13 +128,14 @@ func applyPackageBootstrap(runner ssh.Runner, bootstrap config.BootstrapConfig, 
 	if err != nil {
 		return err
 	}
-	if manager != packageManagerDNF && manager != packageManagerYUM {
-		return fmt.Errorf("bootstrap requires yum/dnf-compatible host; apt support is not implemented yet")
+	packages, err = packagesForPackageManager(bootstrap, manager)
+	if err != nil {
+		return err
 	}
 
 	if bootstrap.OSUpdate.Enabled != nil && *bootstrap.OSUpdate.Enabled {
 		logger.Info(host, "Running bootstrap OS update via %s...", manager)
-		if _, err := runner.RunSudo(manager + " update -y"); err != nil {
+		if _, err := runner.RunSudo(buildPackageUpdateCommand(manager)); err != nil {
 			return fmt.Errorf("running bootstrap os update: %w", err)
 		}
 	}
@@ -140,13 +143,20 @@ func applyPackageBootstrap(runner ssh.Runner, bootstrap config.BootstrapConfig, 
 		return nil
 	}
 
-	missingPackages, err := detectMissingPackages(runner, packages)
+	missingPackages, err := detectMissingPackages(runner, manager, packages)
 	if err != nil {
 		return err
 	}
 	if len(missingPackages) == 0 {
 		logger.Skip(host, "Bootstrap packages already installed")
 		return nil
+	}
+
+	if manager == packageManagerAPT {
+		logger.Info(host, "Refreshing apt package index before installation...")
+		if _, err := runner.RunSudo(buildPackageUpdateCommand(manager)); err != nil {
+			return fmt.Errorf("refreshing apt package index: %w", err)
+		}
 	}
 
 	installCommand := buildPackageInstallCommand(manager, missingPackages)
@@ -497,7 +507,7 @@ func detectPackageManager(runner ssh.Runner) (string, error) {
 	}{
 		{manager: packageManagerDNF, command: "test -x /usr/bin/dnf || test -x /bin/dnf"},
 		{manager: packageManagerYUM, command: "test -x /usr/bin/yum || test -x /bin/yum"},
-		{manager: "apt", command: "test -x /usr/bin/apt-get || test -x /bin/apt-get"},
+		{manager: packageManagerAPT, command: "test -x /usr/bin/apt-get || test -x /bin/apt-get"},
 	}
 
 	var failures []string
@@ -512,16 +522,19 @@ func detectPackageManager(runner ssh.Runner) (string, error) {
 	}
 
 	if len(failures) > 0 {
-		return "", fmt.Errorf("bootstrap requires yum/dnf-compatible host; apt support is not implemented yet (%s)", strings.Join(failures, "; "))
+		return "", fmt.Errorf("bootstrap requires a supported package manager (dnf, yum, or apt-get): %s", strings.Join(failures, "; "))
 	}
-	return "", fmt.Errorf("bootstrap requires yum/dnf-compatible host; apt support is not implemented yet")
+	return "", fmt.Errorf("bootstrap requires a supported package manager (dnf, yum, or apt-get)")
 }
 
-// detectMissingPackages는 rpm 기준으로 아직 설치되지 않은 패키지만 골라낸다.
-func detectMissingPackages(runner ssh.Runner, packages []string) ([]string, error) {
+// detectMissingPackages는 OS 패키지 관리자에 맞춰 아직 설치되지 않은 패키지만 골라낸다.
+func detectMissingPackages(runner ssh.Runner, manager string, packages []string) ([]string, error) {
 	missing := make([]string, 0, len(packages))
 	for _, pkg := range packages {
-		command := fmt.Sprintf("rpm -q %s", ssh.ShellQuote(pkg))
+		command, err := packageInstalledCommand(manager, pkg)
+		if err != nil {
+			return nil, err
+		}
 		if _, err := runner.Run(command); err != nil {
 			missing = append(missing, pkg)
 		}
@@ -542,10 +555,33 @@ func buildPackageInstallCommand(manager string, packages []string) string {
 	return manager + " install -y " + strings.Join(quoted, " ")
 }
 
+func buildPackageUpdateCommand(manager string) string {
+	if manager == packageManagerAPT {
+		return manager + " update"
+	}
+	return manager + " update -y"
+}
+
+func packageInstalledCommand(manager, pkg string) (string, error) {
+	switch manager {
+	case packageManagerDNF, packageManagerYUM:
+		return "rpm -q " + ssh.ShellQuote(pkg), nil
+	case packageManagerAPT:
+		return "dpkg-query -W -f='${db:Status-Status}' " + ssh.ShellQuote(pkg) + " | grep -Fxq installed", nil
+	default:
+		return "", fmt.Errorf("unsupported package manager %q", manager)
+	}
+}
+
 // packagesForBootstrap은 사용자가 지정한 패키지와 JDK 설정에서 유도한 패키지를 합친다.
 func packagesForBootstrap(bootstrap config.BootstrapConfig) ([]string, error) {
+	return packagesForPackageManager(bootstrap, packageManagerDNF)
+}
+
+// packagesForPackageManager는 OS별 기본 JDK 패키지명까지 포함한 설치 대상 목록을 만든다.
+func packagesForPackageManager(bootstrap config.BootstrapConfig, manager string) ([]string, error) {
 	packages := append([]string{}, bootstrap.Packages...)
-	jdkPackage, err := resolveJDKPackage(bootstrap.JDK)
+	jdkPackage, err := resolveJDKPackageForManager(manager, bootstrap.JDK)
 	if err != nil {
 		return nil, err
 	}
@@ -558,6 +594,12 @@ func packagesForBootstrap(bootstrap config.BootstrapConfig) ([]string, error) {
 
 // resolveJDKPackage는 JDK 설정을 Amazon Corretto 패키지명으로 변환한다.
 func resolveJDKPackage(jdk config.JDKConfig) (string, error) {
+	return resolveJDKPackageForManager(packageManagerDNF, jdk)
+}
+
+// resolveJDKPackageForManager는 패키지 관리자가 제공하는 JDK 패키지명으로 변환한다.
+// Ubuntu/Debian 계열은 배포판 표준 OpenJDK 패키지를 사용하고, RPM 계열은 Amazon Corretto 패키지를 사용한다.
+func resolveJDKPackageForManager(manager string, jdk config.JDKConfig) (string, error) {
 	if jdk.Enabled != nil && !*jdk.Enabled {
 		return "", nil
 	}
@@ -574,6 +616,15 @@ func resolveJDKPackage(jdk config.JDKConfig) (string, error) {
 	headless := true
 	if jdk.Headless != nil {
 		headless = *jdk.Headless
+	}
+	if manager == packageManagerAPT {
+		if headless {
+			return fmt.Sprintf("openjdk-%d-jdk-headless", jdk.Major), nil
+		}
+		return fmt.Sprintf("openjdk-%d-jdk", jdk.Major), nil
+	}
+	if manager != packageManagerDNF && manager != packageManagerYUM {
+		return "", fmt.Errorf("unsupported package manager %q", manager)
 	}
 	if headless {
 		return fmt.Sprintf("java-%d-amazon-corretto-headless", jdk.Major), nil

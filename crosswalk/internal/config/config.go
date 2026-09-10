@@ -44,6 +44,7 @@ type ServerConfig struct {
 	Bootstrap      BootstrapConfig `yaml:"bootstrap"`
 	Directories    []string        `yaml:"directories"`
 	ExtraFiles     []ExtraFile     `yaml:"extra_files"`
+	Utils          []UtilityConfig `yaml:"utils"`
 	App            AppConfig       `yaml:"app"`
 	Apps           []AppConfig     `yaml:"apps"`
 }
@@ -109,6 +110,15 @@ type ServiceConfig struct {
 	Name    string `yaml:"name"`
 	Enabled *bool  `yaml:"enabled"`
 	State   string `yaml:"state"`
+}
+
+// UtilityConfig는 Redis, Elasticsearch처럼 앱과 별도로 관리되는 유틸리티 서비스의 배포 자산과 실행 상태를 선언한다.
+// 파일을 먼저 배포한 뒤 서비스 상태를 적용해 변경된 설정이 즉시 반영되도록 한다.
+type UtilityConfig struct {
+	Name        string          `yaml:"name"`
+	Directories []string        `yaml:"directories"`
+	Files       []ExtraFile     `yaml:"files"`
+	Services    []ServiceConfig `yaml:"services"`
 }
 
 type DirectoryDefaultsConfig struct {

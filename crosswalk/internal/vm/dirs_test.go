@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -99,6 +100,10 @@ func TestCreateDirectoriesUsesCompactAppLayout(t *testing.T) {
 	}
 
 	want := []string{
+		"test -d '/app/overpass/sample/bin'",
+		"test -d '/app/overpass/sample/config'",
+		"test -d '/app/overpass/sample/lib'",
+		"test -d '/app/overpass/sample/logs'",
 		"mkdir -p '/app/overpass/sample/bin'",
 		"mkdir -p '/app/overpass/sample/config'",
 		"mkdir -p '/app/overpass/sample/lib'",
@@ -121,6 +126,9 @@ type directoryRunner struct {
 
 func (r *directoryRunner) Run(cmd string) (string, error) {
 	r.commands = append(r.commands, cmd)
+	if strings.HasPrefix(cmd, "test -d ") {
+		return "", fmt.Errorf("directory does not exist")
+	}
 	return "", nil
 }
 

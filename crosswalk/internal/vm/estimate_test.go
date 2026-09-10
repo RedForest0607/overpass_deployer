@@ -108,6 +108,29 @@ func TestEstimateConfigDeploymentReturnsFileErrors(t *testing.T) {
 	}
 }
 
+func TestEstimateServerDeploymentIncludesUtilityFiles(t *testing.T) {
+	utilityFile := writeEstimateFile(t, "redis.conf", 1024)
+
+	estimate, err := estimateServerDeployment(config.ServerConfig{
+		Name: "cache",
+		Host: "cache.example.com",
+		Utils: []config.UtilityConfig{
+			{
+				Name:        "redis",
+				Directories: []string{"/app/redis"},
+				Files:       []config.ExtraFile{{LocalPath: utilityFile, RemotePath: "/app/redis/redis.conf"}},
+				Services:    []config.ServiceConfig{{Name: "redis-server"}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("expected utility estimate to succeed, got %v", err)
+	}
+	if estimate.FileCount != 1 || estimate.TransferBytes != 1024 {
+		t.Fatalf("expected utility file in estimate, got %+v", estimate)
+	}
+}
+
 func writeEstimateFile(t *testing.T, name string, size int64) string {
 	t.Helper()
 
