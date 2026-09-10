@@ -21,10 +21,11 @@
 | 마일스톤 | 제목 | 상태 | 상세 |
 |---|---|---|---|
 | M1 | VM 모드 MVP | [x] | `docs/M1-PLAN.md` |
-| M2 | VM 모드 완성 (멱등성) | [ ] | `docs/M2-PLAN.md` |
+| M2 | VM 모드 완성 (멱등성) | [x] | `docs/M2-PLAN.md` |
 | M3 | Docker 모드 | [ ] | `docs/M3-PLAN.md` |
-| M4 | UX & Reliability | [ ] | `docs/M4-PLAN.md` |
+| M4 | UX, Reliability & Dashboard | [~] | `docs/M4-PLAN.md` |
 | M5 | AWS Extension | [ ] | `docs/M5-PLAN.md` |
+| M6 | Studio Backend | [~] | `docs/STUDIO-BACKEND-PLAN.md` |
 
 ---
 
@@ -62,6 +63,7 @@
 
 **완료 기준:** `docs/M2-PLAN.md` 체크리스트 전체 통과
 **선행 조건:** M1 완료
+**현재 상태:** [x] Ubuntu/Debian과 Amazon Linux의 패키지/JDK bootstrap, `utils[]` 선언/배포, 서버별 `done / skipped / failed` 결과 요약을 구현했다. Podman SSH/SFTP 대상에서 1차 배포와 무변경 2차 배포를 검증했다.
 
 ---
 
@@ -82,20 +84,24 @@
 
 ---
 
-## M4 — UX & Reliability
+## M4 — UX, Reliability & Dashboard
 
-**목표:** 여러 VM에 동시에 배포하고, 실행 전에 무엇을 할지 미리 확인할 수 있다.
+**목표:** 운영자가 여러 VM과 앱 상태를 한눈에 보고, 필요한 대상만 안전하게 조회/제어/배포할 수 있다.
 
 **범위:**
+- `deploy dashboard --config ...` 터미널 대시보드
+- 서버/앱 상태 조회, PID 확인, 로그 tail
+- 앱 start/stop/restart 제어와 확인 모달
+- 선택 앱 dry-run/실배포 실행
 - 병렬 실행 (goroutine) + 서버별 strategy override
-- `--target` 플래그 — 특정 서버만 선택 실행
-- `--service` 플래그 — 특정 서비스만 선택 실행
+- 태그 기반 선택 배포와 향후 명시적 target/service 선택 UX 정리
 - SSH 연결 타임아웃 및 재시도
 - 실행 결과 요약 테이블 출력
 - known_hosts 기반 SSH 검증
 
 **완료 기준:** `docs/M4-PLAN.md` 체크리스트 전체 통과
-**선행 조건:** M2, M3 완료
+**선행 조건:** M1 완료. 단, Docker 공통 UX 항목은 M3 이후 확정
+**현재 상태:** [~] VM dashboard, 상태 조회, 로그 stream, 앱 제어 확인창, 선택 앱 dry-run/배포 경로는 구현 및 일부 DEV 검증 완료. 로그 경로 override, 상태 판별 규약 확정, 결과 요약/재시도 UX는 후속
 
 ---
 
@@ -117,6 +123,23 @@
 
 ---
 
+## M6 — Studio Backend
+
+**목표:** Studio의 프로젝트·환경별 설계·아티팩트를 영속 저장하고, 검증된 Crosswalk VM 패키지를 생성·다운로드할 수 있다.
+
+**범위:**
+- OpenAPI/Blueprint schema와 Go API 서버
+- 프로젝트·토폴로지 revision 저장
+- 안전한 artifact 업로드와 프로젝트 범위 참조
+- 서버 검증과 비동기 `crosswalk-vm` 패키지 생성
+- 미리보기·ZIP 다운로드 및 Studio 프론트 연동
+
+**완료 기준:** `docs/STUDIO-BACKEND-PLAN.md`의 Phase 0~7 완료 기준 통과
+**선행 조건:** Studio API 계약 확정, Crosswalk 차트 포맷/version 및 validation 경계 확정
+**현재 상태:** [~] Phase 0 계약 schema, Phase 1 서버 기반, Phase 2 프로젝트 CRUD·환경별 topology revision 저장·프론트 adapter 구현 완료. design 목적 서버 검증과 프론트 저장·검증 연동도 구현. Crosswalk 차트 version 확정, artifact 업로드 및 package 목적 검증·생성은 후속
+
+---
+
 ## 마일스톤 간 의존 관계
 
 ```
@@ -125,9 +148,11 @@ M1 (VM MVP)
  ├─→ M3 (Docker 모드)   ← M1 공유 레이어 재사용
  │
  M2 ──┐
- M3 ──┼─→ M4 (UX)       ← 두 모드 모두 완성 후
+ M3 ──┼─→ M4 (UX/Dashboard) ← VM dashboard는 M1 이후, 공통 UX는 M2/M3 이후
       │
  M3 ──┴─→ M5 (AWS)      ← Docker 모드 기반 확장
+
+ Studio API 계약 ──→ M6 (Studio Backend) ──→ Crosswalk 호환 패키지
 ```
 
 ---
@@ -143,3 +168,6 @@ M1 (VM MVP)
 | 2026-04-06 | M1 | dry-run 예정 작업 출력 기능을 M1 범위로 승격 | CLI와 VM/scp/bastion 경계에서 원격 변경 없이 계획 로그만 출력하도록 정리 |
 | 2026-04-06 | M1 | Podman 기반 TEST 이미지로 통합 검증 완료 | happy path, 원격 파일 미존재 자동 전송, dry-run, SSH 실패, bastion alias/known_hosts 등록까지 확인 |
 | 2026-04-13 | M1 | 체크리스트를 현재 코드 기준으로 재정렬 | obsolete 항목을 실제 구현 형태로 정리하고 M1 상태를 `[x]`로 승격 |
+| 2026-08-24 | M4 | `deploy dashboard`를 공식 마일스톤 범위에 추가 | 기존 UX/Reliability 마일스톤을 Dashboard 포함 범위로 확장하고 상태를 `[~]`로 조정 |
+| 2026-08-24 | M2 | VM 운영 안전성 보강 시작 | apt-get bootstrap, utils 선언, 서버별 결과 요약을 구현하고 실제 재실행 통합 검증을 후속으로 분리 |
+| 2026-08-24 | M2 | VM 멱등성 완료 | Ubuntu 24.04/OpenJDK 21, Amazon Linux 2023/Corretto 17 SSH/SFTP 컨테이너에서 1차 배포와 2차 `skipped` 요약을 검증 |

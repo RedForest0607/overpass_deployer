@@ -47,6 +47,11 @@ infra/ak/*.jar
 coverage.out
 coverage.html
 /bin/
+/crosswalk/bin/
+/crosswalk/deploy
+/crosswalk/dist/
+/studio/backend/bin/
+/studio/backend/.studio-data/
 /deploy
 /dist/
 
