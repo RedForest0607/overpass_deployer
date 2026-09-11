@@ -11,7 +11,8 @@
 - [~] Phase 0: OpenAPI 3.1과 Blueprint v1 JSON Schema 추가. Crosswalk 차트 version/validation 경계와 타입 생성은 미완료.
 - [x] Phase 1: Go 서버 골격, SQLite migration, 공통 오류/middleware, health/capabilities, loopback 제한 구현.
 - [x] Phase 2: 프로젝트 CRUD, cursor 목록, 환경별 topology revision CAS 저장, React Flow API adapter 구현.
-- [~] Phase 3: 서버 design 검증·HTTP API·프론트 오류 연결 구현. artifact 실물 검사 및 package/generator 검증은 후속 단계.
+- [~] Phase 3: 서버 design 검증·HTTP API·프론트 오류 연결과 Crosswalk 배포 상세 구조 검증 구현. artifact 실물 검사 및 package/generator issue 변환은 후속 단계.
+- [~] Phase 5 선행: Crosswalk deploy.yml renderer와 실제 artifact ZIP 배치 core 구현. 생성 작업·패키지 저장/API 및 실제 Crosswalk loader harness는 후속 단계.
 - [~] Phase 6 선행: 프로젝트 CRUD 화면, 환경별 명시적 저장/불러오기, dirty·409 처리, 오래된 검증 결과 무효화, URL 선택 복원 구현. 산출물은 아직 로컬 초안.
 - [ ] Phase 4~5 및 7: 미구현. Crosswalk 차트 버전 확정과 파일 업로드·패키지 연동이 다음 단계.
 

@@ -18,7 +18,7 @@ Deployer의 Studio는 설계·차트 생성 도구이고 Crosswalk는 생성된 
 
 Studio 프론트에서 프로젝트 생성/목록/수정, 환경별 토폴로지 GET/PUT, purpose=design 검증을 호출한다.
 백엔드는 revision CAS와 SQLite 영속 저장, 모델·배포 방식 의미 검증을 지원한다.
-artifact, generation, package API와 공유 환경 인증은 아직 구현 목표다.
+artifact, generation, package API와 공유 환경 인증은 아직 구현 목표다. Crosswalk 배포 상세 Blueprint와 deploy.yml/ZIP 생성기 core는 구현됐으며 API 작업 흐름 연결 전이다.
 purpose=package 및 generator 지정 검증은 현재 422 UNSUPPORTED_GENERATOR로 거부한다.
 아래 후속 기능의 계약은 구현 목표로 유지하며, 현재 실행 가능한 배포 패키지를 생성한다는 뜻이 아니다.
 기존 `studio.overpass.io/draft` JSON을 v1 요청으로 그대로 보내지 않는다.

@@ -1,5 +1,7 @@
 # Progress
 
+- 2026-09-10 Studio Crosswalk 배포 모델·생성기 core 구현: Blueprint에 공통 SSH/bastion/directory defaults, VM별 bootstrap·공통 파일·utility, Java별 JAR/설정/추가 파일·압축 해제·chmod·JVM/extra opts·script values를 추가. 프론트 API round-trip과 노드별 JSON 편집기를 연결했고, backend `crosswalk-vm` 생성기가 `deploy.yml` 및 실제 artifact ZIP 상대 경로를 결정적으로 생성하도록 구현. 경로 탈출/충돌과 패키징 중 size·SHA-256 변경을 차단하는 테스트를 추가. 다음은 immutable artifact 업로드/조회와 생성·패키지 다운로드 API 연결, Crosswalk 실제 loader 호환성 자동화.
+
 ## Completed
 - 2026-09-10 목적별 커밋 정리: Crosswalk 순수 경로 이동, VM 멱등성·안전성, 터미널 대시보드, Studio API·백엔드, Studio 프론트 연동, 공통 개발 환경·문서로 분리. 작업 파일의 기존 변경을 보존했으며 로컬 DB·빌드 산출물·운영 자산은 제외. 원격 푸시는 수행하지 않음.
 - 2026-09-10 Studio 저장·검증 화면 연동: 기존 SQLite/API 기반을 활용해 실제 프로젝트 생성·조회·수정, DEV/QA/PROD 설계 저장/복원, URL 선택 복원, revision 409 충돌 보호 및 재조회 확인 UI 구현. 서버 design 검증 API와 모델·배치·포트 충돌·Java 설정 검사, 노드/필드 오류 표시 추가. 현재 편집기 미지원 모델은 조용히 변환하지 않고 로드 거부.
@@ -197,11 +199,11 @@
 - 2026-05-27 기준 prod bastion 경유로 `cache1/cache2/search1/search2` 파일 배포 완료: MongoDB/Hazelcast/Elasticsearch tar checksum 일치와 압축 해제 경로 확인
 
 ## Next To-Do
-- Studio Backend Phase 3: model/deployment/artifact/generator validator를 분리하고 JSON Pointer 기반 issue 응답 및 stale validation 폐기 흐름 구현.
+- Studio Backend Phase 3: 구현된 배포 구조 검증을 JSON Pointer issue로 세분화하고 artifact/generator 단계 validator 및 package 목적 승격 규칙을 연결.
 - Studio Backend Phase 0: Crosswalk 차트 포맷/version과 공개 validation 경계, OpenAPI 3.1, Blueprint v1 JSON Schema, 업로드 제한 및 로컬 인증 범위를 확정.
 - Studio Backend Phase 1: `studio/backend` 서버 골격, SQLite migration, 공통 오류/middleware, health/capabilities와 contract test 구현.
 - 산출물 분리 후속: Crosswalk 차트 버전·스키마 계약 확정, Studio 생성 패키지와 Crosswalk 호환성 테스트, 독립 릴리스 정책 정리.
-- Studio 다음 단계: JAR·안전한 설정 템플릿 업로드와 artifactRef 선택, package 목적 검증·생성 작업/ZIP API, 복수 포트·실행 방식 편집 UI, 실제 브라우저 E2E 검증. DTO 자동 생성 및 공유 환경 인증은 미완료.
+- Studio 다음 단계: JAR·설정·일반 파일·archive·script-values immutable 업로드와 artifactRef 선택, 생성 작업/패키지 다운로드 API에 구현된 Crosswalk generator를 연결, 실제 loader dry-run 및 브라우저 E2E 검증. DTO 자동 생성 및 공유 환경 인증은 미완료.
 - 프론트 후속: 표준 Blueprint API 계약 확정, 프로젝트/아티팩트 등록·저장, VM 번들 생성 백엔드 연결, 환경별 revision·overlay 및 Helm/Terraform 생성기 추가.
 - 실행 계층 후속: Redis/Elasticsearch 설치·실행 생성기, 포트 매핑 및 서비스별 복수 포트 모델, 실제 브라우저 조작 QA 추가.
 - 리뷰 후속: POSIX rename 미지원 서버의 안전한 교체 전략과 bootstrap ensure 명령의 실제 변경 여부 반환 규약을 확장 검토.
