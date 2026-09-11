@@ -15,6 +15,98 @@ export type Port = {
   protocol: 'TCP' | 'UDP';
 };
 
+export type ServiceSetting = {
+  name: string;
+  enabled?: boolean;
+  state?: 'started' | 'stopped' | 'restarted';
+};
+export type ExtractProfile = {
+  enabled: boolean;
+  remoteDir?: string;
+  stripComponents?: number;
+  stagingPath?: string;
+  sudo?: boolean;
+  owner?: string;
+  group?: string;
+  chownRecursive?: boolean;
+  keepStagedArchive?: boolean;
+};
+export type ArtifactDelivery = {
+  artifactRef: string;
+  packagePath?: string;
+  remotePath: string;
+  chmod?: string;
+  extract?: ExtractProfile;
+};
+export type BootstrapProfile = {
+  packages?: string[];
+  users?: Record<string, unknown>[];
+  sysctls?: Record<string, unknown>[];
+  services?: ServiceSetting[];
+  jdk?: {
+    enabled: boolean;
+    vendor?: string;
+    major?: number;
+    headless?: boolean;
+  };
+  osUpdate?: { enabled: boolean };
+  timezone?: string;
+  swap?: { enabled: boolean; path?: string; size?: string };
+  dockerCompose?: {
+    enabled: boolean;
+    version?: string;
+    sourceUrl?: string;
+    installPath?: string;
+  };
+};
+export type VMDeployment = {
+  tags?: string[];
+  sshPort?: number;
+  bastionHost?: string;
+  bastionSSHPort?: number;
+  bootstrap?: BootstrapProfile;
+  directories?: string[];
+  files?: ArtifactDelivery[];
+  utilities?: {
+    name: string;
+    directories?: string[];
+    files?: ArtifactDelivery[];
+    services?: ServiceSetting[];
+  }[];
+};
+export type JavaDeployment = {
+  baseDir?: string;
+  jarRemotePath?: string;
+  jarPackagePath?: string;
+  minHeap?: string;
+  javaOptions?: string[];
+  extraOptions?: string[];
+  configFiles?: ArtifactDelivery[];
+  extraFiles?: ArtifactDelivery[];
+  script?: {
+    mode: 'template' | 'local';
+    template?: string;
+    artifactRef?: string;
+    packagePath?: string;
+    valuesArtifactRef?: string;
+    valuesPackagePath?: string;
+    remotePath: string;
+    remoteDir?: string;
+  };
+};
+export type DeploymentProfile = {
+  ssh: {
+    user: string;
+    keyPath: string;
+    knownHostsPath: string;
+    hostKeyChecking: 'strict' | 'accept-new' | 'insecure';
+    port?: number;
+    timeoutSeconds?: number;
+  };
+  bastion?: Record<string, unknown> & { host: string };
+  directoryDefaults?: { prefix: string; owner: string; group?: string }[];
+};
+
 export type BlueprintNode = {
   id: string;
   kind: NodeKind;
@@ -38,6 +130,7 @@ export type BlueprintConnection = {
 
 export type Blueprint = {
   apiVersion: 'studio.deployer/v1';
+  deployment?: DeploymentProfile;
   nodes: BlueprintNode[];
   placements: Placement[];
   connections: BlueprintConnection[];

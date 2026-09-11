@@ -7,6 +7,7 @@
   "required": ["apiVersion", "nodes", "placements", "connections"],
   "properties": {
     "apiVersion": { "const": "studio.deployer/v1" },
+    "deployment": { "$ref": "#/$defs/deploymentProfile" },
     "nodes": {
       "type": "array",
       "maxItems": 500,
@@ -36,13 +37,229 @@
         "protocol": { "enum": ["TCP", "UDP"] }
       }
     },
+    "deploymentProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ssh"],
+      "properties": {
+        "ssh": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["user", "keyPath", "knownHostsPath", "hostKeyChecking"],
+          "properties": {
+            "user": { "type": "string" },
+            "keyPath": { "type": "string" },
+            "knownHostsPath": { "type": "string" },
+            "hostKeyChecking": { "enum": ["strict", "accept-new", "insecure"] },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "timeoutSeconds": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "bastion": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["host"],
+          "properties": {
+            "host": { "type": "string" },
+            "user": { "type": "string" },
+            "keyPath": { "type": "string" },
+            "knownHostsPath": { "type": "string" },
+            "hostKeyChecking": { "enum": ["strict", "accept-new", "insecure"] },
+            "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+            "timeoutSeconds": { "type": "integer", "minimum": 0 },
+            "aliasUser": { "type": "string" },
+            "sshConfigPath": { "type": "string" },
+            "shellAliasesPath": { "type": "string" },
+            "targetKnownHostsPath": { "type": "string" },
+            "targetKeyPath": { "type": "string" }
+          }
+        },
+        "directoryDefaults": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["prefix", "owner"],
+            "properties": {
+              "prefix": { "type": "string" },
+              "owner": { "type": "string" },
+              "group": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "serviceSetting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "enabled": { "type": "boolean" },
+        "state": { "enum": ["started", "stopped", "restarted"] }
+      }
+    },
+    "extractProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["enabled"],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "remoteDir": { "type": "string" },
+        "stripComponents": { "type": "integer", "minimum": 0 },
+        "stagingPath": { "type": "string" },
+        "sudo": { "type": "boolean" },
+        "owner": { "type": "string" },
+        "group": { "type": "string" },
+        "chownRecursive": { "type": "boolean" },
+        "keepStagedArchive": { "type": "boolean" }
+      }
+    },
+    "artifactDelivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactRef", "remotePath"],
+      "properties": {
+        "artifactRef": { "$ref": "#/$defs/id" },
+        "packagePath": { "type": "string" },
+        "remotePath": { "type": "string" },
+        "chmod": { "type": "string", "pattern": "^0?[0-7]{3}$" },
+        "extract": { "$ref": "#/$defs/extractProfile" }
+      }
+    },
+    "bootstrapProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "packages": { "type": "array", "items": { "type": "string" } },
+        "users": { "type": "array", "items": { "type": "object" } },
+        "sysctls": { "type": "array", "items": { "type": "object" } },
+        "services": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/serviceSetting" }
+        },
+        "jdk": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "vendor": { "type": "string" },
+            "major": { "type": "integer" },
+            "headless": { "type": "boolean" }
+          }
+        },
+        "osUpdate": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": { "enabled": { "type": "boolean" } }
+        },
+        "timezone": { "type": "string" },
+        "swap": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "path": { "type": "string" },
+            "size": { "type": "string" }
+          }
+        },
+        "dockerCompose": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled"],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "version": { "type": "string" },
+            "sourceUrl": { "type": "string" },
+            "installPath": { "type": "string" }
+          }
+        }
+      }
+    },
+    "utilityProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string" },
+        "directories": { "type": "array", "items": { "type": "string" } },
+        "files": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/artifactDelivery" }
+        },
+        "services": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/serviceSetting" }
+        }
+      }
+    },
+    "vmDeployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "sshPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "bastionHost": { "type": "string" },
+        "bastionSSHPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "bootstrap": { "$ref": "#/$defs/bootstrapProfile" },
+        "directories": { "type": "array", "items": { "type": "string" } },
+        "files": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/artifactDelivery" }
+        },
+        "utilities": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/utilityProfile" }
+        }
+      }
+    },
+    "scriptProfile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "remotePath"],
+      "properties": {
+        "mode": { "enum": ["template", "local"] },
+        "template": { "type": "string" },
+        "artifactRef": { "$ref": "#/$defs/id" },
+        "packagePath": { "type": "string" },
+        "valuesArtifactRef": { "$ref": "#/$defs/id" },
+        "valuesPackagePath": { "type": "string" },
+        "remotePath": { "type": "string" },
+        "remoteDir": { "type": "string" }
+      }
+    },
+    "javaDeployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "baseDir": { "type": "string" },
+        "jarRemotePath": { "type": "string" },
+        "jarPackagePath": { "type": "string" },
+        "minHeap": { "type": "string" },
+        "javaOptions": { "type": "array", "items": { "type": "string" } },
+        "extraOptions": { "type": "array", "items": { "type": "string" } },
+        "configFiles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/artifactDelivery" }
+        },
+        "extraFiles": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/artifactDelivery" }
+        },
+        "script": { "$ref": "#/$defs/scriptProfile" }
+      }
+    },
     "vmSpec": {
       "type": "object",
       "additionalProperties": false,
       "required": ["provider", "host"],
       "properties": {
         "provider": { "enum": ["on-prem", "aws-ec2"] },
-        "host": { "type": "string", "maxLength": 253 }
+        "host": { "type": "string", "maxLength": 253 },
+        "deployment": { "$ref": "#/$defs/vmDeployment" }
       }
     },
     "javaSpec": {
@@ -51,14 +268,12 @@
       "required": ["artifactRef", "javaVersion", "maxHeap", "ports"],
       "properties": {
         "artifactRef": {
-          "oneOf": [
-            { "$ref": "#/$defs/id" },
-            { "type": "null" }
-          ]
+          "oneOf": [{ "$ref": "#/$defs/id" }, { "type": "null" }]
         },
         "javaVersion": { "type": "string", "maxLength": 32 },
         "maxHeap": { "type": "string", "maxLength": 32 },
-        "ports": { "type": "array", "items": { "$ref": "#/$defs/port" } }
+        "ports": { "type": "array", "items": { "$ref": "#/$defs/port" } },
+        "deployment": { "$ref": "#/$defs/javaDeployment" }
       }
     },
     "hostedServiceSpec": {

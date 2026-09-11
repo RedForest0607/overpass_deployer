@@ -58,6 +58,7 @@ func ValidateProject(name, description string) error {
 
 type blueprintDocument struct {
 	APIVersion  string                `json:"apiVersion"`
+	Deployment  *DeploymentProfile    `json:"deployment,omitempty"`
 	Nodes       []blueprintNode       `json:"nodes"`
 	Placements  []blueprintPlacement  `json:"placements"`
 	Connections []blueprintConnection `json:"connections"`
@@ -128,6 +129,9 @@ func ValidateTopologyStructure(blueprint, layout json.RawMessage, maxNodes, maxC
 			return fmt.Errorf("invalid blueprint: %s node spec: %w", node.Kind, err)
 		}
 	}
+	if err := validateDeploymentStructure(document); err != nil {
+		return fmt.Errorf("invalid blueprint: %w", err)
+	}
 	for _, placement := range document.Placements {
 		if placement.WorkloadRef == "" || placement.TargetRef == "" || (placement.Mode != "process" && placement.Mode != "compose" && placement.Mode != "kubernetes") {
 			return errors.New("invalid blueprint: placement fields are malformed")
@@ -181,8 +185,9 @@ func validateNodeSpec(kind string, raw json.RawMessage) error {
 	switch kind {
 	case "vm":
 		var spec struct {
-			Provider *string `json:"provider"`
-			Host     *string `json:"host"`
+			Provider   *string       `json:"provider"`
+			Host       *string       `json:"host"`
+			Deployment *VMDeployment `json:"deployment,omitempty"`
 		}
 		if err := decodeSpec(raw, &spec, "provider", "host"); err != nil {
 			return err
@@ -196,6 +201,7 @@ func validateNodeSpec(kind string, raw json.RawMessage) error {
 			JavaVersion *string         `json:"javaVersion"`
 			MaxHeap     *string         `json:"maxHeap"`
 			Ports       []portValue     `json:"ports"`
+			Deployment  *JavaDeployment `json:"deployment,omitempty"`
 		}
 		if err := decodeSpec(raw, &spec, "artifactRef", "javaVersion", "maxHeap", "ports"); err != nil {
 			return err
