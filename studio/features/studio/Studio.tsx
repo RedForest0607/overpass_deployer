@@ -64,6 +64,8 @@ import { filesFor } from '../generation/preview';
 
 import { usePersistence } from './usePersistence';
 import { toAPI } from '../topology/api-adapter';
+import { defaultDeploymentProfile } from '../topology/api-adapter';
+import type { DeploymentProfile } from '../../lib/api/contracts';
 import ProjectsPanel from './ProjectsPanel';
 import {
   AlertDialog,
@@ -98,6 +100,9 @@ function Workspace() {
   const [view, setView] = useState('projects');
   const [confirmReload, setConfirmReload] = useState(false);
   const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
+  const [deployment, setDeployment] = useState<DeploymentProfile>(
+    defaultDeploymentProfile,
+  );
   const [selection, setSelection] = useState<{
     type: 'node' | 'edge';
     id: string;
@@ -110,16 +115,20 @@ function Workspace() {
     edges: TopologyEdge[];
   } | null>(null);
   const flow = useReactFlow();
-  const persistence = usePersistence({ nodes, edges, viewport }, (graph) => {
-    setNodes(graph.nodes);
-    setEdges(graph.edges);
-    setSelection(null);
-    setLastRemoval(null);
-    setView('topology');
-    const restoredViewport = graph.viewport ?? { x: 0, y: 0, zoom: 1 };
-    setViewport(restoredViewport);
-    void flow.setViewport(restoredViewport);
-  });
+  const persistence = usePersistence(
+    { nodes, edges, viewport, deployment },
+    (graph) => {
+      setNodes(graph.nodes);
+      setEdges(graph.edges);
+      setDeployment(graph.deployment ?? defaultDeploymentProfile);
+      setSelection(null);
+      setLastRemoval(null);
+      setView('topology');
+      const restoredViewport = graph.viewport ?? { x: 0, y: 0, zoom: 1 };
+      setViewport(restoredViewport);
+      void flow.setViewport(restoredViewport);
+    },
+  );
   const project = persistence.active?.name ?? '프로젝트를 선택하세요';
   const environment = persistence.environment.toUpperCase();
   const localIssues = useMemo(() => validate(nodes, edges), [nodes, edges]);
@@ -138,13 +147,13 @@ function Workspace() {
       'topology.json': JSON.stringify(
         {
           environment: persistence.environment,
-          ...toAPI(nodes, edges, viewport),
+          ...toAPI(nodes, edges, viewport, deployment),
         },
         null,
         2,
       ),
     }),
-    [nodes, edges, environment, viewport],
+    [nodes, edges, environment, viewport, deployment],
   );
   const visibleEdges = edges.filter(
     (e) => !nodes.some((n) => n.id === e.target && isTarget(n)),

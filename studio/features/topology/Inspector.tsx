@@ -11,6 +11,7 @@ import { Trash2 } from 'lucide-react';
 import { isWorkload, isTarget } from './placement';
 import Choice from './Choice';
 import { type TopologyNode, type TopologyEdge, type NodeData } from './model';
+import DeploymentEditor from './DeploymentEditor';
 export default function Inspector({
   node,
   edge,
@@ -32,7 +33,8 @@ export default function Inspector({
   remove: () => void;
   errors?: { path: string; message: string }[];
 }) {
-  const errorFor = (key: keyof NodeData) => {
+  type EditableField = Exclude<keyof NodeData, 'deployment'>;
+  const errorFor = (key: EditableField) => {
     const suffix = (
       {
         label: '/name',
@@ -50,7 +52,7 @@ export default function Inspector({
         )
       : undefined;
   };
-  const field = (label: string, key: keyof NodeData, type = 'text') => (
+  const field = (label: string, key: EditableField, type = 'text') => (
     <label className="field">
       <span>{label}</span>
       <Input
@@ -161,6 +163,14 @@ export default function Inspector({
               ) && field('Secret 참조 이름 · 비밀 값 입력 금지', 'secretRef')}
               {node.data.kind === 'kubernetes' &&
                 field('Namespace', 'namespace')}
+              {(node.data.kind === 'vm' || node.data.kind === 'java') && (
+                <DeploymentEditor
+                  key={node.id}
+                  kind={node.data.kind}
+                  value={node.data.deployment}
+                  onChange={(deployment) => updateNode({ deployment })}
+                />
+              )}
             </>
           )}
           {edge && (
@@ -182,8 +192,8 @@ export default function Inspector({
             </>
           )}
           <p className="field-note">
-            변경 후 설계 저장을 누르세요. JAR 파일명은 로컬 초안용이며
-            업로드·영속 저장은 아직 지원하지 않습니다.
+            변경 후 설계 저장을 누르세요. artifactRef에는 Studio에 등록된
+            immutable artifact ID를 사용합니다.
           </p>
           <button className="danger-button" onClick={remove}>
             <Trash2 size={16} />{' '}

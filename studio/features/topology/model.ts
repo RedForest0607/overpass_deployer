@@ -1,4 +1,5 @@
 import type { Edge, Node } from '@xyflow/react';
+import type { JavaDeployment, VMDeployment } from '../../lib/api/contracts.ts';
 
 export type Kind =
   | 'java'
@@ -21,6 +22,7 @@ export type NodeData = {
   secretRef: string;
   namespace: string;
   platform: string;
+  deployment?: VMDeployment | JavaDeployment;
 };
 export type TopologyNode = Node<NodeData, 'resource' | 'targetGroup'>;
 export type TopologyEdge = Edge<{ protocol: 'TCP' | 'UDP'; port: number }>;

@@ -7,7 +7,12 @@ import {
   type Validation,
 } from '../../lib/api/projects';
 import type { Environment } from '../../lib/api/contracts';
-import { fromAPI, toAPI } from '../topology/api-adapter';
+import type { DeploymentProfile } from '../../lib/api/contracts';
+import {
+  defaultDeploymentProfile,
+  fromAPI,
+  toAPI,
+} from '../topology/api-adapter';
 import type { TopologyNode, TopologyEdge } from '../topology/model';
 import { isCurrentValidation } from './validation-state';
 
@@ -15,10 +20,18 @@ type Graph = {
   nodes: TopologyNode[];
   edges: TopologyEdge[];
   viewport?: { x: number; y: number; zoom: number };
+  deployment?: DeploymentProfile;
 };
 const viewport = { x: 0, y: 0, zoom: 1 };
 export const graphKey = (graph: Graph) =>
-  JSON.stringify(toAPI(graph.nodes, graph.edges, graph.viewport ?? viewport));
+  JSON.stringify(
+    toAPI(
+      graph.nodes,
+      graph.edges,
+      graph.viewport ?? viewport,
+      graph.deployment,
+    ),
+  );
 
 export function usePersistence(graph: Graph, replace: (graph: Graph) => void) {
   const [projects, setProjects] = useState<Project[]>([]);
@@ -63,7 +76,11 @@ export function usePersistence(graph: Graph, replace: (graph: Graph) => void) {
     lock.current = true;
     setBusy(true);
     try {
-      let restored: Graph = { nodes: [], edges: [] };
+      let restored: Graph = {
+        nodes: [],
+        edges: [],
+        deployment: defaultDeploymentProfile,
+      };
       let nextRevision = 0;
       try {
         const value = await projectsAPI.load(project.id, env);
@@ -175,6 +192,7 @@ export function usePersistence(graph: Graph, replace: (graph: Graph) => void) {
           snapshot.graph.nodes,
           snapshot.graph.edges,
           snapshot.graph.viewport ?? viewport,
+          snapshot.graph.deployment,
         ),
       );
       if (!alive.current) return;
@@ -204,7 +222,12 @@ export function usePersistence(graph: Graph, replace: (graph: Graph) => void) {
       const value = await projectsAPI.validate(
         active.id,
         environment,
-        toAPI(snapshot.graph.nodes, snapshot.graph.edges, viewport).blueprint,
+        toAPI(
+          snapshot.graph.nodes,
+          snapshot.graph.edges,
+          viewport,
+          snapshot.graph.deployment,
+        ).blueprint,
         clientRequestId,
       );
       if (!alive.current) return;

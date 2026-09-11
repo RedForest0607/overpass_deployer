@@ -3,6 +3,7 @@ import type {
   Blueprint,
   BlueprintConnection,
   BlueprintNode,
+  DeploymentProfile,
   Layout,
   Placement,
   Port,
@@ -20,10 +21,20 @@ const mainPort = (node: TopologyNode): Port[] => [
   { name: 'main', servicePort: node.data.port, protocol: 'TCP' },
 ];
 
+export const defaultDeploymentProfile: DeploymentProfile = {
+  ssh: {
+    user: 'deploy',
+    keyPath: '${DEPLOY_SSH_KEY_PATH}',
+    knownHostsPath: '${DEPLOY_KNOWN_HOSTS}',
+    hostKeyChecking: 'strict',
+  },
+};
+
 export function toAPI(
   nodes: TopologyNode[],
   edges: TopologyEdge[],
   viewport: Viewport,
+  deployment?: DeploymentProfile,
 ): { blueprint: Blueprint; layout: Layout } {
   const byID = new Map(nodes.map((node) => [node.id, node]));
   const placements: Placement[] = nodes.flatMap((node) => {
@@ -59,6 +70,7 @@ export function toAPI(
   return {
     blueprint: {
       apiVersion: 'studio.deployer/v1',
+      ...(deployment ? { deployment } : {}),
       nodes: nodes.map(toBlueprintNode),
       placements,
       connections,
@@ -82,6 +94,7 @@ function toBlueprintNode(node: TopologyNode): BlueprintNode {
         spec: {
           provider: node.data.platform === 'AWS EC2' ? 'aws-ec2' : 'on-prem',
           host: node.data.host,
+          ...(node.data.deployment ? { deployment: node.data.deployment } : {}),
         },
       };
     case 'java':
@@ -92,6 +105,7 @@ function toBlueprintNode(node: TopologyNode): BlueprintNode {
           javaVersion: node.data.java,
           maxHeap: node.data.heap,
           ports: mainPort(node),
+          ...(node.data.deployment ? { deployment: node.data.deployment } : {}),
         },
       };
     case 'redis':
@@ -133,7 +147,12 @@ function toBlueprintNode(node: TopologyNode): BlueprintNode {
 export function fromAPI(
   blueprint: Blueprint,
   layout: Layout,
-): { nodes: TopologyNode[]; edges: TopologyEdge[]; viewport: Viewport } {
+): {
+  nodes: TopologyNode[];
+  edges: TopologyEdge[];
+  viewport: Viewport;
+  deployment?: DeploymentProfile;
+} {
   assertEditable(blueprint);
   const positions = new Map(
     layout.nodes.map(({ nodeId, position }) => [nodeId, position]),
@@ -192,6 +211,7 @@ export function fromAPI(
     nodes: [...targets, ...unparented, ...children],
     edges: [...placementEdges, ...connectionEdges],
     viewport: layout.viewport,
+    deployment: blueprint.deployment,
   };
 }
 
@@ -277,6 +297,12 @@ function fromSpec(node: BlueprintNode) {
     secretRef: stringValue(spec.secretRef),
     namespace: stringValue(spec.namespace, 'commerce-dev'),
     platform: spec.provider === 'aws-ec2' ? 'AWS EC2' : 'On-prem VM',
+    deployment:
+      node.kind === 'vm' || node.kind === 'java'
+        ? typeof spec.deployment === 'object' && spec.deployment !== null
+          ? (spec.deployment as TopologyNode['data']['deployment'])
+          : undefined
+        : undefined,
   };
 }
 
