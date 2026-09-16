@@ -86,13 +86,22 @@ type blueprintConnection struct {
 }
 
 type layoutDocument struct {
-	Nodes    []layoutNode `json:"nodes"`
-	Viewport viewport     `json:"viewport"`
+	Nodes       []layoutNode       `json:"nodes"`
+	Connections []layoutConnection `json:"connections,omitempty"`
+	Viewport    viewport           `json:"viewport"`
 }
 
 type layoutNode struct {
 	NodeID   string   `json:"nodeId"`
 	Position position `json:"position"`
+}
+
+type layoutConnection struct {
+	ConnectionID  string    `json:"connectionId"`
+	BendOffset    *position `json:"bendOffset,omitempty"`
+	LabelPosition *float64  `json:"labelPosition,omitempty"`
+	// LabelOffset is accepted only for documents saved by the first movable-label draft.
+	LabelOffset *position `json:"labelOffset,omitempty"`
 }
 
 type position struct {
@@ -155,7 +164,37 @@ func ValidateTopologyStructure(blueprint, layout json.RawMessage, maxNodes, maxC
 			return errors.New("invalid layout: node position is malformed")
 		}
 	}
+	connectionIDs := make(map[string]struct{}, len(document.Connections))
+	for _, connection := range document.Connections {
+		connectionIDs[connection.ID] = struct{}{}
+	}
+	seenLayoutConnections := make(map[string]struct{}, len(layoutValue.Connections))
+	for _, connection := range layoutValue.Connections {
+		if connection.ConnectionID == "" || (connection.BendOffset == nil && connection.LabelPosition == nil && connection.LabelOffset == nil) {
+			return errors.New("invalid layout: connection layout is malformed")
+		}
+		if _, ok := connectionIDs[connection.ConnectionID]; !ok {
+			return errors.New("invalid layout: connection layout references an unknown connection")
+		}
+		if _, exists := seenLayoutConnections[connection.ConnectionID]; exists {
+			return errors.New("invalid layout: duplicate connection layout")
+		}
+		seenLayoutConnections[connection.ConnectionID] = struct{}{}
+		if !validLayoutPosition(connection.BendOffset) || !validLayoutPosition(connection.LabelOffset) {
+			return errors.New("invalid layout: connection offset is malformed")
+		}
+		if connection.LabelPosition != nil && (*connection.LabelPosition < 0 || *connection.LabelPosition > 1) {
+			return errors.New("invalid layout: connection label position is malformed")
+		}
+	}
 	return nil
+}
+
+func validLayoutPosition(value *position) bool {
+	if value == nil {
+		return true
+	}
+	return value.X != nil && value.Y != nil && *value.X >= -1_000_000 && *value.X <= 1_000_000 && *value.Y >= -1_000_000 && *value.Y <= 1_000_000
 }
 
 func decodeStrict(body []byte, destination any) error {
@@ -212,10 +251,11 @@ func validateNodeSpec(kind string, raw json.RawMessage) error {
 		return validatePorts(spec.Ports)
 	case "redis", "elasticsearch":
 		var spec struct {
-			Location  *string     `json:"location"`
-			Endpoint  *string     `json:"endpoint,omitempty"`
-			Ports     []portValue `json:"ports"`
-			SecretRef *string     `json:"secretRef,omitempty"`
+			Location   *string            `json:"location"`
+			Endpoint   *string            `json:"endpoint,omitempty"`
+			Ports      []portValue        `json:"ports"`
+			SecretRef  *string            `json:"secretRef,omitempty"`
+			Deployment *UtilityDeployment `json:"deployment,omitempty"`
 		}
 		if err := decodeSpec(raw, &spec, "location", "ports"); err != nil {
 			return err

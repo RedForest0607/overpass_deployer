@@ -3,6 +3,7 @@ package crosswalkvm
 type chart struct {
 	SSH               chartSSH               `yaml:"ssh"`
 	Bastion           *chartBastion          `yaml:"bastion,omitempty"`
+	Bootstrap         *chartBootstrap        `yaml:"bootstrap,omitempty"`
 	DirectoryDefaults chartDirectoryDefaults `yaml:"directory_defaults,omitempty"`
 	Servers           []chartServer          `yaml:"servers"`
 }
@@ -139,15 +140,21 @@ type chartExtract struct {
 }
 
 type chartApp struct {
-	Name        string      `yaml:"name"`
-	BaseDir     string      `yaml:"base_dir"`
-	Jar         chartJar    `yaml:"jar"`
-	JVM         chartJVM    `yaml:"jvm"`
-	Port        int         `yaml:"port"`
-	ExtraOpts   []string    `yaml:"extra_opts,omitempty"`
-	ConfigFiles []chartFile `yaml:"config_files,omitempty"`
-	ExtraFiles  []chartFile `yaml:"extra_files,omitempty"`
-	Script      chartScript `yaml:"script"`
+	Name        string            `yaml:"name"`
+	Tags        []string          `yaml:"tags,omitempty"`
+	BaseDir     string            `yaml:"base_dir"`
+	Jar         chartJar          `yaml:"jar"`
+	JVM         chartJVM          `yaml:"jvm"`
+	Port        int               `yaml:"port"`
+	ExtraOpts   []string          `yaml:"extra_opts,omitempty"`
+	ConfigFiles []chartConfigFile `yaml:"config_files,omitempty"`
+	ExtraFiles  []chartFile       `yaml:"extra_files,omitempty"`
+	Script      chartScript       `yaml:"script"`
+}
+
+type chartConfigFile struct {
+	LocalPath  string `yaml:"local_path"`
+	RemotePath string `yaml:"remote_path"`
 }
 
 type chartJar struct {

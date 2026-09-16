@@ -6,6 +6,7 @@ package domain
 type DeploymentProfile struct {
 	SSH               SSHProfile               `json:"ssh"`
 	Bastion           *BastionProfile          `json:"bastion,omitempty"`
+	Bootstrap         *BootstrapProfile        `json:"bootstrap,omitempty"`
 	DirectoryDefaults []DirectoryOwnershipRule `json:"directoryDefaults,omitempty"`
 }
 
@@ -108,6 +109,14 @@ type ArtifactDelivery struct {
 	Extract     *ExtractProfile `json:"extract,omitempty"`
 }
 
+// ConfigArtifactDelivery matches Crosswalk config_files, which supports file
+// transfer only. chmod and extraction belong to extra_files.
+type ConfigArtifactDelivery struct {
+	ArtifactRef string `json:"artifactRef"`
+	PackagePath string `json:"packagePath,omitempty"`
+	RemotePath  string `json:"remotePath"`
+}
+
 type ExtractProfile struct {
 	Enabled           bool   `json:"enabled"`
 	RemoteDir         string `json:"remoteDir,omitempty"`
@@ -122,6 +131,14 @@ type ExtractProfile struct {
 
 type UtilityProfile struct {
 	Name        string             `json:"name"`
+	Directories []string           `json:"directories,omitempty"`
+	Files       []ArtifactDelivery `json:"files,omitempty"`
+	Services    []ServiceSetting   `json:"services,omitempty"`
+}
+
+// UtilityDeployment is attached to a hosted Redis or Elasticsearch node. The
+// node name becomes the Crosswalk utility name when placed on a VM.
+type UtilityDeployment struct {
 	Directories []string           `json:"directories,omitempty"`
 	Files       []ArtifactDelivery `json:"files,omitempty"`
 	Services    []ServiceSetting   `json:"services,omitempty"`
@@ -150,13 +167,14 @@ type ScriptProfile struct {
 }
 
 type JavaDeployment struct {
-	BaseDir        string             `json:"baseDir,omitempty"`
-	JarRemotePath  string             `json:"jarRemotePath,omitempty"`
-	JarPackagePath string             `json:"jarPackagePath,omitempty"`
-	MinHeap        string             `json:"minHeap,omitempty"`
-	JavaOptions    []string           `json:"javaOptions,omitempty"`
-	ExtraOptions   []string           `json:"extraOptions,omitempty"`
-	ConfigFiles    []ArtifactDelivery `json:"configFiles,omitempty"`
-	ExtraFiles     []ArtifactDelivery `json:"extraFiles,omitempty"`
-	Script         *ScriptProfile     `json:"script,omitempty"`
+	Tags           []string                 `json:"tags,omitempty"`
+	BaseDir        string                   `json:"baseDir,omitempty"`
+	JarRemotePath  string                   `json:"jarRemotePath,omitempty"`
+	JarPackagePath string                   `json:"jarPackagePath,omitempty"`
+	MinHeap        string                   `json:"minHeap,omitempty"`
+	JavaOptions    []string                 `json:"javaOptions,omitempty"`
+	ExtraOptions   []string                 `json:"extraOptions,omitempty"`
+	ConfigFiles    []ConfigArtifactDelivery `json:"configFiles,omitempty"`
+	ExtraFiles     []ArtifactDelivery       `json:"extraFiles,omitempty"`
+	Script         *ScriptProfile           `json:"script,omitempty"`
 }

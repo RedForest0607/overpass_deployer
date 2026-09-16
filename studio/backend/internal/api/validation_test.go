@@ -20,7 +20,7 @@ func TestValidationRoute(t *testing.T) {
 	}{
 		{target, body, 200, "EMPTY_TOPOLOGY"},
 		{"/api/v1/projects/missing/validations", body, 404, "NOT_FOUND"},
-		{target, strings.Replace(body, `"design"`, `"package"`, 1), 422, "UNSUPPORTED_GENERATOR"},
+		{target, strings.Replace(body, `"design"`, `"package"`, 1), 200, "GENERATOR_INVALID"},
 		{target, strings.Replace(body, `"dev"`, `"invalid"`, 1), 400, "INVALID_REQUEST"},
 		{target, strings.Replace(body, `"nodes":[]`, `"nodes":null`, 1), 400, "INVALID_REQUEST"},
 	} {

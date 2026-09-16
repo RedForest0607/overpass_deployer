@@ -74,6 +74,7 @@
             "targetKeyPath": { "type": "string" }
           }
         },
+        "bootstrap": { "$ref": "#/$defs/bootstrapProfile" },
         "directoryDefaults": {
           "type": "array",
           "items": {
@@ -125,6 +126,16 @@
         "remotePath": { "type": "string" },
         "chmod": { "type": "string", "pattern": "^0?[0-7]{3}$" },
         "extract": { "$ref": "#/$defs/extractProfile" }
+      }
+    },
+    "configArtifactDelivery": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["artifactRef", "remotePath"],
+      "properties": {
+        "artifactRef": { "$ref": "#/$defs/id" },
+        "packagePath": { "type": "string" },
+        "remotePath": { "type": "string" }
       }
     },
     "bootstrapProfile": {
@@ -196,6 +207,21 @@
         }
       }
     },
+    "utilityDeployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "directories": { "type": "array", "items": { "type": "string" } },
+        "files": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/artifactDelivery" }
+        },
+        "services": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/serviceSetting" }
+        }
+      }
+    },
     "vmDeployment": {
       "type": "object",
       "additionalProperties": false,
@@ -221,7 +247,7 @@
       "additionalProperties": false,
       "required": ["mode", "remotePath"],
       "properties": {
-        "mode": { "enum": ["template", "local"] },
+        "mode": { "enum": ["template", "local-file"] },
         "template": { "type": "string" },
         "artifactRef": { "$ref": "#/$defs/id" },
         "packagePath": { "type": "string" },
@@ -229,12 +255,27 @@
         "valuesPackagePath": { "type": "string" },
         "remotePath": { "type": "string" },
         "remoteDir": { "type": "string" }
-      }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "mode": { "const": "local-file" } } },
+          "then": {
+            "required": ["artifactRef"],
+            "not": {
+              "anyOf": [
+                { "required": ["template"] },
+                { "required": ["valuesArtifactRef"] }
+              ]
+            }
+          }
+        }
+      ]
     },
     "javaDeployment": {
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "tags": { "type": "array", "items": { "type": "string" } },
         "baseDir": { "type": "string" },
         "jarRemotePath": { "type": "string" },
         "jarPackagePath": { "type": "string" },
@@ -243,7 +284,7 @@
         "extraOptions": { "type": "array", "items": { "type": "string" } },
         "configFiles": {
           "type": "array",
-          "items": { "$ref": "#/$defs/artifactDelivery" }
+          "items": { "$ref": "#/$defs/configArtifactDelivery" }
         },
         "extraFiles": {
           "type": "array",
@@ -284,7 +325,8 @@
         "location": { "enum": ["hosted", "external"] },
         "endpoint": { "type": "string", "maxLength": 2048 },
         "ports": { "type": "array", "items": { "$ref": "#/$defs/port" } },
-        "secretRef": { "type": "string", "maxLength": 128 }
+        "secretRef": { "type": "string", "maxLength": 128 },
+        "deployment": { "$ref": "#/$defs/utilityDeployment" }
       }
     },
     "databaseSpec": {

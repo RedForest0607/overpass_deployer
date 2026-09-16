@@ -10,10 +10,13 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"studio-backend/internal/config"
+	"studio-backend/internal/localstore"
 	"studio-backend/internal/service"
 	"studio-backend/internal/sqlite"
+	"studio-backend/internal/storage"
 )
 
 type readinessFunc func(context.Context) error
@@ -22,7 +25,8 @@ func (f readinessFunc) PingContext(ctx context.Context) error { return f(ctx) }
 
 func testHandler(t *testing.T, ready readinessFunc) http.Handler {
 	t.Helper()
-	cfg, err := config.Parse([]string{"--data-dir", t.TempDir()}, nil)
+	dataDir := t.TempDir()
+	cfg, err := config.Parse([]string{"--data-dir", dataDir}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -35,6 +39,36 @@ func testHandler(t *testing.T, ready readinessFunc) http.Handler {
 	if err != nil {
 		t.Fatal(err)
 	}
+	paths, err := storage.Prepare(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	artifactStore, err := localstore.New(paths.Artifacts, paths.Temporary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	packageStore, err := localstore.New(paths.Packages, paths.Temporary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deliveryRepo := sqlite.NewDeliveryRepository(db)
+	delivery, err := service.NewDelivery(projects, deliveryRepo, artifactStore, packageStore, "local-user", cfg.JARBytes, cfg.TextArtifactBytes, cfg.PreviewBytes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, err := service.NewGenerationWorker(delivery, slog.New(slog.NewTextHandler(io.Discard, nil)), time.Millisecond)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workerContext, stopWorker := context.WithCancel(context.Background())
+	workerDone := make(chan error, 1)
+	go func() { workerDone <- worker.Run(workerContext) }()
+	t.Cleanup(func() {
+		stopWorker()
+		if err := <-workerDone; err != nil {
+			t.Errorf("stop generation worker: %v", err)
+		}
+	})
 	var readiness Readiness = db
 	if ready != nil {
 		readiness = ready
@@ -44,6 +78,7 @@ func testHandler(t *testing.T, ready readinessFunc) http.Handler {
 		Logger:   slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Ready:    readiness,
 		Projects: projects,
+		Delivery: delivery,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -142,7 +177,7 @@ func TestHealthAndCapabilities(t *testing.T) {
 		want string
 	}{
 		{path: "/healthz", want: `"status":"ok"`},
-		{path: "/api/v1/capabilities", want: `"generators":[]`},
+		{path: "/api/v1/capabilities", want: `"supportedKinds":["vm","java","redis","elasticsearch"]`},
 	} {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodGet, "http://localhost"+test.path, nil)

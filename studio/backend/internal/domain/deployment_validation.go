@@ -36,6 +36,11 @@ func validateDeploymentStructure(document blueprintDocument) error {
 				return fmt.Errorf("deployment.directoryDefaults[%d].owner is required", i)
 			}
 		}
+		if profile.Bootstrap != nil {
+			if err := validateServices(profile.Bootstrap.Services, "deployment.bootstrap.services"); err != nil {
+				return err
+			}
+		}
 	}
 
 	for nodeIndex, node := range document.Nodes {
@@ -87,6 +92,25 @@ func validateDeploymentStructure(document blueprintDocument) error {
 					return err
 				}
 			}
+		case "redis", "elasticsearch":
+			var spec struct {
+				Deployment *UtilityDeployment `json:"deployment,omitempty"`
+			}
+			if err := json.Unmarshal(node.Spec, &spec); err != nil || spec.Deployment == nil {
+				continue
+			}
+			prefix := fmt.Sprintf("nodes[%d].spec.deployment", nodeIndex)
+			for i, directory := range spec.Deployment.Directories {
+				if err := absolutePath(directory, fmt.Sprintf("%s.directories[%d]", prefix, i)); err != nil {
+					return err
+				}
+			}
+			if err := validateDeliveries(spec.Deployment.Files, prefix+".files"); err != nil {
+				return err
+			}
+			if err := validateServices(spec.Deployment.Services, prefix+".services"); err != nil {
+				return err
+			}
 		case "java":
 			var spec struct {
 				Deployment *JavaDeployment `json:"deployment,omitempty"`
@@ -110,15 +134,15 @@ func validateDeploymentStructure(document blueprintDocument) error {
 					return err
 				}
 			}
-			if err := validateDeliveries(spec.Deployment.ConfigFiles, prefix+".configFiles"); err != nil {
+			if err := validateConfigDeliveries(spec.Deployment.ConfigFiles, prefix+".configFiles"); err != nil {
 				return err
 			}
 			if err := validateDeliveries(spec.Deployment.ExtraFiles, prefix+".extraFiles"); err != nil {
 				return err
 			}
 			if script := spec.Deployment.Script; script != nil {
-				if script.Mode != "template" && script.Mode != "local" {
-					return fmt.Errorf("%s.script.mode must be template or local", prefix)
+				if script.Mode != "template" && script.Mode != "local-file" {
+					return fmt.Errorf("%s.script.mode must be template or local-file", prefix)
 				}
 				if err := absolutePath(script.RemotePath, prefix+".script.remotePath"); err != nil {
 					return err
@@ -133,9 +157,30 @@ func validateDeploymentStructure(document blueprintDocument) error {
 						return err
 					}
 				}
-				if script.Mode == "local" && script.ArtifactRef == "" {
-					return fmt.Errorf("%s.script.artifactRef is required for local mode", prefix)
+				if script.Mode == "local-file" && script.ArtifactRef == "" {
+					return fmt.Errorf("%s.script.artifactRef is required for local-file mode", prefix)
 				}
+				if script.Mode == "local-file" && (script.Template != "" || script.ValuesArtifactRef != "") {
+					return fmt.Errorf("%s.script template and valuesArtifactRef cannot be used for local-file mode", prefix)
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func validateConfigDeliveries(values []ConfigArtifactDelivery, prefix string) error {
+	for i, value := range values {
+		field := fmt.Sprintf("%s[%d]", prefix, i)
+		if strings.TrimSpace(value.ArtifactRef) == "" {
+			return fmt.Errorf("%s.artifactRef is required", field)
+		}
+		if err := absolutePath(value.RemotePath, field+".remotePath"); err != nil {
+			return err
+		}
+		if value.PackagePath != "" {
+			if err := packagePath(value.PackagePath, field+".packagePath"); err != nil {
+				return err
 			}
 		}
 	}

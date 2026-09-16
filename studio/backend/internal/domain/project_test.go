@@ -14,11 +14,37 @@ func TestValidateTopologyStructureAllowsIncompleteDesign(t *testing.T) {
 	}
 }
 
+func TestValidateTopologyStructureAcceptsAndScopesConnectionLayout(t *testing.T) {
+	blueprint := json.RawMessage(`{"apiVersion":"studio.deployer/v1","nodes":[],"placements":[],"connections":[{"id":"conn-1","kind":"connects_to","sourceRef":"app","targetRef":"db"}]}`)
+	valid := json.RawMessage(`{"nodes":[],"connections":[{"connectionId":"conn-1","bendOffset":{"x":40,"y":-20},"labelPosition":0.72}],"viewport":{"x":0,"y":0,"zoom":1}}`)
+	if err := ValidateTopologyStructure(blueprint, valid, 10, 10); err != nil {
+		t.Fatal(err)
+	}
+	for _, invalid := range []string{
+		`{"nodes":[],"connections":[{"connectionId":"missing","bendOffset":{"x":0,"y":0}}],"viewport":{"x":0,"y":0,"zoom":1}}`,
+		`{"nodes":[],"connections":[{"connectionId":"conn-1"}],"viewport":{"x":0,"y":0,"zoom":1}}`,
+		`{"nodes":[],"connections":[{"connectionId":"conn-1","bendOffset":{"x":1000001,"y":0}}],"viewport":{"x":0,"y":0,"zoom":1}}`,
+		`{"nodes":[],"connections":[{"connectionId":"conn-1","labelPosition":1.1}],"viewport":{"x":0,"y":0,"zoom":1}}`,
+	} {
+		if err := ValidateTopologyStructure(blueprint, json.RawMessage(invalid), 10, 10); err == nil {
+			t.Fatalf("expected invalid connection layout: %s", invalid)
+		}
+	}
+}
+
 func TestValidateTopologyStructureAcceptsCrosswalkDeploymentModel(t *testing.T) {
-	blueprint := json.RawMessage(`{"apiVersion":"studio.deployer/v1","deployment":{"ssh":{"user":"deploy","keyPath":"${KEY}","knownHostsPath":"${HOSTS}","hostKeyChecking":"strict"}},"nodes":[{"id":"vm","kind":"vm","name":"vm","spec":{"provider":"on-prem","host":"10.0.0.1","deployment":{"bootstrap":{"packages":["curl"]},"files":[{"artifactRef":"file-1","remotePath":"/etc/app.conf","chmod":"0644"}],"utilities":[{"name":"redis","files":[{"artifactRef":"archive-1","remotePath":"/tmp/redis.tgz","extract":{"enabled":true,"remoteDir":"/app/redis"}}]}]}}},{"id":"app","kind":"java","name":"app","spec":{"artifactRef":"jar-1","javaVersion":"21","maxHeap":"1g","ports":[{"name":"main","servicePort":8080,"protocol":"TCP"}],"deployment":{"javaOptions":["-Duser.timezone=Asia/Seoul"],"configFiles":[{"artifactRef":"config-1","remotePath":"/app/app.yml"}],"script":{"mode":"template","template":"embedded:server.sh.tmpl","valuesArtifactRef":"values-1","remotePath":"/app/server.sh"}}}}],"placements":[{"workloadRef":"app","targetRef":"vm","mode":"process"}],"connections":[]}`)
+	blueprint := json.RawMessage(`{"apiVersion":"studio.deployer/v1","deployment":{"ssh":{"user":"deploy","keyPath":"${KEY}","knownHostsPath":"${HOSTS}","hostKeyChecking":"strict"},"bootstrap":{"packages":["unzip"]}},"nodes":[{"id":"vm","kind":"vm","name":"vm","spec":{"provider":"on-prem","host":"10.0.0.1","deployment":{"bootstrap":{"packages":["curl"]},"files":[{"artifactRef":"file-1","remotePath":"/etc/app.conf","chmod":"0644"}],"utilities":[{"name":"redis","files":[{"artifactRef":"archive-1","remotePath":"/tmp/redis.tgz","extract":{"enabled":true,"remoteDir":"/app/redis"}}]}]}}},{"id":"app","kind":"java","name":"app","spec":{"artifactRef":"jar-1","javaVersion":"21","maxHeap":"1g","ports":[{"name":"main","servicePort":8080,"protocol":"TCP"}],"deployment":{"tags":["api"],"javaOptions":["-Duser.timezone=Asia/Seoul"],"configFiles":[{"artifactRef":"config-1","remotePath":"/app/app.yml"}],"script":{"mode":"local-file","artifactRef":"script-1","remotePath":"/app/server.sh"}}}},{"id":"search","kind":"elasticsearch","name":"search","spec":{"location":"hosted","ports":[],"deployment":{"directories":["/app/elasticsearch"],"services":[{"name":"elasticsearch","enabled":true,"state":"restarted"}]}}}],"placements":[{"workloadRef":"app","targetRef":"vm","mode":"process"},{"workloadRef":"search","targetRef":"vm","mode":"process"}],"connections":[]}`)
 	layout := json.RawMessage(`{"nodes":[],"viewport":{"x":0,"y":0,"zoom":1}}`)
 	if err := ValidateTopologyStructure(blueprint, layout, 10, 10); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestValidateTopologyStructureRejectsConfigOnlyDeliveryOptions(t *testing.T) {
+	blueprint := json.RawMessage(`{"apiVersion":"studio.deployer/v1","nodes":[{"id":"app","kind":"java","name":"app","spec":{"artifactRef":"jar-1","javaVersion":"21","maxHeap":"1g","ports":[],"deployment":{"configFiles":[{"artifactRef":"config-1","remotePath":"/app/application.yml","chmod":"0600"}]}}}],"placements":[],"connections":[]}`)
+	layout := json.RawMessage(`{"nodes":[],"viewport":{"x":0,"y":0,"zoom":1}}`)
+	if err := ValidateTopologyStructure(blueprint, layout, 10, 10); err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("error=%v", err)
 	}
 }
 

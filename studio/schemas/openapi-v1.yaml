@@ -79,6 +79,9 @@ paths:
       - { $ref: '#/components/parameters/ProjectId' }
     get:
       operationId: listArtifacts
+      parameters:
+        - { $ref: '#/components/parameters/Limit' }
+        - { $ref: '#/components/parameters/Cursor' }
       responses:
         '200':
           description: Artifacts.
@@ -110,6 +113,20 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Artifact' }
+        default: { $ref: '#/components/responses/Error' }
+  /projects/{projectId}/artifacts/{artifactId}/content:
+    parameters:
+      - { $ref: '#/components/parameters/ProjectId' }
+      - { $ref: '#/components/parameters/ArtifactId' }
+    get:
+      operationId: getArtifactContent
+      description: Reads a project-scoped UTF-8 YAML or XML artifact for editing.
+      responses:
+        '200':
+          description: Editable artifact content.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ArtifactContent' }
         default: { $ref: '#/components/responses/Error' }
   /projects/{projectId}/topologies/{environment}:
     parameters:
@@ -172,7 +189,7 @@ paths:
             schema: { $ref: '#/components/schemas/CreateGeneration' }
       responses:
         '202':
-          description: Queued generation.
+          description: Generation persisted in the asynchronous worker queue.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Generation' }
@@ -245,6 +262,11 @@ components:
       in: path
       required: true
       schema: { type: string }
+    ArtifactId:
+      name: artifactId
+      in: path
+      required: true
+      schema: { type: string }
     PackageId:
       name: packageId
       in: path
@@ -271,7 +293,7 @@ components:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
   schemas:
     Environment: { type: string, enum: [dev, qa, prod] }
-    ArtifactKind: { type: string, enum: [jar, config-template, env-example] }
+    ArtifactKind: { type: string, enum: [jar, config-template, env-example, file, archive, script-values] }
     Output: { type: string, enum: [draft, package] }
     Project:
       type: object
@@ -309,6 +331,14 @@ components:
         sizeBytes: { type: integer, minimum: 0 }
         sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
         createdAt: { type: string, format: date-time }
+    ArtifactContent:
+      type: object
+      additionalProperties: false
+      required: [id, content, encoding]
+      properties:
+        id: { type: string }
+        content: { type: string }
+        encoding: { type: string, const: utf-8 }
     Blueprint:
       $ref: './blueprint-v1.schema.json'
     Position:
@@ -332,6 +362,24 @@ components:
             properties:
               nodeId: { type: string }
               position: { $ref: '#/components/schemas/Position' }
+        connections:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [connectionId]
+            anyOf:
+              - required: [bendOffset]
+              - required: [labelPosition]
+              - required: [labelOffset]
+            properties:
+              connectionId: { type: string }
+              bendOffset: { $ref: '#/components/schemas/Position' }
+              labelPosition: { type: number, minimum: 0, maximum: 1 }
+              labelOffset:
+                allOf:
+                  - { $ref: '#/components/schemas/Position' }
+                deprecated: true
         viewport:
           type: object
           additionalProperties: false
@@ -398,26 +446,32 @@ components:
         output: { $ref: '#/components/schemas/Output' }
     Generation:
       type: object
-      required: [id, projectId, environment, revision, status, packageId, error]
+      required: [id, projectId, environment, revision, generator, output, status, attempts, packageId, error, createdAt, updatedAt]
       properties:
         id: { type: string }
         projectId: { type: string }
         environment: { $ref: '#/components/schemas/Environment' }
         revision: { type: integer }
+        generator: { type: string }
+        output: { $ref: '#/components/schemas/Output' }
         status: { type: string, enum: [queued, running, succeeded, failed] }
+        attempts: { type: integer, minimum: 0 }
         packageId: { type: [string, 'null'] }
         error:
           oneOf:
             - { $ref: '#/components/schemas/ErrorBody' }
             - { type: 'null' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     PackageFile:
       type: object
-      required: [id, path, mediaType, sizeBytes, previewable]
+      required: [id, path, mediaType, sizeBytes, sha256, previewable]
       properties:
         id: { type: string }
         path: { type: string }
         mediaType: { type: string }
         sizeBytes: { type: integer, minimum: 0 }
+        sha256: { type: string, pattern: '^[a-f0-9]{64}$' }
         previewable: { type: boolean }
     Package:
       type: object

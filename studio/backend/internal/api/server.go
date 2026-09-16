@@ -21,6 +21,7 @@ type Dependencies struct {
 	Logger   *slog.Logger
 	Ready    Readiness
 	Projects *service.Projects
+	Delivery *service.Delivery
 }
 
 func NewHandler(deps Dependencies) (http.Handler, error) {
@@ -33,9 +34,13 @@ func NewHandler(deps Dependencies) (http.Handler, error) {
 	if deps.Projects == nil {
 		return nil, errors.New("project service is required")
 	}
+	if deps.Delivery == nil {
+		return nil, errors.New("delivery service is required")
+	}
 
 	mux := http.NewServeMux()
-	projects := projectHandlers{service: deps.Projects}
+	projects := projectHandlers{service: deps.Projects, delivery: deps.Delivery}
+	delivery := deliveryHandlers{service: deps.Delivery}
 	mux.HandleFunc("GET /healthz", healthHandler(deps.Ready))
 	mux.HandleFunc("GET /api/v1/capabilities", capabilitiesHandler(deps.Config))
 	mux.HandleFunc("GET /api/v1/projects", projects.list)
@@ -45,6 +50,14 @@ func NewHandler(deps Dependencies) (http.Handler, error) {
 	mux.HandleFunc("GET /api/v1/projects/{projectId}/topologies/{environment}", projects.getTopology)
 	mux.HandleFunc("PUT /api/v1/projects/{projectId}/topologies/{environment}", projects.saveTopology)
 	mux.HandleFunc("POST /api/v1/projects/{projectId}/validations", projects.validate)
+	mux.HandleFunc("GET /api/v1/projects/{projectId}/artifacts", delivery.listArtifacts)
+	mux.HandleFunc("POST /api/v1/projects/{projectId}/artifacts", delivery.createArtifact)
+	mux.HandleFunc("GET /api/v1/projects/{projectId}/artifacts/{artifactId}/content", delivery.getArtifactContent)
+	mux.HandleFunc("POST /api/v1/projects/{projectId}/generations", delivery.createGeneration)
+	mux.HandleFunc("GET /api/v1/projects/{projectId}/generations/{generationId}", delivery.getGeneration)
+	mux.HandleFunc("GET /api/v1/projects/{projectId}/packages/{packageId}", delivery.getPackage)
+	mux.HandleFunc("GET /api/v1/projects/{projectId}/packages/{packageId}/files/{fileId}", delivery.previewFile)
+	mux.HandleFunc("GET /api/v1/projects/{projectId}/packages/{packageId}/download", delivery.downloadPackage)
 	mux.HandleFunc("/", notFoundHandler)
 
 	var handler http.Handler = mux
@@ -74,7 +87,7 @@ func capabilitiesHandler(cfg config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		httpx.WriteJSON(w, http.StatusOK, Capabilities{
 			BlueprintVersions: []string{"studio.deployer/v1"},
-			Generators:        []GeneratorCapability{},
+			Generators:        []GeneratorCapability{{ID: "crosswalk-vm", Outputs: []string{"draft", "package"}, SupportedKinds: []string{"vm", "java", "redis", "elasticsearch"}, SupportedModes: []string{"process"}}},
 			Limits: Limits{
 				JARBytes:            cfg.JARBytes,
 				TextArtifactBytes:   cfg.TextArtifactBytes,

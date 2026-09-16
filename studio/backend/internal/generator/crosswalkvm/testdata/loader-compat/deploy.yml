@@ -1,0 +1,63 @@
+ssh:
+  user: deploy
+  key_path: ./id_rsa
+  known_hosts_path: ./known_hosts
+  host_key_checking: strict
+bastion:
+  host: bastion.example
+  alias_user: deploy
+bootstrap:
+  packages: [nmap-ncat, net-tools]
+  timezone:
+    name: Asia/Seoul
+directory_defaults:
+  rules:
+    - prefix: /app
+      owner: deploy
+      group: deploy
+servers:
+  - host: 10.0.0.10
+    name: qa-services
+    tags: [qa, services]
+    utils:
+      - name: redis
+        directories: [/app/redis]
+        files:
+          - local_path: ./redis.conf
+            remote_path: /app/redis/redis.conf
+        services:
+          - name: redis-server
+            enabled: true
+            state: started
+      - name: elasticsearch
+        directories: [/app/elasticsearch]
+        files:
+          - local_path: ./elasticsearch.tar.gz
+            remote_path: /tmp/elasticsearch.tar.gz
+            extract:
+              enabled: true
+              remote_dir: /app/elasticsearch
+              owner: elasticsearch
+              group: elasticsearch
+        services:
+          - name: elasticsearch
+            enabled: true
+            state: started
+    apps:
+      - name: commerce
+        tags: [api, commerce]
+        base_dir: /app/commerce
+        jar:
+          local_path: ./commerce.jar
+          remote_path: /app/commerce/lib/commerce.jar
+        jvm:
+          min_heap: 256m
+          max_heap: 1g
+        port: 8080
+        config_files:
+          - local_path: ./application.yml
+            remote_path: /app/commerce/config/application.yml
+        script:
+          mode: local-file
+          local_path: ./server.sh
+          remote_path: /app/commerce/bin/server.sh

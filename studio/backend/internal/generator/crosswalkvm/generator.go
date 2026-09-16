@@ -67,6 +67,10 @@ type javaSpec struct {
 	} `json:"ports"`
 	Deployment *domain.JavaDeployment `json:"deployment,omitempty"`
 }
+type hostedServiceSpec struct {
+	Location   string                    `json:"location"`
+	Deployment *domain.UtilityDeployment `json:"deployment,omitempty"`
+}
 
 type builder struct {
 	ctx      context.Context
@@ -94,7 +98,7 @@ func Generate(ctx context.Context, raw json.RawMessage, environment string, reso
 	}
 
 	b := &builder{ctx: ctx, resolver: resolver, files: map[string]Artifact{}}
-	c := chart{SSH: toSSH(profile.SSH), Bastion: toBastion(profile.Bastion)}
+	c := chart{SSH: toSSH(profile.SSH), Bastion: toBastion(profile.Bastion), Bootstrap: toBootstrap(profile.Bootstrap)}
 	for _, rule := range profile.DirectoryDefaults {
 		c.DirectoryDefaults.Rules = append(c.DirectoryDefaults.Rules, chartDirectoryRule{Prefix: rule.Prefix, Owner: rule.Owner, Group: rule.Group})
 	}
@@ -131,18 +135,37 @@ func Generate(ctx context.Context, raw json.RawMessage, environment string, reso
 
 	for _, p := range doc.Placements {
 		if p.Mode != "process" {
-			continue
+			return Bundle{}, fmt.Errorf("placement %s -> %s uses unsupported Crosswalk mode %q", p.WorkloadRef, p.TargetRef, p.Mode)
 		}
 		server := servers[p.TargetRef]
-		n := byID[p.WorkloadRef]
-		if server == nil || n.Kind != "java" {
-			continue
+		if server == nil {
+			return Bundle{}, fmt.Errorf("placement target %q is not a VM", p.TargetRef)
 		}
-		app, err := b.application(n)
-		if err != nil {
-			return Bundle{}, err
+		n, exists := byID[p.WorkloadRef]
+		if !exists {
+			return Bundle{}, fmt.Errorf("placement workload %q does not exist", p.WorkloadRef)
 		}
-		server.Apps = append(server.Apps, app)
+		switch n.Kind {
+		case "java":
+			app, err := b.application(n)
+			if err != nil {
+				return Bundle{}, err
+			}
+			server.Apps = append(server.Apps, app)
+		case "redis", "elasticsearch":
+			utility, err := b.hostedUtility(n, server.Name)
+			if err != nil {
+				return Bundle{}, err
+			}
+			for _, existing := range server.Utils {
+				if existing.Name == utility.Name {
+					return Bundle{}, fmt.Errorf("VM %s utility name %q is duplicated", server.Name, utility.Name)
+				}
+			}
+			server.Utils = append(server.Utils, utility)
+		default:
+			return Bundle{}, fmt.Errorf("placement workload %s has unsupported Crosswalk kind %q", n.Name, n.Kind)
+		}
 	}
 	for _, id := range serverOrder {
 		c.Servers = append(c.Servers, *servers[id])
@@ -182,15 +205,15 @@ func (b *builder) application(n node) (chartApp, error) {
 	if jarRemote == "" {
 		jarRemote = baseDir + "/lib/app.jar"
 	}
-	jarPath, err := b.add(spec.ArtifactRef, d.JarPackagePath, "assets/"+n.Name)
+	jarPath, err := b.add(spec.ArtifactRef, d.JarPackagePath, "assets/"+n.Name, "jar")
 	if err != nil {
 		return chartApp{}, fmt.Errorf("Java app %s JAR: %w", n.Name, err)
 	}
-	app := chartApp{Name: n.Name, BaseDir: baseDir, Port: firstPort(spec), Jar: chartJar{LocalPath: "./" + jarPath, RemotePath: jarRemote}, JVM: chartJVM{MinHeap: d.MinHeap, MaxHeap: spec.MaxHeap, JavaOpts: d.JavaOptions}, ExtraOpts: d.ExtraOptions}
+	app := chartApp{Name: n.Name, Tags: append([]string(nil), d.Tags...), BaseDir: baseDir, Port: firstPort(spec), Jar: chartJar{LocalPath: "./" + jarPath, RemotePath: jarRemote}, JVM: chartJVM{MinHeap: d.MinHeap, MaxHeap: spec.MaxHeap, JavaOpts: d.JavaOptions}, ExtraOpts: d.ExtraOptions}
 	if app.JVM.MinHeap == "" {
 		app.JVM.MinHeap = "256m"
 	}
-	if app.ConfigFiles, err = b.deliveries(d.ConfigFiles, "config/"+n.Name); err != nil {
+	if app.ConfigFiles, err = b.configDeliveries(d.ConfigFiles, "config/"+n.Name); err != nil {
 		return chartApp{}, fmt.Errorf("Java app %s config files: %w", n.Name, err)
 	}
 	if app.ExtraFiles, err = b.deliveries(d.ExtraFiles, "files/app/"+n.Name); err != nil {
@@ -203,20 +226,54 @@ func (b *builder) application(n node) (chartApp, error) {
 	return app, nil
 }
 
+func (b *builder) hostedUtility(n node, serverName string) (chartUtility, error) {
+	var spec hostedServiceSpec
+	if err := json.Unmarshal(n.Spec, &spec); err != nil {
+		return chartUtility{}, fmt.Errorf("decode %s %s: %w", n.Kind, n.Name, err)
+	}
+	if spec.Location != "hosted" {
+		return chartUtility{}, fmt.Errorf("%s %s must be hosted when placed on a VM", n.Kind, n.Name)
+	}
+	if spec.Deployment == nil || (len(spec.Deployment.Directories) == 0 && len(spec.Deployment.Files) == 0 && len(spec.Deployment.Services) == 0) {
+		return chartUtility{}, fmt.Errorf("hosted %s %s deployment must define directories, files, or services", n.Kind, n.Name)
+	}
+	files, err := b.deliveries(spec.Deployment.Files, "files/utility/"+serverName+"/"+n.Name)
+	if err != nil {
+		return chartUtility{}, fmt.Errorf("%s %s files: %w", n.Kind, n.Name, err)
+	}
+	return chartUtility{Name: n.Name, Directories: append([]string(nil), spec.Deployment.Directories...), Files: files, Services: toServices(spec.Deployment.Services)}, nil
+}
+
 func (b *builder) script(value *domain.ScriptProfile, appName, baseDir string) (chartScript, error) {
 	if value == nil {
 		return chartScript{Mode: "template", Template: "embedded:server.sh.tmpl", RemotePath: baseDir + "/bin/server.sh"}, nil
 	}
-	result := chartScript{Mode: value.Mode, Template: value.Template, RemotePath: value.RemotePath, RemoteDir: value.RemoteDir}
+	mode := value.Mode
+	// Early Studio drafts used "local" before the Crosswalk contract was
+	// aligned on "local-file". Keep stored drafts packageable while only
+	// accepting the canonical value in newly validated blueprints.
+	if mode == "local" {
+		mode = "local-file"
+	}
+	if mode != "template" && mode != "local-file" {
+		return chartScript{}, fmt.Errorf("unsupported script mode %q", value.Mode)
+	}
+	if mode == "local-file" && strings.TrimSpace(value.ArtifactRef) == "" {
+		return chartScript{}, errors.New("local-file script requires artifactRef")
+	}
+	if mode == "local-file" && (strings.TrimSpace(value.Template) != "" || strings.TrimSpace(value.ValuesArtifactRef) != "") {
+		return chartScript{}, errors.New("local-file script cannot use template or valuesArtifactRef")
+	}
+	result := chartScript{Mode: mode, Template: value.Template, RemotePath: value.RemotePath, RemoteDir: value.RemoteDir}
 	var err error
 	if value.ArtifactRef != "" {
-		if result.LocalPath, err = b.add(value.ArtifactRef, value.PackagePath, "scripts/"+appName); err != nil {
+		if result.LocalPath, err = b.add(value.ArtifactRef, value.PackagePath, "scripts/"+appName, "file"); err != nil {
 			return chartScript{}, err
 		}
 		result.LocalPath = "./" + result.LocalPath
 	}
 	if value.ValuesArtifactRef != "" {
-		if result.ValuesFile, err = b.add(value.ValuesArtifactRef, value.ValuesPackagePath, "values/"+appName); err != nil {
+		if result.ValuesFile, err = b.add(value.ValuesArtifactRef, value.ValuesPackagePath, "values/"+appName, "script-values"); err != nil {
 			return chartScript{}, err
 		}
 		result.ValuesFile = "./" + result.ValuesFile
@@ -227,11 +284,30 @@ func (b *builder) script(value *domain.ScriptProfile, appName, baseDir string) (
 func (b *builder) deliveries(values []domain.ArtifactDelivery, defaultDir string) ([]chartFile, error) {
 	result := make([]chartFile, 0, len(values))
 	for _, value := range values {
-		local, err := b.add(value.ArtifactRef, value.PackagePath, defaultDir)
+		allowedKinds := []string{"file", "archive", "config-template", "env-example"}
+		if value.Extract != nil && value.Extract.Enabled {
+			allowedKinds = []string{"archive"}
+		}
+		local, err := b.add(value.ArtifactRef, value.PackagePath, defaultDir, allowedKinds...)
 		if err != nil {
 			return nil, err
 		}
+		if value.Extract != nil && value.Extract.Enabled && (!isCrosswalkExtractableArchive(b.files[local].OriginalName) || !isCrosswalkExtractableArchive(local)) {
+			return nil, fmt.Errorf("artifact %q cannot be extracted by Crosswalk; expected .tar, .tar.gz, or .tgz", value.ArtifactRef)
+		}
 		result = append(result, chartFile{LocalPath: "./" + local, RemotePath: value.RemotePath, Chmod: value.Chmod, Extract: toExtract(value.Extract)})
+	}
+	return result, nil
+}
+
+func (b *builder) configDeliveries(values []domain.ConfigArtifactDelivery, defaultDir string) ([]chartConfigFile, error) {
+	result := make([]chartConfigFile, 0, len(values))
+	for _, value := range values {
+		local, err := b.add(value.ArtifactRef, value.PackagePath, defaultDir, "config-template", "env-example", "file")
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, chartConfigFile{LocalPath: "./" + local, RemotePath: value.RemotePath})
 	}
 	return result, nil
 }
@@ -248,13 +324,21 @@ func (b *builder) utilities(values []domain.UtilityProfile, serverName string) (
 	return result, nil
 }
 
-func (b *builder) add(ref, requestedPath, defaultDir string) (string, error) {
+func (b *builder) add(ref, requestedPath, defaultDir string, allowedKinds ...string) (string, error) {
 	if strings.TrimSpace(ref) == "" {
 		return "", errors.New("artifactRef is required")
 	}
 	artifact, err := b.resolver.Resolve(b.ctx, ref)
 	if err != nil {
 		return "", fmt.Errorf("resolve artifact %q: %w", ref, err)
+	}
+	if !containsString(allowedKinds, artifact.Kind) {
+		return "", fmt.Errorf(
+			"artifact %q kind %q is not allowed; expected one of %s",
+			ref,
+			artifact.Kind,
+			strings.Join(allowedKinds, ", "),
+		)
 	}
 	filePath := requestedPath
 	if filePath == "" {
@@ -269,6 +353,20 @@ func (b *builder) add(ref, requestedPath, defaultDir string) (string, error) {
 	}
 	b.files[filePath] = artifact
 	return filePath, nil
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func isCrosswalkExtractableArchive(name string) bool {
+	lower := strings.ToLower(name)
+	return strings.HasSuffix(lower, ".tar") || strings.HasSuffix(lower, ".tar.gz") || strings.HasSuffix(lower, ".tgz")
 }
 
 func WriteZIP(w io.Writer, bundle Bundle) error {

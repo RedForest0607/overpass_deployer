@@ -15,7 +15,10 @@ import (
 	"studio-backend/internal/service"
 )
 
-type projectHandlers struct{ service *service.Projects }
+type projectHandlers struct {
+	service  *service.Projects
+	delivery *service.Delivery
+}
 
 type createProjectRequest struct {
 	Name        *string `json:"name"`
