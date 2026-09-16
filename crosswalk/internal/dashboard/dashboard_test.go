@@ -121,3 +121,41 @@ func TestSelectedDeploymentConfigRejectsInvalidTarget(t *testing.T) {
 		t.Fatal("expected invalid application selection to fail")
 	}
 }
+
+func TestSelectRowTracksHighlightedApplication(t *testing.T) {
+	a := &application{activity: tview.NewTextView(), rows: []monitor.AppStatus{
+		{Target: monitor.Target{ServerIndex: 0, AppIndex: 0}, AppName: "first"},
+		{Target: monitor.Target{ServerIndex: 0, AppIndex: 1}, AppName: "second"},
+	}}
+
+	a.selectRow(2)
+	if a.selected != (monitor.Target{ServerIndex: 0, AppIndex: 1}) {
+		t.Fatalf("selected target = %#v, want second application", a.selected)
+	}
+	if title := a.activity.GetTitle(); title != " Activity and Logs: second " {
+		t.Fatalf("activity title = %q, want selected application name", title)
+	}
+}
+
+func TestStaleLogStreamCannotReplaceCurrentSelection(t *testing.T) {
+	a := &application{}
+	oldVersion := a.stopLog()
+	currentVersion := a.stopLog()
+
+	if a.setLog(oldVersion, &monitor.LogStream{}) {
+		t.Fatal("stale log stream should be rejected")
+	}
+	if !a.setLog(currentVersion, &monitor.LogStream{}) {
+		t.Fatal("current log stream should be accepted")
+	}
+}
+
+func TestStatusRowPreservesSelectionAcrossRefresh(t *testing.T) {
+	statuses := []monitor.AppStatus{
+		{Target: monitor.Target{ServerIndex: 0, AppIndex: 0}},
+		{Target: monitor.Target{ServerIndex: 0, AppIndex: 1}},
+	}
+	if row := statusRow(statuses, monitor.Target{ServerIndex: 0, AppIndex: 1}); row != 1 {
+		t.Fatalf("statusRow() = %d, want 1", row)
+	}
+}

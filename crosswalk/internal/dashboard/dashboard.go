@@ -30,15 +30,7 @@ func Run(cfg *config.Config) error {
 	}
 	dashboard.table.SetBorder(true).SetTitle(" Application Status ")
 	dashboard.activity.SetBorder(true).SetTitle(" Activity and Logs ")
-	dashboard.table.SetSelectedFunc(func(row, _ int) {
-		if row > 0 && row-1 < len(dashboard.rows) {
-			target := dashboard.rows[row-1].Target
-			if target != dashboard.selected {
-				dashboard.stopLog()
-			}
-			dashboard.selected = target
-		}
-	})
+	dashboard.table.SetSelectionChangedFunc(func(row, _ int) { dashboard.selectRow(row) })
 
 	body := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(dashboard.table, 0, 2, true).
@@ -107,6 +99,7 @@ type application struct {
 	selected   monitor.Target
 	logMu      sync.Mutex
 	log        *monitor.LogStream
+	logVersion uint64
 	confirming bool
 	deploying  bool
 }
@@ -141,6 +134,7 @@ func (a *application) refresh() {
 	go func() {
 		statuses := a.monitor.Collect(a.cfg)
 		a.ui.QueueUpdateDraw(func() {
+			selected := a.selected
 			a.rows = statuses
 			a.table.Clear()
 			for column, title := range []string{"Server", "Application", "State", "PID", "Port", "Details"} {
@@ -159,8 +153,12 @@ func (a *application) refresh() {
 				a.table.SetCell(row+1, 5, tview.NewTableCell(details))
 			}
 			if len(statuses) > 0 {
-				a.selected = statuses[0].Target
-				a.table.Select(1, 0)
+				selectedRow := statusRow(statuses, selected)
+				if selectedRow < 0 {
+					selectedRow = 0
+				}
+				a.selectRow(selectedRow + 1)
+				a.table.Select(selectedRow+1, 0)
 			}
 			a.appendActivityNow(fmt.Sprintf("[green]Status refresh completed: %d application(s).[-]\n", len(statuses)))
 		})
@@ -170,7 +168,34 @@ func (a *application) refresh() {
 // requestLog는 SSH 연결과 로그 stream 생성을 UI 이벤트 루프 밖에서 처리한다.
 func (a *application) requestLog() {
 	target := a.selected
-	go a.openLog(target)
+	appName := a.appName(target)
+	version := a.stopLog()
+	go a.openLog(target, appName, version)
+}
+
+func (a *application) selectRow(row int) {
+	if row <= 0 || row-1 >= len(a.rows) {
+		return
+	}
+	status := a.rows[row-1]
+	if a.activity != nil {
+		a.activity.SetTitle(fmt.Sprintf(" Activity and Logs: %s ", status.AppName))
+	}
+	target := status.Target
+	if target == a.selected {
+		return
+	}
+	a.stopLog()
+	a.selected = target
+}
+
+func statusRow(statuses []monitor.AppStatus, target monitor.Target) int {
+	for row, status := range statuses {
+		if status.Target == target {
+			return row
+		}
+	}
+	return -1
 }
 
 func stateColor(state monitor.State) tcell.Color {
@@ -186,46 +211,74 @@ func stateColor(state monitor.State) tcell.Color {
 	}
 }
 
-func (a *application) openLog(target monitor.Target) {
-	a.stopLog()
+func (a *application) openLog(target monitor.Target, appName string, version uint64) {
 	stream, err := a.monitor.OpenLog(a.cfg, target)
 	if err != nil {
-		a.appendActivity(fmt.Sprintf("[red]Unable to open log stream: %v[-]\n", err))
+		a.appendLogActivity(version, fmt.Sprintf("[red]Unable to open log stream: %v[-]\n", err), false)
 		return
 	}
-	a.setLog(stream)
-	a.appendActivity("[yellow]Log stream started. Selecting another app or closing the dashboard stops it.[-]\n")
+	if !a.setLog(version, stream) {
+		_ = stream.Close()
+		return
+	}
+	a.appendLogActivity(version, fmt.Sprintf("[yellow]Log stream started: %s. Selecting another app or closing the dashboard stops it.[-]\n", appName), true)
 	go func() {
 		scanner := bufio.NewScanner(stream.Reader)
 		scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 		for scanner.Scan() {
-			a.appendActivity(scanner.Text() + "\n")
+			a.appendLogActivity(version, scanner.Text()+"\n", false)
 		}
 		if err := scanner.Err(); err != nil {
-			a.appendActivity(fmt.Sprintf("[red]Log stream ended: %v[-]\n", err))
+			a.appendLogActivity(version, fmt.Sprintf("[red]Log stream ended: %v[-]\n", err), false)
 		}
 	}()
 }
 
-func (a *application) stopLog() {
+func (a *application) stopLog() uint64 {
 	a.logMu.Lock()
+	a.logVersion++
+	version := a.logVersion
 	stream := a.log
 	a.log = nil
 	a.logMu.Unlock()
-	if stream == nil {
-		return
+	if stream != nil {
+		_ = stream.Close()
 	}
-	_ = stream.Close()
+	return version
 }
 
-func (a *application) setLog(stream *monitor.LogStream) {
+func (a *application) setLog(version uint64, stream *monitor.LogStream) bool {
 	a.logMu.Lock()
-	previous := a.log
-	a.log = stream
-	a.logMu.Unlock()
-	if previous != nil {
-		_ = previous.Close()
+	defer a.logMu.Unlock()
+	if version != a.logVersion {
+		return false
 	}
+	a.log = stream
+	return true
+}
+
+func (a *application) appendLogActivity(version uint64, message string, clear bool) {
+	a.ui.QueueUpdateDraw(func() {
+		a.logMu.Lock()
+		current := version == a.logVersion
+		a.logMu.Unlock()
+		if !current {
+			return
+		}
+		if clear {
+			a.activity.SetText("")
+		}
+		a.appendActivityNow(message)
+	})
+}
+
+func (a *application) appName(target monitor.Target) string {
+	for _, status := range a.rows {
+		if status.Target == target {
+			return status.AppName
+		}
+	}
+	return "unknown"
 }
 
 func (a *application) confirmControl(action monitor.Action) {

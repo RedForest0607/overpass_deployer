@@ -31,6 +31,9 @@ func TestStatusCommandEscapesConfiguredValues(t *testing.T) {
 	if !strings.HasPrefix(command, "sh -lc '") || !strings.Contains(command, "'\"'\"'") {
 		t.Fatalf("statusCommand() did not safely quote configured values: %q", command)
 	}
+	if strings.Contains(command, "pgrep") || !strings.Contains(command, "comm=") || !strings.Contains(command, "$2 == \"java\"") {
+		t.Fatalf("statusCommand() must inspect actual java executables without matching its own shell: %q", command)
+	}
 }
 
 func TestResolveTargetRejectsInvalidSelectionAndMissingScript(t *testing.T) {

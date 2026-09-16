@@ -164,7 +164,7 @@ func (s *localSSHServer) handleSession(channel sshlib.Channel, requests <-chan *
 		s.recordCommand(payload.Command)
 
 		switch {
-		case strings.Contains(payload.Command, "pgrep -f"):
+		case strings.Contains(payload.Command, "ps -eo pid=,comm=,args="):
 			_, _ = channel.Write([]byte("state=running\npid=4242\nprocess=00:01 0.1 0.2 java -jar sample-api.jar\n"))
 			s.sendExitStatus(channel, 0)
 			return
@@ -211,7 +211,7 @@ func (s *localSSHServer) commands() []string {
 }
 
 func (s *localSSHServer) receivedStatusQuery() bool {
-	return containsCommand(s.commands(), "pgrep -f")
+	return containsCommand(s.commands(), "ps -eo pid=,comm=,args=")
 }
 
 func (s *localSSHServer) receivedRestart() bool {

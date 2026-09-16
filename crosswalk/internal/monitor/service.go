@@ -117,8 +117,9 @@ func resolveTarget(cfg *config.Config, target Target) (config.ServerConfig, conf
 func statusCommand(app config.AppConfig) string {
 	inner := strings.Join([]string{
 		"script=" + ssh.ShellQuote(app.Script.RemotePath),
+		"app_name=" + ssh.ShellQuote(app.Name),
 		"if [ ! -x \"$script\" ]; then printf 'state=unknown\\nmessage=control script is not executable\\n'; exit 0; fi",
-		"pid=$(pgrep -f " + ssh.ShellQuote("java.*"+app.Name) + " 2>/dev/null | head -n 1 || true)",
+		"pid=$(ps -eo pid=,comm=,args= | awk -v app=\"$app_name\" '$2 == \"java\" && index($0, app) { print $1; exit }')",
 		"if [ -z \"$pid\" ]; then printf 'state=stopped\\n'; exit 0; fi",
 		"printf 'state=running\\npid=%s\\n' \"$pid\"",
 		"ps -p \"$pid\" -o etime= -o %cpu= -o %mem= -o command= | head -n 1 | sed 's/^/process=/'",
