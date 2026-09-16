@@ -1,6 +1,6 @@
 # Studio 프론트엔드–백엔드 API 계약 초안
 
-작성일: 2026-09-10 · 상태: 부분 구현 (프로젝트·설계 저장·design 검증) · HTTP prefix: `/api/v1`
+작성일: 2026-09-11 · 상태: 로컬 MVP 구현 (프로젝트·artifact·설계·package) · HTTP prefix: `/api/v1`
 
 ## 1. 목적과 현재 상태
 
@@ -15,12 +15,18 @@ Deployer의 Studio는 설계·차트 생성 도구이고 Crosswalk는 생성된 
 - `studio/features/topology/placement.ts`: 부모 배치와 내부 deployment edge 동기화.
 - `studio/features/generation/preview.ts`: 브라우저에서 JSON·VM YAML 초안 생성.
 - `studio/features/generation/PackagePreview.tsx`: 브라우저에서 파일 표시·복사·ZIP 생성.
+- `studio/features/artifacts/ArtifactManager.tsx`: 프로젝트별 artifact 등록·목록과 토폴로지 참조 매핑.
+- `studio/features/artifacts/artifact-mapping.ts`: 노드 용도별 artifact 요구사항, 호환 kind, 추천과 immutable 적용 규칙.
+- `studio/features/generation/ServerPackage.tsx`: package 검증·생성 상태·미리보기·실제 ZIP 다운로드.
+- `studio/lib/api/delivery.ts`: artifact, generation, package API 계약과 호출 경계.
 
-Studio 프론트에서 프로젝트 생성/목록/수정, 환경별 토폴로지 GET/PUT, purpose=design 검증을 호출한다.
-백엔드는 revision CAS와 SQLite 영속 저장, 모델·배포 방식 의미 검증을 지원한다.
-artifact, generation, package API와 공유 환경 인증은 아직 구현 목표다. Crosswalk 배포 상세 Blueprint와 deploy.yml/ZIP 생성기 core는 구현됐으며 API 작업 흐름 연결 전이다.
-purpose=package 및 generator 지정 검증은 현재 422 UNSUPPORTED_GENERATOR로 거부한다.
-아래 후속 기능의 계약은 구현 목표로 유지하며, 현재 실행 가능한 배포 패키지를 생성한다는 뜻이 아니다.
+Studio 프론트는 프로젝트 생성/목록/수정, 환경별 토폴로지 GET/PUT, design/package 검증,
+artifact 등록/목록, generation 상태 조회, package preview·ZIP download를 호출한다.
+백엔드는 revision CAS와 SQLite 영속 저장, design/package 검증, immutable artifact 등록·목록,
+Crosswalk generation과 package preview·ZIP download를 지원한다. 공유 환경 인증은 후속이다.
+로컬 MVP generation은 요청에서 immutable snapshot과 idempotency key를 `queued` 상태로 먼저 저장하고 202를 반환한다.
+프로세스 내 worker가 비동기로 생성하며 프론트는 generation 조회 API를 polling해 완료 상태와 시도 횟수를 표시한다.
+재시작 시 중단된 작업은 최대 3회 범위에서 복구한다.
 기존 `studio.overpass.io/draft` JSON을 v1 요청으로 그대로 보내지 않는다.
 
 ## 2. 책임과 연동 구조
@@ -29,16 +35,14 @@ purpose=package 및 generator 지정 검증은 현재 422 UNSUPPORTED_GENERATOR�
 백엔드: 권한 검사, 저장, 모델·배포 방식 검증, 파일 보관, 차트 생성, 패키지 관리.
 Crosswalk: 자기 입력 형식 검증과 실제 실행. 백엔드는 SSH 배포를 호출하지 않는다.
 
-권장 프론트 모듈(후속 구현):
+현재 프론트 모듈:
 
 ```text
 studio/lib/api/
   client.ts               # base URL, JSON, 오류, 취소
   contracts.ts            # API DTO; 추후 확정된 OpenAPI에서 생성
   projects.ts
-  artifacts.ts
-  topologies.ts
-  generations.ts
+  delivery.ts             # artifact, generation, package
 studio/features/topology/
   api-adapter.ts          # React Flow ↔ Blueprint + layout
 ```
@@ -100,6 +104,7 @@ UI 컴포넌트에서 fetch·직렬화·검증 규칙을 한꺼번에 구현하�
 | 프로젝트 수정 | PATCH /projects/{p} | 200 |
 | 파일 목록 | GET /projects/{p}/artifacts | 200 |
 | 파일 등록 | POST /projects/{p}/artifacts | 201 |
+| YAML/XML 편집 내용 읽기 | GET /projects/{p}/artifacts/{artifactId}/content | 200 |
 | 환경별 설계 읽기 | GET /projects/{p}/topologies/{e} | 200 |
 | 환경별 설계 저장 | PUT /projects/{p}/topologies/{e} | 200 |
 | 검증 버튼 | POST /projects/{p}/validations | 200 |
@@ -129,7 +134,7 @@ POST multipart/form-data:
 | 필드 | 타입 | 의미 |
 | --- | --- | --- |
 | file | binary, 필수 | 파일 하나 |
-| kind | enum, 필수 | jar / config-template / env-example |
+| kind | enum, 필수 | jar / config-template / env-example / file / archive / script-values |
 | displayName | string, 선택 | 표시 이름; 저장 경로로 사용 금지 |
 
 응답 Artifact:
@@ -137,6 +142,12 @@ POST multipart/form-data:
 파일은 immutable이다. 재업로드는 새 ID이며 서버가 SHA-256을 계산한다.
 배포 모델은 파일명이 아니라 artifact ID를 참조한다. 다른 프로젝트 파일은 참조할 수 없다.
 서버 파일 경로는 응답하지 않는다.
+
+파일 화면에서는 JAR/archive가 아닌 `.yml`, `.yaml`, `.xml` artifact를 큰 팝업에서 직접 편집할 수 있다.
+GET content API는 프로젝트 소유 범위, UTF-8 여부와 preview 크기 제한을 검사한다. 저장은 기존 blob을
+덮어쓰지 않고 동일한 POST 업로드 API로 새 artifact ID를 만든다. 사용자가 선택하면 현재 편집 중인
+토폴로지의 이전 artifact 참조를 새 ID로 교체하며, 이 교체는 별도로 `설계 저장`해야 확정된다.
+YAML/XML 문법은 브라우저에서 빠르게 검사하고 서버가 다시 검사하므로 API 직접 호출로 우회할 수 없다.
 
 업로드 상한은 capabilities에서 제공한다(초기 제안: JAR 256 MiB, 텍스트 1 MiB).
 프론트 사전 검사와 별개로 서버가 스트리밍 크기 제한·확장자·내용 형식을 검사한다.
@@ -146,7 +157,19 @@ MVP에서는 실제 비밀 값이 담긴 yml/env가 아니라 placeholder 기반
 예: `password: ${DB_PASSWORD}`, `DB_PASSWORD=`.
 의심되는 비밀 값은 422로 거부하고 검출 결과에 원문 값을 노출하지 않는다.
 자동 검출은 완전하지 않으므로 실제 설정 파일 수용은 암호화·키 관리 정책이 마련된 뒤 확장한다.
-서비스의 설정 파일 배치 DTO는 후속 계약이며, 초기에는 업로드/목록과 Java JAR 참조까지만 연결한다.
+Java JAR는 노드 Inspector에서도 선택할 수 있다. 파일 화면은 Java JAR·설정·추가 파일·script values,
+VM 공통 파일과 hosted Redis/Elasticsearch 파일을
+노드별로 찾아 현재 프로젝트 artifact에 연결한다. 추천은 파일명과 노드명을 이용해 선택만 준비하며,
+사용자가 `매핑 적용`을 눌러야 토폴로지가 변경된다. 적용 후에는 토폴로지의 `설계 저장`이 필요하다.
+백엔드 생성기는 같은 kind 규칙을 다시 검사하므로 JSON 직접 편집으로 UI 검증을 우회할 수 없다.
+ZIP은 보관·전송할 수 있지만 현재 Crosswalk 압축 해제 계약은 TAR/TAR.GZ/TGZ만 지원한다.
+따라서 `extract.enabled=true`인 매핑에서는 ZIP을 선택할 수 없고 생성기도 이를 재검증한다.
+
+통신선 굴곡점과 포트 라벨 위치는 배포 의미를 바꾸지 않는 UI 정보이므로 Blueprint가 아니라
+`layout.connections[]`의 `{connectionId, bendOffset?, labelPosition?}`에 저장한다. 굴곡 오프셋은 연결 양 끝의
+중앙점을 기준으로 하고, 라벨 위치는 통신선 전체 길이의 `0..1` 진행률로 저장한다. 따라서 포트 라벨은
+드래그 중에도 항상 선 위에 유지되며 저장 후 다시 열어도 사용자가 조정한 위치를 복원한다. 초기 초안의
+`labelOffset`은 읽기 호환만 제공하고 다음 저장 시 선 위 기본 위치로 정규화한다.
 
 ## 6. Blueprint와 레이아웃 계약
 
@@ -204,7 +227,7 @@ Node 공통 필수: `id, kind, name, spec`. kind에 따라 spec을 구분하며 
 | --- | --- | --- |
 | vm | provider: on-prem / aws-ec2, host: string | Java 직접 실행 생성기의 대상 |
 | java | artifactRef: string 또는 null, javaVersion: string, maxHeap: string, ports: Port[] | Crosswalk VM 우선 |
-| redis / elasticsearch | location: hosted / external, endpoint?: string, ports: Port[], secretRef?: string | 설계 저장 우선; 생성 지원은 capabilities 기준 |
+| redis / elasticsearch | location: hosted / external, endpoint?: string, ports: Port[], secretRef?: string, deployment?: UtilityDeployment | hosted는 Crosswalk utility 생성, external은 의존성 설계 |
 | database | engine: postgresql, endpoint: string, ports: Port[], secretRef?: string | 외부 의존성 설계 |
 | kubernetes | namespace: string | 설계 저장 우선 |
 | registry | endpoint: string, secretRef?: string | 설계 저장 우선 |
@@ -395,6 +418,8 @@ GET 응답 필드:
 서버는 실제 구현된 생성기만 반환한다. Helm/Terraform이 없으면 UI에서 비활성화한다.
 현 브라우저 샘플의 기능을 서버 기능으로 간주하지 않는다.
 새 모드나 Crosswalk 차트 버전 추가 시 스키마·생성기·호환성 테스트를 함께 갱신한다.
+현재 `crosswalk-vm`은 `vm`, `java`, `redis`, `elasticsearch`와 `process` placement를 지원한다.
+hosted Redis/Elasticsearch는 VM의 `utils`로 생성하며 자동 설치가 아니라 선언된 파일 전달·압축 해제·서비스 상태 적용이다.
 
 ## 10. 예상 오류 케이스 3가지와 수용 기준
 

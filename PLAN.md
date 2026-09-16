@@ -136,7 +136,7 @@
 
 **완료 기준:** `docs/STUDIO-BACKEND-PLAN.md`의 Phase 0~7 완료 기준 통과
 **선행 조건:** Studio API 계약 확정, Crosswalk 차트 포맷/version 및 validation 경계 확정
-**현재 상태:** [~] Phase 0~2 완료. Phase 3A Crosswalk 배포 상세 모델·구조 검증과 Phase 5 생성기 core(bootstrap/파일/utility/script/bastion 매핑, 안전한 ZIP artifact 배치·checksum 검증)를 구현. artifact 업로드/조회, 생성 작업·패키지 API와 Crosswalk 실제 loader 자동 호환성 검증은 후속
+**현재 상태:** [~] Phase 0~4 완료. Crosswalk 생성기, immutable artifact 업로드·목록, package 검증, idempotent generation, package preview·ZIP download API 구현. 프론트 artifact/package 연결, 비동기 worker/recovery와 Crosswalk 실제 loader 자동 호환성 검증은 후속
 
 ---
 

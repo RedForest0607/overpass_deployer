@@ -10,7 +10,8 @@
 
 Studio → 배포 차트와 자산 → Crosswalk
 
-현재 Studio는 프론트 설계 초안만 생성하며, Crosswalk와의 완전한 패키지 연동은 아직 구현되지 않았습니다.
+현재 Studio는 프로젝트 artifact를 토폴로지에 매핑하고 실제 파일이 포함된 Crosswalk VM 패키지를 생성합니다.
+생성 ZIP은 Crosswalk CLI의 설정 검증과 dry-run까지 로컬 E2E로 확인합니다.
 Crosswalk의 기존 실행 파일명 `deploy`, 설정 파일명 `deploy.yml`, Go 모듈명 `go-deployer`는 호환성을 위해 유지합니다.
 
 ## 실행
@@ -43,6 +44,7 @@ Studio는 로컬 실행 전용이며 외부 게시가 필요하지 않습니다.
 make test-crosswalk
 make test-studio
 make test-studio-backend
+make test-studio-e2e
 make build-crosswalk
 make build-studio
 make build-studio-backend
@@ -55,9 +57,9 @@ Studio Backend 빌드 결과는 `studio/backend/bin/studio-api`입니다.
 ## 경계와 경로
 
 - 각 산출물은 별도 의존성 및 빌드 과정을 사용합니다.
-- Studio Backend는 현재 loopback 전용 Phase 0~2 구현이며 프로젝트와 환경별 토폴로지를 SQLite에 저장합니다.
+- Studio Backend는 loopback 전용 로컬 MVP이며 프로젝트·환경별 토폴로지와 immutable artifact/package를 저장합니다.
 - Studio가 Crosswalk의 SSH 실행 코드를 직접 호출하지 않습니다.
-- 차트 규격은 소비자인 Crosswalk가 기준이며, 버전 규격과 생성물 호환성 테스트는 후속 작업입니다.
+- 차트 규격은 소비자인 Crosswalk가 기준이며, Studio 생성물은 실제 Crosswalk CLI dry-run으로 호환성을 검사합니다.
 - `docs/`, `PLAN.md`, `PROGRESS.md`는 프로젝트 공통 문서입니다.
 - `ops/`, `infra/`, `TEST/` 및 기존 루트 빌드 자산은 이동하거나 삭제하지 않았습니다.
 - 기존 문서의 루트 `go run ./cmd/deploy` 예제는 이제 `crosswalk/`에서 실행합니다.

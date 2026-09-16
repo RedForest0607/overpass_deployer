@@ -11,10 +11,11 @@
 - [~] Phase 0: OpenAPI 3.1과 Blueprint v1 JSON Schema 추가. Crosswalk 차트 version/validation 경계와 타입 생성은 미완료.
 - [x] Phase 1: Go 서버 골격, SQLite migration, 공통 오류/middleware, health/capabilities, loopback 제한 구현.
 - [x] Phase 2: 프로젝트 CRUD, cursor 목록, 환경별 topology revision CAS 저장, React Flow API adapter 구현.
-- [~] Phase 3: 서버 design 검증·HTTP API·프론트 오류 연결과 Crosswalk 배포 상세 구조 검증 구현. artifact 실물 검사 및 package/generator issue 변환은 후속 단계.
-- [~] Phase 5 선행: Crosswalk deploy.yml renderer와 실제 artifact ZIP 배치 core 구현. 생성 작업·패키지 저장/API 및 실제 Crosswalk loader harness는 후속 단계.
-- [~] Phase 6 선행: 프로젝트 CRUD 화면, 환경별 명시적 저장/불러오기, dirty·409 처리, 오래된 검증 결과 무효화, URL 선택 복원 구현. 산출물은 아직 로컬 초안.
-- [ ] Phase 4~5 및 7: 미구현. Crosswalk 차트 버전 확정과 파일 업로드·패키지 연동이 다음 단계.
+- [x] Phase 3: 서버 design/package 검증, HTTP API·프론트 오류 연결, Crosswalk 배포 상세 구조 및 artifact/generator issue 구현.
+- [x] Phase 4: immutable artifact streaming 업로드·목록, content-addressed 저장, JAR/ZIP·UTF-8·archive 검증 구현. 프론트 선택 UI는 Phase 6에 포함.
+- [x] Phase 5: Crosswalk deploy.yml renderer, 실제 artifact ZIP 배치, 용도별 artifact kind 재검증, persistent 비동기 worker/recovery, idempotent generation, package 메타데이터·preview·download API와 실제 Crosswalk loader/CLI dry-run E2E 구현.
+- [x] Phase 6: 프로젝트 CRUD, 환경별 저장/불러오기, dirty·409 처리, artifact 등록 및 토폴로지 전체 매핑, 서버 package 미리보기·ZIP 다운로드 구현. HTTP lifecycle과 실제 Crosswalk CLI를 잇는 로컬 E2E harness 추가.
+- [~] Phase 7: 24시간 grace 기반 orphan blob 정리 구현. generation 이력/재진입, 브라우저 조작 E2E와 운영 보강이 다음 단계.
 
 ## 1. 목표
 
@@ -255,7 +256,7 @@ worker panic과 프로세스 종료가 API 프로세스를 종료시키지 않�
 - Generation: generator golden file과 동일 입력 결정성, idempotency, crash recovery를 검사한다.
 - Cross-product compatibility: 생성 YAML을 Crosswalk 실제 loader/validator로 읽는다.
 - Frontend: adapter round-trip, stale response 폐기, 409 보존 UX를 검사한다.
-- E2E: 브라우저에서 프로젝트 생성부터 package 다운로드까지 한 happy path를 자동화한다.
+- E2E: 실제 HTTP API에서 프로젝트 생성·artifact 업로드·설계 저장·package 다운로드 후 Crosswalk CLI dry-run까지 자동화한다. 브라우저 조작 E2E는 운영 준비 단계에서 별도로 추가한다.
 
 CI의 기본 gate는 backend unit/integration, frontend type/test/build, Crosswalk 전체 test,
 Studio→Crosswalk 호환성 test로 구성한다. 네트워크나 실제 SSH는 이 gate에 포함하지 않는다.

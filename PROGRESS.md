@@ -1,5 +1,29 @@
 # Progress
 
+- 2026-09-15 Crosswalk 로그 앱 전환 오류 수정: 대시보드 행의 방향키/마우스 선택 변경을 즉시 내부 대상에 반영하고, 이전 앱의 지연된 SSH 로그 연결이 새 선택을 덮어쓰지 못하도록 스트림 세대 검증을 추가. 새 로그 시작 시 기존 출력을 비우며 `Activity and Logs: <app>` 제목을 고정 표시. iSTOCK-MALL DEV에서 `fo-pcweb` 로그 tail 생성, `fo-mobile` 선택 시 기존 tail 종료, 새 로그 요청 시 `/app/overpass/fo-mobile/logs/fo-mobile.log` tail 전환을 확인했고 검증용 원격 프로세스도 정리. 다음은 필요 시 앱별 로그 파일 선택과 검색/필터 기능 추가.
+
+- 2026-09-15 iSTOCK-MALL DEV Crosswalk 대시보드 확장: bastion `/home/ec2-user/overpass-istockmall-dev-build/deploy.yml`과 `dashboard.dev.yml`에 `devwas` Java 앱 10개를 등록하고 기존 OA 전용 설정을 `dashboard.dev.yml.bak.20260915-all-apps`로 보존. 상태 조회가 자체 shell 명령을 Java 프로세스로 오인하던 `pgrep` 방식을 실제 `comm=java` 프로세스 필터로 교체해 `po-mobile=STOPPED` 등 실제 상태를 표시하도록 수정. Crosswalk 전체 테스트·race 검사와 DEV `Status refresh completed: 10 application(s)`를 확인했으며 앱 제어·로그 스트리밍·배포는 실행하지 않음. 다음은 필요 시 좁은 터미널에서도 10개 앱의 스크롤/선택 가시성을 개선.
+
+- 2026-09-15 Studio 통신선·포트 라벨 배치 편집 구현: 기존 둥근 직각 `smoothstep` 형태를 유지한 채 중간 굴곡 축을 넓은 투명 조작 영역과 직접 클릭 가능한 중앙 표시점으로 드래그할 수 있는 custom edge로 확장. 조작점과 포트 라벨은 다른 Flow 요소와 같은 줌 배율로 확대·축소되고, 포트 라벨은 선 전체 길이의 진행률로 저장해 선을 따라서만 이동. 5px 드래그 임계값으로 드래그 종료와 단순 클릭의 연결 설정 동작을 분리하고, 위치는 배포 의미 Blueprint와 분리된 `layout.connections`에 저장·복원하며 프론트 import와 백엔드 strict validation까지 확장.
+
+- 2026-09-15 Studio YAML/XML artifact 직접 편집 구현: 파일 메뉴에서 프로젝트 범위 `.yml`/`.yaml`/`.xml` 원문을 viewport 기반 대형 팝업으로 열고 문법 검증 후 기존 blob을 덮어쓰지 않는 새 immutable artifact 버전으로 저장. 선택 시 현재 토폴로지의 이전 artifact 참조를 새 ID로 교체하며 별도 설계 저장으로 확정. 서버에서 소유 범위·종류·UTF-8·크기·YAML/XML 문법을 재검사. 다음은 artifact 버전 계보/이력 표시와 diff 비교.
+
+- 2026-09-15 Studio artifact 매핑 선택 가독성 개선: 토폴로지 파일 매핑에서 artifact ID 대신 원본 파일명을 주 정보로 표시하고, kind와 축약 ID를 연한 보조 정보로 유지해 동명 파일도 구분 가능하도록 공용 Choice 옵션을 확장.
+
+- 2026-09-14 Studio Backend 비동기 generation worker 단계 구현: generation 요청은 immutable snapshot과 idempotency key를 SQLite에 `queued`로 먼저 저장하고, 프로세스 내 worker가 원 요청과 분리해 `running → succeeded/failed`로 처리. 비정상 종료된 running 작업은 시작 시 최대 3회 범위에서 재등록하고, 영구 artifact 오류는 즉시 실패 처리하며 worker panic을 작업 경계에서 격리. DB 참조가 없고 24시간 이상 지난 content-addressed blob과 upload 임시 파일만 시작 시 정리. 프론트에는 한국어 작업 상태와 시도 횟수를 표시하고 실제 비동기 HTTP→ZIP→Crosswalk dry-run E2E를 통과. 다음은 generation 이력/재진입 API와 브라우저 조작 E2E, JSON Pointer 오류 세분화.
+
+- 2026-09-14 Studio artifact mapping 및 Crosswalk 실생성 E2E 단계 구현: 토폴로지의 Java JAR·설정·추가 파일·script values와 VM/hosted utility 파일 요구사항을 구조화해 프로젝트 artifact 선택·추천·명시적 적용 UI로 연결. 종류 불일치·다른 프로젝트 ID·stale mapping을 프론트에서 차단하고 `crosswalk-vm` 생성기도 JAR/config/archive/file/script-values 용도별 kind를 재검증. ZIP은 일반 전송만 허용하고 현재 Crosswalk extract 지원 형식인 TAR/TAR.GZ/TGZ만 압축 해제 매핑에 노출. 실제 HTTP 업로드→revision 저장→package 검증·생성→ZIP 다운로드→Crosswalk CLI dry-run을 잇는 로컬 E2E harness와 Make target 추가. 다음은 비동기 generation worker/recovery 및 orphan blob 정리.
+
+- 2026-09-11 Studio topology JSON import 구현: 로컬 `.json` 파일 선택과 텍스트 편집기 붙여넣기, export envelope 및 raw Blueprint 정규화, layout 자동 생성, 2 MiB 제한, apiVersion/환경/편집 가능 구조 검증, 미저장 편집 교체 확인을 추가. 가져온 설계는 즉시 서버를 덮어쓰지 않고 dirty 상태로 캔버스에 반영. 다음은 브라우저 import→artifact 치환→저장→package E2E.
+
+- 2026-09-11 iSTOCKMALL DEV Studio topology 샘플 추가: 현재 inventory 기준 `devwas` Java 앱 10개, `devapp` hosted Redis/Elasticsearch, 외부 PostgreSQL, bootstrap/bastion/배치/대표 연결과 편집 layout을 Blueprint v1 JSON으로 작성. 실제 artifact·secret ID는 안전한 교체 placeholder로 유지. 다음은 Studio에 실제 artifact 등록 후 ID 치환과 package ZIP dry-run E2E.
+
+- 2026-09-11 Studio/Crosswalk 배포 표현 보강: 공통 bootstrap, Java app tags, canonical `local-file` script, 설정 파일 전용 전달 계약, hosted Redis/Elasticsearch의 Crosswalk utility 변환과 실제 artifact ZIP 배치를 구현. 전역/노드별 JSON 편집과 schema·capabilities를 맞추고 Crosswalk 실제 loader 호환 fixture를 추가. 다음은 iSTOCKMALL 자산을 등록한 생성 ZIP dry-run E2E와 비동기 worker/recovery.
+
+- 2026-09-11 Studio 프론트 artifact/package 연동 구현: 프로젝트별 JAR·설정·일반 파일·archive·script-values 등록/목록과 JAR 노드 선택, package 목적 검증, `crosswalk-vm` capability 확인, topology revision 기반 generation 상태 조회, `deploy.yml`/텍스트 미리보기, 바이너리 metadata 및 실제 artifact 포함 ZIP 다운로드를 연결. 같은 생성 재시도는 Idempotency-Key를 재사용하고 프로젝트 전환 중 업로드 결과 오염을 차단. 프론트 27개 테스트·production build, backend 전체 테스트, localhost UI/API smoke와 화면 QA 통과. 다음은 실제 브라우저 업로드→저장→생성 E2E 자동화와 비동기 worker/recovery.
+
+- 2026-09-11 Studio Backend artifact/package API 구현: JAR·설정·일반 파일·archive·script-values streaming 등록/목록, content-addressed blob 저장, JAR/ZIP/TAR/TGZ entry·UTF-8·크기 검증, project 범위 artifact resolver를 추가. package 목적 검증, revision·idempotency 보호 generation, immutable topology snapshot, package metadata·deploy.yml preview·실제 artifact 포함 ZIP download를 HTTP API에 연결하고 `crosswalk-vm` capability를 활성화. 다음은 프론트 업로드/선택·package 화면 연결, 비동기 worker/recovery 및 Crosswalk loader harness.
+
 - 2026-09-10 Studio Crosswalk 배포 모델·생성기 core 구현: Blueprint에 공통 SSH/bastion/directory defaults, VM별 bootstrap·공통 파일·utility, Java별 JAR/설정/추가 파일·압축 해제·chmod·JVM/extra opts·script values를 추가. 프론트 API round-trip과 노드별 JSON 편집기를 연결했고, backend `crosswalk-vm` 생성기가 `deploy.yml` 및 실제 artifact ZIP 상대 경로를 결정적으로 생성하도록 구현. 경로 탈출/충돌과 패키징 중 size·SHA-256 변경을 차단하는 테스트를 추가. 다음은 immutable artifact 업로드/조회와 생성·패키지 다운로드 API 연결, Crosswalk 실제 loader 호환성 자동화.
 
 ## Completed
@@ -197,14 +221,23 @@
 - stock-company dev/prod 배포 자산에서 미사용 메시지 브로커 compose/archive 참조와 application YAML의 관련 사용 플래그를 제거하고, 남은 관련 문자열이 없는지 dry-run 및 검색으로 검증
 - iSTOCK-MALL AWS 인프라 Terraform 디렉토리(`infra/istock-mall/`)는 main 브랜치 추적 대상에서 제외하고, 별도 운영 브랜치/저장소에서 관리하는 방향으로 정리
 - 2026-05-27 기준 prod bastion 경유로 `cache1/cache2/search1/search2` 파일 배포 완료: MongoDB/Hazelcast/Elasticsearch tar checksum 일치와 압축 해제 경로 확인
+- Studio JSON 편집기 높이 안정화: 토폴로지 가져오기 다이얼로그를 viewport 안으로 제한하고, 헤더·하단 버튼을 유지한 채 본문과 고정 높이 JSON 입력창이 각각 내부 스크롤되도록 공통 편집기 컴포넌트 적용
+- 2026-09-14 로컬 Studio `TEST` 프로젝트에 stock-company prod 안전 자산 18개 등록 완료: placeholder 기반 config-template 10개, script-values 7개, nginx 일반 파일 1개를 프로젝트 범위 artifact로 저장하고 목록 재조회 검증 완료
+- 2026-09-14 iSTOCKMALL Studio 앱 자산 세트 보완 완료: application 환경변수와 1:1로 대응하는 비밀값 없는 env-example 10개, 앱별 logback 템플릿 10개, 누락된 prod values 3개와 비실행 dummy JAR 1개를 등록해 프로젝트 artifact 총 42개를 검증
+- 2026-09-14 Studio `TEST` dev 토폴로지의 Java 앱 10개 artifact 매핑 완료: 공통 dummy JAR와 앱별 application/logback/env/values를 연결해 revision 5로 저장하고 package 검증에서 Java 관련 오류 0건 확인
+- 2026-09-14 Redis·Elasticsearch mock artifact 기능 검증 완료: 안전한 Redis mock 설정 3개와 644-byte Elasticsearch mock TAR.GZ를 등록·매핑해 revision 6 package validation 오류 0건, 비동기 package 생성 55개 파일 및 29KB ZIP CRC 검증 통과
+- 2026-09-14 Studio package file 식별자 범위 수정: `package_files` 기본키를 `(package_id, id)` 복합키로 마이그레이션해 여러 배포 패키지가 동일한 `file_deploy`/`file_0001` 식별자를 안전하게 재사용하도록 하고, 기존 데이터 보존·패키지별 조회 격리·실패 시 트랜잭션 rollback 회귀 테스트 추가
+- 2026-09-15 Studio JSON 큰 화면 편집기 추가: 공통 Crosswalk 설정, 노드별 배포 상세, 토폴로지 가져오기 JSON에서 viewport 기반 대형 팝업 편집·JSON 정렬·줄/문자 수·Ctrl/⌘+Enter 적용·팝업 내부 문법 오류 표시 지원
 
 ## Next To-Do
-- Studio Backend Phase 3: 구현된 배포 구조 검증을 JSON Pointer issue로 세분화하고 artifact/generator 단계 validator 및 package 목적 승격 규칙을 연결.
-- Studio Backend Phase 0: Crosswalk 차트 포맷/version과 공개 validation 경계, OpenAPI 3.1, Blueprint v1 JSON Schema, 업로드 제한 및 로컬 인증 범위를 확정.
-- Studio Backend Phase 1: `studio/backend` 서버 골격, SQLite migration, 공통 오류/middleware, health/capabilities와 contract test 구현.
-- 산출물 분리 후속: Crosswalk 차트 버전·스키마 계약 확정, Studio 생성 패키지와 Crosswalk 호환성 테스트, 독립 릴리스 정책 정리.
-- Studio 다음 단계: JAR·설정·일반 파일·archive·script-values immutable 업로드와 artifactRef 선택, 생성 작업/패키지 다운로드 API에 구현된 Crosswalk generator를 연결, 실제 loader dry-run 및 브라우저 E2E 검증. DTO 자동 생성 및 공유 환경 인증은 미완료.
-- 프론트 후속: 표준 Blueprint API 계약 확정, 프로젝트/아티팩트 등록·저장, VM 번들 생성 백엔드 연결, 환경별 revision·overlay 및 Helm/Terraform 생성기 추가.
+- iSTOCKMALL 운영 배포 전 Redis mock 설정 3개를 실제 Secret 주입 방식·systemd unit과 맞는 운영 파일로 교체하고, Elasticsearch mock archive를 Object Storage/분할 정책이 확정된 실제 archive로 교체.
+- iSTOCKMALL 운영 배포 전 현재 APP_NAME만 포함한 최소 logback 템플릿을 실제 appender/rolling 정책 파일로 교체하고, dummy JAR를 앱별 실제 빌드 artifact로 교체.
+- stock-company prod 제외 자산 후속: 실제 비밀값이 포함된 env/OLD/요약 파일은 placeholder 템플릿으로 정제하고, 256MiB를 초과하는 archive는 용량 정책·분할/외부 Object Storage 방식을 확정한 뒤 등록.
+- Studio UI 수동 확인: 작은 viewport와 대용량·단일 행 JSON 붙여넣기에서 가져오기 버튼이 계속 노출되고 편집기 내부 스크롤이 동작하는지 확인.
+- Studio Backend 후속: generation 이력 pagination·재진입 API, JSON Pointer 단위 package 오류 세분화, worker 관측 지표와 수동 retry 정책.
+- Studio 프론트 후속: 실제 파일 fixture를 사용하는 브라우저 업로드→artifact 선택→설계 저장→package 생성→ZIP 내용 검증 E2E, 설정·일반 파일용 구조화 편집기, generation 이력/재진입 화면.
+- Studio 계약 후속: OpenAPI DTO 자동 생성, Crosswalk chart version 안정화, 공유 환경 인증·Secret 참조 정책 확정.
+- 생성기 후속: 환경별 overlay와 Docker Compose·Helm·GitLab CI·Argo CD 생성기를 capability 기반으로 추가하고 Terraform은 이후 단계로 분리.
 - 실행 계층 후속: Redis/Elasticsearch 설치·실행 생성기, 포트 매핑 및 서비스별 복수 포트 모델, 실제 브라우저 조작 QA 추가.
 - 리뷰 후속: POSIX rename 미지원 서버의 안전한 교체 전략과 bootstrap ensure 명령의 실제 변경 여부 반환 규약을 확장 검토.
 - M3 Docker 모드의 이미지 registry 인증, digest 기반 pull skip, 컨테이너 상태 확인과 실행 흐름을 설계·구현
