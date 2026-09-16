@@ -38,6 +38,11 @@ export type ArtifactDelivery = {
   chmod?: string;
   extract?: ExtractProfile;
 };
+export type ConfigArtifactDelivery = {
+  artifactRef: string;
+  packagePath?: string;
+  remotePath: string;
+};
 export type BootstrapProfile = {
   packages?: string[];
   users?: Record<string, unknown>[];
@@ -75,16 +80,17 @@ export type VMDeployment = {
   }[];
 };
 export type JavaDeployment = {
+  tags?: string[];
   baseDir?: string;
   jarRemotePath?: string;
   jarPackagePath?: string;
   minHeap?: string;
   javaOptions?: string[];
   extraOptions?: string[];
-  configFiles?: ArtifactDelivery[];
+  configFiles?: ConfigArtifactDelivery[];
   extraFiles?: ArtifactDelivery[];
   script?: {
-    mode: 'template' | 'local';
+    mode: 'template' | 'local-file';
     template?: string;
     artifactRef?: string;
     packagePath?: string;
@@ -93,6 +99,11 @@ export type JavaDeployment = {
     remotePath: string;
     remoteDir?: string;
   };
+};
+export type UtilityDeployment = {
+  directories?: string[];
+  files?: ArtifactDelivery[];
+  services?: ServiceSetting[];
 };
 export type DeploymentProfile = {
   ssh: {
@@ -104,6 +115,7 @@ export type DeploymentProfile = {
     timeoutSeconds?: number;
   };
   bastion?: Record<string, unknown> & { host: string };
+  bootstrap?: BootstrapProfile;
   directoryDefaults?: { prefix: string; owner: string; group?: string }[];
 };
 
@@ -138,5 +150,12 @@ export type Blueprint = {
 
 export type Layout = {
   nodes: { nodeId: string; position: { x: number; y: number } }[];
+  connections?: {
+    connectionId: string;
+    bendOffset?: { x: number; y: number };
+    labelPosition?: number;
+    /** @deprecated Accepted while loading the first movable-label draft. */
+    labelOffset?: { x: number; y: number };
+  }[];
   viewport: { x: number; y: number; zoom: number };
 };

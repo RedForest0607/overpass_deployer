@@ -1,7 +1,30 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { sample } from './model.ts';
 import { fromAPI, toAPI } from './api-adapter.ts';
+
+test('iSTOCKMALL DEV example is editable without dropping topology data', () => {
+  const sample = JSON.parse(
+    readFileSync('examples/istockmall-dev-topology.json', 'utf8'),
+  );
+  const restored = fromAPI(sample.blueprint, sample.layout);
+  const encoded = toAPI(
+    restored.nodes,
+    restored.edges,
+    restored.viewport,
+    restored.deployment,
+  );
+
+  assert.equal(encoded.blueprint.nodes.length, 15);
+  assert.equal(encoded.blueprint.placements.length, 12);
+  assert.equal(encoded.blueprint.connections.length, 7);
+  assert.equal(
+    encoded.blueprint.nodes.find((node) => node.id === 'service-redis-dev').spec
+      .deployment.services[0].name,
+    'istock-redis',
+  );
+});
 
 test('unsupported modes and extra ports cannot be silently rewritten', () => {
   const doc = toAPI(sample().nodes, sample().edges, { x: 0, y: 0, zoom: 1 });
@@ -56,6 +79,34 @@ test('React Flow topology round-trips through Blueprint and layout', () => {
   );
 });
 
+test('communication bend and on-line label position round-trip only through layout', () => {
+  const original = sample();
+  original.edges.find((edge) => edge.id === 'app-db').data.layout = {
+    bendOffset: { x: 120, y: -35 },
+    labelPosition: 0.72,
+  };
+
+  const encoded = toAPI(original.nodes, original.edges, {
+    x: 0,
+    y: 0,
+    zoom: 1,
+  });
+
+  assert.deepEqual(encoded.layout.connections, [
+    {
+      connectionId: 'app-db',
+      bendOffset: { x: 120, y: -35 },
+      labelPosition: 0.72,
+    },
+  ]);
+  assert.equal('layout' in encoded.blueprint.connections[0], false);
+  const restored = fromAPI(encoded.blueprint, encoded.layout);
+  assert.deepEqual(
+    restored.edges.find((edge) => edge.id === 'app-db').data.layout,
+    original.edges.find((edge) => edge.id === 'app-db').data.layout,
+  );
+});
+
 test('external dependencies and AWS target map to explicit API enums', () => {
   const original = sample();
   const vm = original.nodes.find((node) => node.id === 'vm');
@@ -89,6 +140,7 @@ test('Crosswalk deployment profiles survive an API round trip', () => {
   const original = sample();
   const vm = original.nodes.find((node) => node.id === 'vm');
   const app = original.nodes.find((node) => node.id === 'app');
+  const redis = original.nodes.find((node) => node.id === 'redis');
   vm.data.deployment = {
     bootstrap: { packages: ['curl'], timezone: 'Asia/Seoul' },
     files: [
@@ -96,6 +148,7 @@ test('Crosswalk deployment profiles survive an API round trip', () => {
     ],
   };
   app.data.deployment = {
+    tags: ['api', 'commerce'],
     javaOptions: ['-Duser.timezone=Asia/Seoul'],
     extraFiles: [
       {
@@ -104,6 +157,15 @@ test('Crosswalk deployment profiles survive an API round trip', () => {
         extract: { enabled: true, remoteDir: '/opt/agent' },
       },
     ],
+    script: {
+      mode: 'local-file',
+      artifactRef: 'script-01',
+      remotePath: '/app/app/bin/server.sh',
+    },
+  };
+  redis.data.deployment = {
+    directories: ['/app/redis'],
+    services: [{ name: 'redis-server', enabled: true, state: 'started' }],
   };
   app.data.artifactRef = 'jar-01';
   const deployment = {
@@ -114,6 +176,7 @@ test('Crosswalk deployment profiles survive an API round trip', () => {
       hostKeyChecking: 'strict',
     },
     bastion: { host: 'bastion.example' },
+    bootstrap: { packages: ['nmap-ncat'], timezone: 'Asia/Seoul' },
   };
   const encoded = toAPI(
     original.nodes,
@@ -130,5 +193,9 @@ test('Crosswalk deployment profiles survive an API round trip', () => {
   assert.deepEqual(
     restored.nodes.find((node) => node.id === 'app').data.deployment,
     app.data.deployment,
+  );
+  assert.deepEqual(
+    restored.nodes.find((node) => node.id === 'redis').data.deployment,
+    redis.data.deployment,
   );
 });

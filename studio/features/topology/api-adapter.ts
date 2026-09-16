@@ -67,6 +67,7 @@ export function toAPI(
       } as BlueprintConnection,
     ];
   });
+  const connectionIDs = new Set(connections.map((connection) => connection.id));
   return {
     blueprint: {
       apiVersion: 'studio.deployer/v1',
@@ -80,6 +81,16 @@ export function toAPI(
         nodeId: node.id,
         position: node.position,
       })),
+      connections: edges.flatMap((edge) =>
+        connectionIDs.has(edge.id) && edge.data?.layout
+          ? [
+              {
+                connectionId: edge.id,
+                ...edge.data.layout,
+              },
+            ]
+          : [],
+      ),
       viewport,
     },
   };
@@ -117,6 +128,7 @@ function toBlueprintNode(node: TopologyNode): BlueprintNode {
           endpoint: node.parentId ? undefined : node.data.host,
           ports: mainPort(node),
           secretRef: node.data.secretRef || undefined,
+          deployment: node.parentId ? node.data.deployment : undefined,
         }),
       };
     case 'database':
@@ -160,6 +172,9 @@ export function fromAPI(
   const placementByWorkload = new Map(
     blueprint.placements.map((item) => [item.workloadRef, item]),
   );
+  const connectionLayouts = new Map(
+    (layout.connections ?? []).map((item) => [item.connectionId, item]),
+  );
   const nodes = blueprint.nodes.map((value, index) => {
     const position = positions.get(value.id) ?? { x: 80 + index * 40, y: 80 };
     const node = createNode(
@@ -188,13 +203,29 @@ export function fromAPI(
     const target = byID.get(item.targetRef);
     const port = target?.data.port ?? 0;
     const network = item.kind === 'connects_to' || item.kind === 'routes_to';
+    const savedLayout = connectionLayouts.get(item.id);
+    const visualLayout = savedLayout
+      ? {
+          bendOffset: savedLayout.bendOffset,
+          labelPosition: savedLayout.labelPosition,
+        }
+      : undefined;
+    const hasVisualLayout =
+      visualLayout?.bendOffset !== undefined ||
+      visualLayout?.labelPosition !== undefined;
     return {
       id: item.id,
       source: item.sourceRef,
       target: item.targetRef,
-      type: 'smoothstep',
+      type: 'communication',
       label: network ? `TCP · ${port}` : item.kind,
-      data: network ? { protocol: 'TCP', port } : undefined,
+      data:
+        network || hasVisualLayout
+          ? {
+              ...(network ? { protocol: 'TCP' as const, port } : {}),
+              ...(hasVisualLayout ? { layout: visualLayout } : {}),
+            }
+          : undefined,
     };
   });
   const targets = nodes.filter(isTarget);
@@ -297,12 +328,11 @@ function fromSpec(node: BlueprintNode) {
     secretRef: stringValue(spec.secretRef),
     namespace: stringValue(spec.namespace, 'commerce-dev'),
     platform: spec.provider === 'aws-ec2' ? 'AWS EC2' : 'On-prem VM',
-    deployment:
-      node.kind === 'vm' || node.kind === 'java'
-        ? typeof spec.deployment === 'object' && spec.deployment !== null
-          ? (spec.deployment as TopologyNode['data']['deployment'])
-          : undefined
-        : undefined,
+    deployment: ['vm', 'java', 'redis', 'elasticsearch'].includes(node.kind)
+      ? typeof spec.deployment === 'object' && spec.deployment !== null
+        ? (spec.deployment as TopologyNode['data']['deployment'])
+        : undefined
+      : undefined,
   };
 }
 

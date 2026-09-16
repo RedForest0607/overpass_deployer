@@ -1,0 +1,670 @@
+{
+  "environment": "dev",
+  "blueprint": {
+    "apiVersion": "studio.deployer/v1",
+    "deployment": {
+      "ssh": {
+        "user": "ec2-user",
+        "keyPath": "${ISTOCKMALL_DEV_SSH_KEY_PATH}",
+        "knownHostsPath": "${ISTOCKMALL_KNOWN_HOSTS_PATH}",
+        "hostKeyChecking": "accept-new",
+        "port": 22,
+        "timeoutSeconds": 30
+      },
+      "bastion": {
+        "host": "54.116.159.65",
+        "user": "ec2-user",
+        "keyPath": "${ISTOCKMALL_DEV_SSH_KEY_PATH}",
+        "aliasUser": "ec2-user",
+        "targetKeyPath": "${ISTOCKMALL_DEV_TARGET_KEY_PATH}"
+      },
+      "bootstrap": {
+        "packages": ["nmap-ncat", "net-tools", "unzip", "wget", "vim-enhanced"],
+        "jdk": {
+          "enabled": true,
+          "vendor": "corretto",
+          "major": 25,
+          "headless": false
+        },
+        "osUpdate": { "enabled": true },
+        "timezone": "Asia/Seoul",
+        "swap": { "enabled": true, "path": "/swapfile", "size": "4G" }
+      },
+      "directoryDefaults": [
+        { "prefix": "/app", "owner": "ec2-user", "group": "ec2-user" }
+      ]
+    },
+    "nodes": [
+      {
+        "id": "vm-devwas",
+        "kind": "vm",
+        "name": "devwas",
+        "spec": {
+          "provider": "aws-ec2",
+          "host": "10.20.10.41",
+          "deployment": {
+            "tags": ["stock-company", "dev", "was", "overpass"],
+            "directories": ["/app/overpass"]
+          }
+        }
+      },
+      {
+        "id": "vm-devapp",
+        "kind": "vm",
+        "name": "devapp",
+        "spec": {
+          "provider": "aws-ec2",
+          "host": "10.20.10.202",
+          "deployment": {
+            "tags": ["stock-company", "dev", "app", "search", "agents"],
+            "bootstrap": {
+              "users": [
+                {
+                  "name": "elasticsearch",
+                  "group": "elasticsearch",
+                  "system": true,
+                  "createHome": false
+                }
+              ],
+              "dockerCompose": { "enabled": true }
+            },
+            "directories": ["/app/redis", "/app/elasticsearch"]
+          }
+        }
+      },
+      {
+        "id": "app-fo-pcweb",
+        "kind": "java",
+        "name": "fo-pcweb",
+        "spec": {
+          "artifactRef": "artifact-replace-fo-pcweb-jar",
+          "javaVersion": "25",
+          "maxHeap": "1g",
+          "ports": [
+            { "name": "main", "servicePort": 25202, "protocol": "TCP" }
+          ],
+          "deployment": {
+            "tags": ["fo", "pcweb"],
+            "baseDir": "/app/overpass/fo-pcweb",
+            "minHeap": "256m",
+            "configFiles": [
+              {
+                "artifactRef": "artifact-replace-fo-pcweb-application",
+                "remotePath": "/app/overpass/fo-pcweb/config/application.yml"
+              },
+              {
+                "artifactRef": "artifact-replace-fo-pcweb-logback",
+                "remotePath": "/app/overpass/fo-pcweb/config/logback-spring.xml"
+              },
+              {
+                "artifactRef": "artifact-replace-fo-pcweb-env",
+                "remotePath": "/app/overpass/fo-pcweb/config/fo-pcweb.env"
+              }
+            ],
+            "script": {
+              "mode": "template",
+              "template": "embedded:server.sh.tmpl",
+              "valuesArtifactRef": "artifact-replace-fo-pcweb-values",
+              "remotePath": "/app/overpass/fo-pcweb/bin/server.sh"
+            }
+          }
+        }
+      },
+      {
+        "id": "app-fo-mobile",
+        "kind": "java",
+        "name": "fo-mobile",
+        "spec": {
+          "artifactRef": "artifact-replace-fo-mobile-jar",
+          "javaVersion": "25",
+          "maxHeap": "1g",
+          "ports": [
+            { "name": "main", "servicePort": 25203, "protocol": "TCP" }
+          ],
+          "deployment": {
+            "tags": ["fo", "mobile"],
+            "baseDir": "/app/overpass/fo-mobile",
+            "minHeap": "256m",
+            "configFiles": [
+              {
+                "artifactRef": "artifact-replace-fo-mobile-application",
+                "remotePath": "/app/overpass/fo-mobile/config/application.yml"
+              },
+              {
+                "artifactRef": "artifact-replace-fo-mobile-logback",
+                "remotePath": "/app/overpass/fo-mobile/config/logback-spring.xml"
+              },
+              {
+                "artifactRef": "artifact-replace-fo-mobile-env",
+                "remotePath": "/app/overpass/fo-mobile/config/fo-mobile.env"
+              }
+            ],
+            "script": {
+              "mode": "template",
+              "template": "embedded:server.sh.tmpl",
+              "valuesArtifactRef": "artifact-replace-fo-mobile-values",
+              "remotePath": "/app/overpass/fo-mobile/bin/server.sh"
+            }
+          }
+        }
+      },
+      {
+        "id": "app-fo-api",
+        "kind": "java",
+        "name": "fo-api",
+        "spec": {
+          "artifactRef": "artifact-replace-fo-api-jar",
+          "javaVersion": "25",
+          "maxHeap": "1g",
+          "ports": [
+            { "name": "main", "servicePort": 25204, "protocol": "TCP" }
+          ],
+          "deployment": {
+            "tags": ["fo", "api"],
+            "baseDir": "/app/overpass/fo-api",
+            "minHeap": "1g",
+            "configFiles": [
+              {
+                "artifactRef": "artifact-replace-fo-api-application",
+                "remotePath": "/app/overpass/fo-api/config/application.yml"
+              },
+              {
+                "artifactRef": "artifact-replace-fo-api-logback",
+                "remotePath": "/app/overpass/fo-api/config/logback-spring.xml"
+              },
+              {
+                "artifactRef": "artifact-replace-fo-api-env",
+                "remotePath": "/app/overpass/fo-api/config/fo-api.env"
+              }
+            ],
+            "script": {
+              "mode": "template",
+              "template": "embedded:server.sh.tmpl",
+              "valuesArtifactRef": "artifact-replace-fo-api-values",
+              "remotePath": "/app/overpass/fo-api/bin/server.sh"
+            }
+          }
+        }
+      },
+      {
+        "id": "app-payments-api",
+        "kind": "java",
+        "name": "overpass-payments-api",
+        "spec": {
+          "artifactRef": "artifact-replace-payments-api-jar",
+          "javaVersion": "25",
+          "maxHeap": "1g",
+          "ports": [
+            { "name": "main", "servicePort": 26121, "protocol": "TCP" }
+          ],
+          "deployment": {
+            "tags": ["payments", "api"],
+            "baseDir": "/app/overpass/overpass-payments-api",
+            "minHeap": "256m",
+            "configFiles": [
+              {
+                "artifactRef": "artifact-replace-payments-api-application",
+                "remotePath": "/app/overpass/overpass-payments-api/config/application.yml"
+              },
+              {
+                "artifactRef": "artifact-replace-payments-api-logback",
+                "remotePath": "/app/overpass/overpass-payments-api/config/logback-spring.xml"
+              },
+              {
+                "artifactRef": "artifact-replace-payments-api-env",
+                "remotePath": "/app/overpass/overpass-payments-api/config/overpass-payments-api.env"
+              }
+            ],
+            "script": {
+              "mode": "template",
+              "template": "embedded:server.sh.tmpl",
+              "valuesArtifactRef": "artifact-replace-payments-api-values",
+              "remotePath": "/app/overpass/overpass-payments-api/bin/server.sh"
+            }
+          }
+        }
+      },
+      {
+        "id": "app-bo-pcweb",
+        "kind": "java",
+        "name": "bo-pcweb",
+        "spec": {
+          "artifactRef": "artifact-replace-bo-pcweb-jar",
+          "javaVersion": "25",
+          "maxHeap": "1g",
+          "ports": [
+            { "name": "main", "servicePort": 25201, "protocol": "TCP" }
+          ],
+          "deployment": {
+            "tags": ["bo", "pcweb"],
+            "baseDir": "/app/overpass/bo-pcweb",
+            "minHeap": "256m",
+            "configFiles": [
+              {
+                "artifactRef": "artifact-replace-bo-pcweb-application",
+                "remotePath": "/app/overpass/bo-pcweb/config/application.yml"
+              },
+              {
+                "artifactRef": "artifact-replace-bo-pcweb-logback",
+                "remotePath": "/app/overpass/bo-pcweb/config/logback-spring.xml"
+              },
+              {
+                "artifactRef": "artifact-replace-bo-pcweb-env",
+                "remotePath": "/app/overpass/bo-pcweb/config/bo-pcweb.env"
+              }
+            ],
+            "script": {
+              "mode": "template",
+              "template": "embedded:server.sh.tmpl",
+              "valuesArtifactRef": "artifact-replace-bo-pcweb-values",
+              "remotePath": "/app/overpass/bo-pcweb/bin/server.sh"
+            }
+          }
+        }
+      },
+      {
+        "id": "app-po-pcweb",
+        "kind": "java",
+        "name": "po-pcweb",
+        "spec": {
+          "artifactRef": "artifact-replace-po-pcweb-jar",
+          "javaVersion": "25",
+          "maxHeap": "1g",
+          "ports": [
+            { "name": "main", "servicePort": 25211, "protocol": "TCP" }
+          ],
+          "deployment": {
+            "tags": ["po", "pcweb"],
+            "baseDir": "/app/overpass/po-pcweb",
+            "minHeap": "256m",
+            "configFiles": [
+              {
+                "artifactRef": "artifact-replace-po-pcweb-application",
+                "remotePath": "/app/overpass/po-pcweb/config/application.yml"
+              },
+              {
+                "artifactRef": "artifact-replace-po-pcweb-logback",
+                "remotePath": "/app/overpass/po-pcweb/config/logback-spring.xml"
+              },
+              {
+                "artifactRef": "artifact-replace-po-pcweb-env",
+                "remotePath": "/app/overpass/po-pcweb/config/po-pcweb.env"
+              }
+            ],
+            "script": {
+              "mode": "template",
+              "template": "embedded:server.sh.tmpl",
+              "valuesArtifactRef": "artifact-replace-po-pcweb-values",
+              "remotePath": "/app/overpass/po-pcweb/bin/server.sh"
+            }
+          }
+        }
+      },
+      {
+        "id": "app-oa",
+        "kind": "java",
+        "name": "oa",
+        "spec": {
+          "artifactRef": "artifact-replace-oa-jar",
+          "javaVersion": "25",
+          "maxHeap": "1g",
+          "ports": [
+            { "name": "main", "servicePort": 25205, "protocol": "TCP" }
+          ],
+          "deployment": {
+            "tags": ["oa", "api"],
+            "baseDir": "/app/overpass/oa",
+            "minHeap": "256m",
+            "configFiles": [
+              {
+                "artifactRef": "artifact-replace-oa-application",
+                "remotePath": "/app/overpass/oa/config/application.yml"
+              },
+              {
+                "artifactRef": "artifact-replace-oa-logback",
+                "remotePath": "/app/overpass/oa/config/logback-spring.xml"
+              },
+              {
+                "artifactRef": "artifact-replace-oa-env",
+                "remotePath": "/app/overpass/oa/config/oa.env"
+              }
+            ],
+            "script": {
+              "mode": "template",
+              "template": "embedded:server.sh.tmpl",
+              "valuesArtifactRef": "artifact-replace-oa-values",
+              "remotePath": "/app/overpass/oa/bin/server.sh"
+            }
+          }
+        }
+      },
+      {
+        "id": "app-po-mobile",
+        "kind": "java",
+        "name": "po-mobile",
+        "spec": {
+          "artifactRef": "artifact-replace-po-mobile-jar",
+          "javaVersion": "25",
+          "maxHeap": "1g",
+          "ports": [
+            { "name": "main", "servicePort": 25207, "protocol": "TCP" }
+          ],
+          "deployment": {
+            "tags": ["po", "mobile"],
+            "baseDir": "/app/overpass/po-mobile",
+            "minHeap": "256m",
+            "configFiles": [
+              {
+                "artifactRef": "artifact-replace-po-mobile-application",
+                "remotePath": "/app/overpass/po-mobile/config/application.yml"
+              },
+              {
+                "artifactRef": "artifact-replace-po-mobile-logback",
+                "remotePath": "/app/overpass/po-mobile/config/logback-spring.xml"
+              },
+              {
+                "artifactRef": "artifact-replace-po-mobile-env",
+                "remotePath": "/app/overpass/po-mobile/config/po-mobile.env"
+              }
+            ],
+            "script": {
+              "mode": "template",
+              "template": "embedded:server.sh.tmpl",
+              "valuesArtifactRef": "artifact-replace-po-mobile-values",
+              "remotePath": "/app/overpass/po-mobile/bin/server.sh"
+            }
+          }
+        }
+      },
+      {
+        "id": "app-batch-api1",
+        "kind": "java",
+        "name": "batch-api1",
+        "spec": {
+          "artifactRef": "artifact-replace-batch-api1-jar",
+          "javaVersion": "25",
+          "maxHeap": "1g",
+          "ports": [
+            { "name": "main", "servicePort": 25251, "protocol": "TCP" }
+          ],
+          "deployment": {
+            "tags": ["batch", "api"],
+            "baseDir": "/app/overpass/batch-api1",
+            "minHeap": "256m",
+            "javaOptions": ["-Dbatch.server.no=20262694010"],
+            "configFiles": [
+              {
+                "artifactRef": "artifact-replace-batch-api1-application",
+                "remotePath": "/app/overpass/batch-api1/config/application.yml"
+              },
+              {
+                "artifactRef": "artifact-replace-batch-api1-logback",
+                "remotePath": "/app/overpass/batch-api1/config/logback-spring.xml"
+              },
+              {
+                "artifactRef": "artifact-replace-batch-api1-env",
+                "remotePath": "/app/overpass/batch-api1/config/batch-api1.env"
+              }
+            ],
+            "script": {
+              "mode": "template",
+              "template": "embedded:server.sh.tmpl",
+              "valuesArtifactRef": "artifact-replace-batch-api1-values",
+              "remotePath": "/app/overpass/batch-api1/bin/server.sh"
+            }
+          }
+        }
+      },
+      {
+        "id": "app-batch-api2",
+        "kind": "java",
+        "name": "batch-api2",
+        "spec": {
+          "artifactRef": "artifact-replace-batch-api2-jar",
+          "javaVersion": "25",
+          "maxHeap": "1g",
+          "ports": [
+            { "name": "main", "servicePort": 25252, "protocol": "TCP" }
+          ],
+          "deployment": {
+            "tags": ["batch", "api"],
+            "baseDir": "/app/overpass/batch-api2",
+            "minHeap": "256m",
+            "javaOptions": ["-Dbatch.server.no=20262694012"],
+            "configFiles": [
+              {
+                "artifactRef": "artifact-replace-batch-api2-application",
+                "remotePath": "/app/overpass/batch-api2/config/application.yml"
+              },
+              {
+                "artifactRef": "artifact-replace-batch-api2-logback",
+                "remotePath": "/app/overpass/batch-api2/config/logback-spring.xml"
+              },
+              {
+                "artifactRef": "artifact-replace-batch-api2-env",
+                "remotePath": "/app/overpass/batch-api2/config/batch-api2.env"
+              }
+            ],
+            "script": {
+              "mode": "template",
+              "template": "embedded:server.sh.tmpl",
+              "valuesArtifactRef": "artifact-replace-batch-api2-values",
+              "remotePath": "/app/overpass/batch-api2/bin/server.sh"
+            }
+          }
+        }
+      },
+      {
+        "id": "service-redis-dev",
+        "kind": "redis",
+        "name": "istock-redis-dev",
+        "spec": {
+          "location": "hosted",
+          "ports": [{ "name": "main", "servicePort": 6379, "protocol": "TCP" }],
+          "deployment": {
+            "directories": [
+              "/app/redis",
+              "/app/redis/data",
+              "/app/redis/sentinel"
+            ],
+            "files": [
+              {
+                "artifactRef": "artifact-replace-redis-conf",
+                "remotePath": "/app/redis/redis.conf",
+                "chmod": "0644"
+              },
+              {
+                "artifactRef": "artifact-replace-redis-sentinel-conf",
+                "remotePath": "/app/redis/sentinel/sentinel.conf",
+                "chmod": "0644"
+              },
+              {
+                "artifactRef": "artifact-replace-redis-compose",
+                "remotePath": "/app/redis/docker-compose.yml",
+                "chmod": "0644"
+              }
+            ],
+            "services": [
+              { "name": "istock-redis", "enabled": true, "state": "restarted" }
+            ]
+          }
+        }
+      },
+      {
+        "id": "service-elasticsearch-dev",
+        "kind": "elasticsearch",
+        "name": "elasticsearch-dev",
+        "spec": {
+          "location": "hosted",
+          "ports": [{ "name": "main", "servicePort": 9200, "protocol": "TCP" }],
+          "deployment": {
+            "directories": ["/app/elasticsearch"],
+            "files": [
+              {
+                "artifactRef": "artifact-replace-elasticsearch-archive",
+                "packagePath": "files/elasticsearch/elasticsearch.tar.gz",
+                "remotePath": "/tmp/elasticsearch.tar.gz",
+                "extract": {
+                  "enabled": true,
+                  "remoteDir": "/app/elasticsearch",
+                  "stripComponents": 1,
+                  "sudo": true,
+                  "owner": "elasticsearch",
+                  "group": "elasticsearch",
+                  "chownRecursive": true
+                }
+              }
+            ],
+            "services": []
+          }
+        }
+      },
+      {
+        "id": "database-postgresql-dev",
+        "kind": "database",
+        "name": "istockdev-postgresql",
+        "spec": {
+          "engine": "postgresql",
+          "endpoint": "10.20.30.87",
+          "ports": [{ "name": "main", "servicePort": 5432, "protocol": "TCP" }],
+          "secretRef": "secret-replace-istockdev-postgresql"
+        }
+      }
+    ],
+    "placements": [
+      {
+        "workloadRef": "app-fo-pcweb",
+        "targetRef": "vm-devwas",
+        "mode": "process"
+      },
+      {
+        "workloadRef": "app-fo-mobile",
+        "targetRef": "vm-devwas",
+        "mode": "process"
+      },
+      {
+        "workloadRef": "app-fo-api",
+        "targetRef": "vm-devwas",
+        "mode": "process"
+      },
+      {
+        "workloadRef": "app-payments-api",
+        "targetRef": "vm-devwas",
+        "mode": "process"
+      },
+      {
+        "workloadRef": "app-bo-pcweb",
+        "targetRef": "vm-devwas",
+        "mode": "process"
+      },
+      {
+        "workloadRef": "app-po-pcweb",
+        "targetRef": "vm-devwas",
+        "mode": "process"
+      },
+      { "workloadRef": "app-oa", "targetRef": "vm-devwas", "mode": "process" },
+      {
+        "workloadRef": "app-po-mobile",
+        "targetRef": "vm-devwas",
+        "mode": "process"
+      },
+      {
+        "workloadRef": "app-batch-api1",
+        "targetRef": "vm-devwas",
+        "mode": "process"
+      },
+      {
+        "workloadRef": "app-batch-api2",
+        "targetRef": "vm-devwas",
+        "mode": "process"
+      },
+      {
+        "workloadRef": "service-redis-dev",
+        "targetRef": "vm-devapp",
+        "mode": "process"
+      },
+      {
+        "workloadRef": "service-elasticsearch-dev",
+        "targetRef": "vm-devapp",
+        "mode": "process"
+      }
+    ],
+    "connections": [
+      {
+        "id": "connection-fo-api-postgresql",
+        "kind": "connects_to",
+        "sourceRef": "app-fo-api",
+        "targetRef": "database-postgresql-dev",
+        "targetPortName": "main"
+      },
+      {
+        "id": "connection-fo-api-redis",
+        "kind": "connects_to",
+        "sourceRef": "app-fo-api",
+        "targetRef": "service-redis-dev",
+        "targetPortName": "main"
+      },
+      {
+        "id": "connection-fo-api-elasticsearch",
+        "kind": "connects_to",
+        "sourceRef": "app-fo-api",
+        "targetRef": "service-elasticsearch-dev",
+        "targetPortName": "main"
+      },
+      {
+        "id": "connection-payments-postgresql",
+        "kind": "connects_to",
+        "sourceRef": "app-payments-api",
+        "targetRef": "database-postgresql-dev",
+        "targetPortName": "main"
+      },
+      {
+        "id": "connection-payments-redis",
+        "kind": "connects_to",
+        "sourceRef": "app-payments-api",
+        "targetRef": "service-redis-dev",
+        "targetPortName": "main"
+      },
+      {
+        "id": "connection-batch1-postgresql",
+        "kind": "connects_to",
+        "sourceRef": "app-batch-api1",
+        "targetRef": "database-postgresql-dev",
+        "targetPortName": "main"
+      },
+      {
+        "id": "connection-batch2-postgresql",
+        "kind": "connects_to",
+        "sourceRef": "app-batch-api2",
+        "targetRef": "database-postgresql-dev",
+        "targetPortName": "main"
+      }
+    ]
+  },
+  "layout": {
+    "nodes": [
+      { "nodeId": "vm-devwas", "position": { "x": 40, "y": 60 } },
+      { "nodeId": "vm-devapp", "position": { "x": 500, "y": 60 } },
+      { "nodeId": "app-fo-pcweb", "position": { "x": 24, "y": 80 } },
+      { "nodeId": "app-fo-mobile", "position": { "x": 24, "y": 250 } },
+      { "nodeId": "app-fo-api", "position": { "x": 24, "y": 420 } },
+      { "nodeId": "app-payments-api", "position": { "x": 24, "y": 590 } },
+      { "nodeId": "app-bo-pcweb", "position": { "x": 24, "y": 760 } },
+      { "nodeId": "app-po-pcweb", "position": { "x": 24, "y": 930 } },
+      { "nodeId": "app-oa", "position": { "x": 24, "y": 1100 } },
+      { "nodeId": "app-po-mobile", "position": { "x": 24, "y": 1270 } },
+      { "nodeId": "app-batch-api1", "position": { "x": 24, "y": 1440 } },
+      { "nodeId": "app-batch-api2", "position": { "x": 24, "y": 1610 } },
+      { "nodeId": "service-redis-dev", "position": { "x": 24, "y": 80 } },
+      {
+        "nodeId": "service-elasticsearch-dev",
+        "position": { "x": 24, "y": 250 }
+      },
+      {
+        "nodeId": "database-postgresql-dev",
+        "position": { "x": 940, "y": 100 }
+      }
+    ],
+    "viewport": { "x": 0, "y": 0, "zoom": 0.65 }
+  }
+}

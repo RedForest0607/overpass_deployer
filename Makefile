@@ -1,4 +1,4 @@
-.PHONY: test-crosswalk test-studio test-studio-backend test-studio-local build-crosswalk build-studio build-studio-backend dev-studio-local smoke-studio-local
+.PHONY: test-crosswalk test-studio test-studio-backend test-studio-e2e test-studio-local build-crosswalk build-studio build-studio-backend dev-studio-local smoke-studio-local
 
 test-crosswalk:
 	cd crosswalk && go test ./...
@@ -7,14 +7,24 @@ test-studio:
 	cd studio && ./node_modules/.bin/tsc --noEmit
 	cd studio && node --test features/topology/model.test.mjs
 	cd studio && node --test features/topology/api-adapter.test.mjs
+	cd studio && node --test features/topology/communication-edge-layout.test.mjs
+	cd studio && node --test features/topology/topology-import.test.mjs
+	cd studio && node --test features/topology/usePointerDrag.test.mjs
 	cd studio && node --test schemas/contracts.test.mjs
 	cd studio && node --test lib/api/client.test.mjs
+	cd studio && node --test lib/api/delivery.test.mjs
+	cd studio && node --test features/artifacts/artifact-mapping.test.mjs
+	cd studio && node --test features/artifacts/artifact-text.test.mjs
+	cd studio && node --test features/generation/generation-state.test.mjs
 	cd studio && node --test features/studio/validation-state.test.mjs
 
 test-studio-backend:
 	cd studio/backend && go test ./...
 
-test-studio-local: test-studio-backend test-studio
+test-studio-e2e:
+	cd studio && node scripts/e2e-studio-crosswalk.mjs
+
+test-studio-local: test-studio-backend test-studio test-studio-e2e
 
 build-crosswalk:
 	cd crosswalk && go build -o bin/deploy ./cmd/deploy

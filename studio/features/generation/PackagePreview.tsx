@@ -2,14 +2,7 @@
 import { useState } from 'react';
 import JSZip from 'jszip';
 import { Download, FileCode, Package, Copy, Check } from 'lucide-react';
-export function downloadBlob(blob: Blob, name: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = name;
-  a.click();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
+import { downloadBlob } from '../../lib/download';
 export default function PackagePreview({
   files,
   onBack,
@@ -93,10 +86,10 @@ export default function PackagePreview({
           <pre>{files[selected]}</pre>
         </div>
       </div>
-      <p role="status" className="feedback">
+      <output className="feedback">
         <Check size={15} />
         {message || '현재 토폴로지에서 생성된 설계 스냅샷입니다.'}
-      </p>
+      </output>
     </section>
   );
 }

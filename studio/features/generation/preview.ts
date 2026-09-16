@@ -59,7 +59,7 @@ export function filesFor(
   const result: Record<string, string> = {
     'topology.json': JSON.stringify(blueprint, null, 2),
     'README.txt':
-      'Overpass Studio — Frontend draft\n\n설계 데이터와 VM YAML 초안입니다. 실행 가능한 배포 패키지가 아닙니다.\nJAR, application.yml, env, SSH 키는 포함되지 않습니다.\nRedis/Elasticsearch 설치·실행 설정은 생성하지 않습니다.\nDB/Redis 바인딩, Helm, Terraform 생성은 백엔드 연동 후 지원 예정입니다.\n실제 배포 전 별도 검증이 필요합니다.\n',
+      'Overpass Studio — Frontend draft\n\n설계 데이터와 VM YAML 초안입니다. 실행 가능한 배포 패키지가 아닙니다.\nJAR, application.yml, env, SSH 키는 포함되지 않습니다.\n이 프론트 전용 초안은 Redis/Elasticsearch utility를 생성하지 않습니다. 실제 자산이 포함된 Crosswalk 패키지는 서버 패키지 화면에서 생성하세요.\nDB 연결, Helm, Terraform 생성은 아직 지원하지 않습니다.\n실제 배포 전 별도 검증이 필요합니다.\n',
   };
   if (servers.length)
     result['deploy.draft.yml'] =

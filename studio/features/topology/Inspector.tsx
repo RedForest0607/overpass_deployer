@@ -12,6 +12,7 @@ import { isWorkload, isTarget } from './placement';
 import Choice from './Choice';
 import { type TopologyNode, type TopologyEdge, type NodeData } from './model';
 import DeploymentEditor from './DeploymentEditor';
+import type { Artifact } from '../../lib/api/delivery';
 export default function Inspector({
   node,
   edge,
@@ -19,8 +20,8 @@ export default function Inspector({
   place,
   onClose,
   updateNode,
-  updateEdge,
   remove,
+  artifacts,
   errors = [],
 }: {
   nodes: TopologyNode[];
@@ -29,8 +30,8 @@ export default function Inspector({
   edge?: TopologyEdge;
   onClose: () => void;
   updateNode: (data: Partial<NodeData>) => void;
-  updateEdge: (data: NonNullable<TopologyEdge['data']>) => void;
   remove: () => void;
+  artifacts: Artifact[];
   errors?: { path: string; message: string }[];
 }) {
   type EditableField = Exclude<keyof NodeData, 'deployment'>;
@@ -98,7 +99,7 @@ export default function Inspector({
             <>
               {field('노드 이름', 'label')}
               {isWorkload(node) && (
-                <label className="field">
+                <div className="field">
                   <span>실행 대상</span>
                   <Choice
                     label="실행 대상"
@@ -117,10 +118,10 @@ export default function Inspector({
                       place(node.id, value === 'unassigned' ? undefined : value)
                     }
                   />
-                </label>
+                </div>
               )}
               {node.data.kind === 'vm' && (
-                <label className="field">
+                <div className="field">
                   <span>호스트 유형</span>
                   <Choice
                     label="호스트 유형"
@@ -128,7 +129,7 @@ export default function Inspector({
                     options={['On-prem VM', 'AWS EC2']}
                     onChange={(platform) => updateNode({ platform })}
                   />
-                </label>
+                </div>
               )}
               {!node.parentId &&
                 [
@@ -145,7 +146,7 @@ export default function Inspector({
               ) && field('서비스 포트', 'port', 'number')}
               {node.data.kind === 'java' && (
                 <>
-                  <label className="field">
+                  <div className="field">
                     <span>Java version</span>
                     <Choice
                       label="Java version"
@@ -153,9 +154,49 @@ export default function Inspector({
                       options={['17', '21', '25']}
                       onChange={(java) => updateNode({ java })}
                     />
-                  </label>
+                  </div>
                   {field('최대 JVM heap', 'heap')}
-                  {field('JAR 파일명 (실제 업로드는 후속 연결)', 'artifact')}
+                  <div className="field">
+                    <span>실행 JAR artifact</span>
+                    <Choice
+                      label="실행 JAR artifact"
+                      value={node.data.artifactRef || 'unassigned'}
+                      options={[
+                        { value: 'unassigned', label: '선택하지 않음' },
+                        ...(node.data.artifactRef &&
+                        !artifacts.some(
+                          (artifact) => artifact.id === node.data.artifactRef,
+                        )
+                          ? [
+                              {
+                                value: node.data.artifactRef,
+                                label:
+                                  '찾을 수 없는 artifact · ' +
+                                  node.data.artifactRef,
+                              },
+                            ]
+                          : []),
+                        ...artifacts
+                          .filter((artifact) => artifact.kind === 'jar')
+                          .map((artifact) => ({
+                            value: artifact.id,
+                            label: artifact.originalName,
+                          })),
+                      ]}
+                      onChange={(value) => {
+                        const artifact = artifacts.find(
+                          (candidate) => candidate.id === value,
+                        );
+                        updateNode({
+                          artifactRef: value === 'unassigned' ? null : value,
+                          artifact: artifact?.originalName ?? '',
+                        });
+                      }}
+                    />
+                    {!artifacts.some((artifact) => artifact.kind === 'jar') && (
+                      <small>파일 메뉴에서 JAR를 먼저 등록하세요.</small>
+                    )}
+                  </div>
                 </>
               )}
               {['database', 'redis', 'elasticsearch', 'registry'].includes(
@@ -163,10 +204,14 @@ export default function Inspector({
               ) && field('Secret 참조 이름 · 비밀 값 입력 금지', 'secretRef')}
               {node.data.kind === 'kubernetes' &&
                 field('Namespace', 'namespace')}
-              {(node.data.kind === 'vm' || node.data.kind === 'java') && (
+              {['vm', 'java', 'redis', 'elasticsearch'].includes(
+                node.data.kind,
+              ) && (
                 <DeploymentEditor
                   key={node.id}
-                  kind={node.data.kind}
+                  kind={
+                    node.data.kind as 'vm' | 'java' | 'redis' | 'elasticsearch'
+                  }
                   value={node.data.deployment}
                   onChange={(deployment) => updateNode({ deployment })}
                 />
@@ -178,13 +223,16 @@ export default function Inspector({
               <div className="connection-pair">
                 {edge.source} → {edge.target}
               </div>
-              {edge.data ? (
+              {edge.data?.port !== undefined ? (
                 <p>
                   TCP ·{' '}
                   {nodes.find((node) => node.id === edge.target)?.data.port ??
                     edge.data.port}
                   <br />
                   포트는 대상 서비스 설정에서 변경합니다.
+                  <br />
+                  캔버스에서 포트 라벨과 선의 원형 굴곡점을 드래그해 겹침을
+                  조정할 수 있습니다.
                 </p>
               ) : (
                 <p>이미지 발행 관계입니다.</p>

@@ -2,10 +2,18 @@
 import {
   Select,
   SelectTrigger,
-  SelectValue,
   SelectContent,
   SelectItem,
 } from '@/components/ui/select';
+
+type ChoiceOption =
+  | string
+  | {
+      label: string;
+      value: string;
+      description?: string;
+    };
+
 export default function Choice({
   value,
   options,
@@ -13,10 +21,14 @@ export default function Choice({
   label,
 }: {
   value: string;
-  options: (string | { label: string; value: string })[];
+  options: ChoiceOption[];
   onChange: (value: string) => void;
   label: string;
 }) {
+  const selected = options.find(
+    (option) => (typeof option === 'string' ? option : option.value) === value,
+  );
+
   return (
     <Select
       value={value}
@@ -25,7 +37,9 @@ export default function Choice({
       }}
     >
       <SelectTrigger aria-label={label} className="choice">
-        <SelectValue />
+        <span className="flex min-w-0 flex-1 items-center gap-2 text-left">
+          {renderOption(selected ?? value)}
+        </span>
       </SelectTrigger>
       <SelectContent>
         {options.map((o) => (
@@ -33,10 +47,24 @@ export default function Choice({
             key={typeof o === 'string' ? o : o.value}
             value={typeof o === 'string' ? o : o.value}
           >
-            {typeof o === 'string' ? o : o.label}
+            {renderOption(o)}
           </SelectItem>
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+function renderOption(option: ChoiceOption) {
+  if (typeof option === 'string') return option;
+  return (
+    <>
+      <span className="min-w-0 truncate font-medium">{option.label}</span>
+      {option.description && (
+        <span className="ml-auto shrink-0 text-[10px] font-normal text-muted-foreground">
+          {option.description}
+        </span>
+      )}
+    </>
   );
 }

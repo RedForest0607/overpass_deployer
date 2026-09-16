@@ -27,7 +27,9 @@ import {
   AlertTriangle,
   FileCode,
   Download,
+  FileUp,
   Undo2,
+  FileArchive,
 } from 'lucide-react';
 import {
   SidebarProvider,
@@ -41,7 +43,6 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   catalog,
   createNode,
-  sample,
   connectionType,
   validate,
   type Kind,
@@ -50,6 +51,7 @@ import {
 } from '../topology/model';
 import ResourceNode, { ResourceIcon } from '../topology/ResourceNode';
 import TargetNode from '../topology/TargetNode';
+import CommunicationEdge from '../topology/CommunicationEdge';
 import {
   isTarget,
   isWorkload,
@@ -59,13 +61,21 @@ import {
 } from '../topology/placement';
 import Inspector from '../topology/Inspector';
 import Choice from '../topology/Choice';
-import PackagePreview, { downloadBlob } from '../generation/PackagePreview';
+import { downloadBlob } from '../../lib/download';
+import ServerPackage from '../generation/ServerPackage';
 import { filesFor } from '../generation/preview';
+import ArtifactManager from '../artifacts/ArtifactManager';
+import { useArtifacts } from '../artifacts/useArtifacts';
+import { applyArtifactMappings } from '../artifacts/artifact-mapping';
+import type { ArtifactAssignments } from '../artifacts/artifact-mapping';
 
 import { usePersistence } from './usePersistence';
 import { toAPI } from '../topology/api-adapter';
 import { defaultDeploymentProfile } from '../topology/api-adapter';
 import type { DeploymentProfile } from '../../lib/api/contracts';
+import DeploymentProfileEditor from '../topology/DeploymentProfileEditor';
+import TopologyImportDialog from '../topology/TopologyImportDialog';
+import type { ImportedTopology } from '../topology/topology-import';
 import ProjectsPanel from './ProjectsPanel';
 import {
   AlertDialog,
@@ -79,6 +89,7 @@ import {
 } from '@/components/ui/alert-dialog';
 
 const nodeTypes = { resource: ResourceNode, targetGroup: TargetNode };
+const edgeTypes = { communication: CommunicationEdge };
 export default function Studio() {
   return (
     <ReactFlowProvider>
@@ -99,6 +110,7 @@ function Workspace() {
   );
   const [view, setView] = useState('projects');
   const [confirmReload, setConfirmReload] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
   const [deployment, setDeployment] = useState<DeploymentProfile>(
     defaultDeploymentProfile,
@@ -131,6 +143,7 @@ function Workspace() {
   );
   const project = persistence.active?.name ?? '프로젝트를 선택하세요';
   const environment = persistence.environment.toUpperCase();
+  const artifacts = useArtifacts(persistence.active?.id);
   const localIssues = useMemo(() => validate(nodes, edges), [nodes, edges]);
   const issues = persistence.validation
     ? persistence.validation.issues.map((issue, index) => ({
@@ -141,23 +154,78 @@ function Workspace() {
       }))
     : localIssues;
   const errors = issues.filter((i) => i.severity === 'error');
+  const topologyDocument = useMemo(
+    () => toAPI(nodes, edges, viewport, deployment),
+    [nodes, edges, viewport, deployment],
+  );
   const files = useMemo(
     () => ({
       ...filesFor(nodes, edges, environment),
       'topology.json': JSON.stringify(
         {
           environment: persistence.environment,
-          ...toAPI(nodes, edges, viewport, deployment),
+          ...topologyDocument,
         },
         null,
         2,
       ),
     }),
-    [nodes, edges, environment, viewport, deployment],
+    [nodes, edges, environment, persistence.environment, topologyDocument],
   );
-  const visibleEdges = edges.filter(
-    (e) => !nodes.some((n) => n.id === e.target && isTarget(n)),
+  const visibleEdges = useMemo(
+    () =>
+      edges.filter(
+        (edge) =>
+          !nodes.some((node) => node.id === edge.target && isTarget(node)),
+      ),
+    [edges, nodes],
   );
+  const updateEdgeLayout = useCallback(
+    (edgeId: string, layout: NonNullable<TopologyEdge['data']>['layout']) => {
+      const normalized =
+        layout?.bendOffset || layout?.labelPosition !== undefined
+          ? layout
+          : undefined;
+      setEdges((current) =>
+        current.map((edge) =>
+          edge.id === edgeId
+            ? {
+                ...edge,
+                data: { ...(edge.data ?? {}), layout: normalized },
+              }
+            : edge,
+        ),
+      );
+    },
+    [setEdges],
+  );
+  const renderedEdges = useMemo(
+    () =>
+      visibleEdges.map((edge) => ({
+        ...edge,
+        data: {
+          ...(edge.data ?? {}),
+          onLayoutChange: (
+            layout: NonNullable<TopologyEdge['data']>['layout'],
+          ) => updateEdgeLayout(edge.id, layout),
+          onSelect: () => setSelection({ type: 'edge', id: edge.id }),
+        },
+      })),
+    [visibleEdges, updateEdgeLayout, setSelection],
+  );
+  function importTopology(value: ImportedTopology, filename?: string) {
+    setNodes(value.graph.nodes);
+    setEdges(value.graph.edges);
+    setDeployment(value.graph.deployment ?? defaultDeploymentProfile);
+    setViewport(value.graph.viewport);
+    setSelection(null);
+    setLastRemoval(null);
+    setTab('issues');
+    setMessage(
+      `${filename ?? '입력한 JSON'}을 에디터에 적용했습니다. 검증 후 설계 저장을 누르세요.`,
+    );
+    void flow.setViewport(value.graph.viewport);
+  }
   function place(id: string, targetId?: string) {
     const next = placeWorkload(nodes, edges, id, targetId);
     setNodes(next.nodes);
@@ -202,7 +270,7 @@ function Workspace() {
       addEdge(
         {
           ...c,
-          type: 'smoothstep',
+          type: 'communication',
           label: network ? 'TCP · ' + to.data.port : relation,
           data: network ? { protocol: 'TCP', port: to.data.port } : undefined,
         },
@@ -253,12 +321,28 @@ function Workspace() {
   }
 
   function preview() {
-    if (errors.length) {
-      setTab('issues');
-      setMessage('검증 오류를 먼저 해결하세요.');
+    if (!persistence.active) {
+      setMessage('프로젝트를 먼저 선택하세요.');
       return;
     }
     setView('packages');
+  }
+  function mapArtifacts(
+    assignments: ArtifactAssignments,
+    availableArtifacts = artifacts.items,
+  ) {
+    const result = applyArtifactMappings(
+      nodes,
+      availableArtifacts,
+      assignments,
+    );
+    if (result.applied) {
+      setNodes(result.nodes);
+      setMessage(
+        `${result.applied}개 artifact 참조를 적용했습니다. 토폴로지에서 설계를 저장하세요.`,
+      );
+    }
+    return result.applied;
   }
   return (
     <SidebarProvider>
@@ -272,8 +356,9 @@ function Workspace() {
             <SidebarMenu>
               {[
                 { id: 'projects', label: '프로젝트', Icon: Folder },
+                { id: 'artifacts', label: '파일', Icon: FileArchive },
                 { id: 'topology', label: '토폴로지', Icon: Workflow },
-                { id: 'packages', label: '설계 산출물', Icon: Package },
+                { id: 'packages', label: '배포 패키지', Icon: Package },
               ].map(({ id, label, Icon }) => (
                 <SidebarMenuItem key={id}>
                   <SidebarMenuButton
@@ -318,7 +403,9 @@ function Workspace() {
                 ? 'Topology'
                 : view === 'projects'
                   ? 'Projects'
-                  : 'Design package'}
+                  : view === 'artifacts'
+                    ? 'Artifacts'
+                    : 'Delivery package'}
             </span>
             <span className="header-right">
               <span className="green-dot" />{' '}
@@ -334,13 +421,19 @@ function Workspace() {
             <div>
               <div className="eyebrow">DEPLOYMENT WORKSPACE</div>
               <h1>
-                {view === 'projects' ? '프로젝트' : project}{' '}
+                {view === 'projects'
+                  ? '프로젝트'
+                  : view === 'artifacts'
+                    ? '프로젝트 파일'
+                    : project}{' '}
                 <span className="pill">{environment}</span>
               </h1>
               <p>
                 {view === 'projects'
                   ? '프로젝트와 환경별 배포 구성을 저장하고 관리하세요.'
-                  : '서비스의 연결부터 배포 구성까지, 하나의 작업공간에서.'}
+                  : view === 'artifacts'
+                    ? 'JAR, 설정, 일반 파일과 배포 스크립트 입력값을 프로젝트 범위로 관리하세요.'
+                    : '서비스의 연결부터 배포 구성까지, 하나의 작업공간에서.'}
               </p>
             </div>
             <div className="actions">
@@ -387,11 +480,7 @@ function Workspace() {
                   >
                     <ShieldCheck size={16} /> 서버 검증
                   </button>
-                  <button
-                    className="primary"
-                    onClick={preview}
-                    disabled={!!errors.length}
-                  >
+                  <button className="primary" onClick={preview}>
                     <Package size={16} /> 산출물 미리보기{' '}
                     <ArrowUpRight size={16} />
                   </button>
@@ -399,15 +488,15 @@ function Workspace() {
               )}
             </div>
           </section>
-          <div
-            role="status"
+          <output
             style={{
+              display: 'block',
               margin: '0 30px 12px',
               color: persistence.conflict ? '#b34e4e' : '#397b60',
             }}
           >
             {persistence.notice}
-          </div>
+          </output>
           {view === 'projects' ? (
             <ProjectsPanel
               projects={persistence.projects}
@@ -421,10 +510,34 @@ function Workspace() {
                 void persistence.refresh();
               }}
             />
+          ) : view === 'artifacts' ? (
+            <ArtifactManager
+              projectId={persistence.active?.id}
+              projectName={project}
+              artifacts={artifacts.items}
+              busy={artifacts.busy}
+              error={artifacts.error}
+              upload={artifacts.upload}
+              refresh={artifacts.refresh}
+              readText={artifacts.readText}
+              nodes={nodes}
+              mapArtifacts={mapArtifacts}
+            />
           ) : view === 'packages' ? (
-            <PackagePreview
-              key={Object.values(files).join('')}
-              files={files}
+            <ServerPackage
+              key={
+                (persistence.active?.id ?? 'none') +
+                ':' +
+                persistence.environment +
+                ':' +
+                persistence.revision
+              }
+              projectId={persistence.active?.id}
+              projectName={project}
+              environment={persistence.environment}
+              revision={persistence.revision}
+              dirty={persistence.dirty}
+              blueprint={topologyDocument.blueprint}
               onBack={() => setView('topology')}
             />
           ) : (
@@ -456,6 +569,13 @@ function Workspace() {
                     }}
                   >
                     <Undo2 size={15} /> 삭제 취소
+                  </button>
+                  <button
+                    disabled={persistence.busy || !persistence.active}
+                    title="토폴로지 JSON 가져오기"
+                    onClick={() => setImportOpen(true)}
+                  >
+                    <FileUp size={15} /> JSON 가져오기
                   </button>
                   <button
                     title="토폴로지 JSON 다운로드"
@@ -521,6 +641,10 @@ function Workspace() {
                       대상은 설정에서 변경하며, 핸들은 통신 연결에 사용합니다.
                     </span>
                   </div>
+                  <DeploymentProfileEditor
+                    value={deployment}
+                    onChange={setDeployment}
+                  />
                 </aside>
                 <section className="canvas-stack">
                   <div
@@ -546,13 +670,14 @@ function Workspace() {
                   >
                     <ReactFlow
                       nodes={nodes}
-                      edges={visibleEdges}
+                      edges={renderedEdges}
                       onNodesChange={onNodesChange}
                       onMoveEnd={(_, value) => setViewport(value)}
                       onEdgesChange={onEdgesChange}
                       onConnect={connect}
                       isValidConnection={valid}
                       nodeTypes={nodeTypes}
+                      edgeTypes={edgeTypes}
                       onNodeDoubleClick={(_, n) =>
                         setSelection({ type: 'node', id: n.id })
                       }
@@ -629,7 +754,7 @@ function Workspace() {
                                     type: 'node',
                                     id: issue.nodeId,
                                   });
-                                  flow.fitView({
+                                  void flow.fitView({
                                     nodes: [{ id: issue.nodeId }],
                                     duration: 250,
                                     padding: 0.8,
@@ -684,9 +809,9 @@ function Workspace() {
                 </section>
               </div>
               <footer>
-                <span role="status">
+                <output>
                   {message || '변경 후 설계 저장 버튼을 누르세요.'}
-                </span>
+                </output>
                 <span>
                   VM 초안 지원 <span className="footer-dot">·</span> Helm /
                   Terraform 예정
@@ -719,7 +844,15 @@ function Workspace() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        <TopologyImportDialog
+          open={importOpen}
+          dirty={persistence.dirty}
+          environment={persistence.environment}
+          onOpenChange={setImportOpen}
+          onImport={importTopology}
+        />
         <Inspector
+          artifacts={artifacts.items}
           errors={
             persistence.validation?.issues.filter((issue) =>
               issue.nodeIds.includes(selectedNode?.id ?? ''),
@@ -741,7 +874,7 @@ function Workspace() {
             if (typeof data.port === 'number') {
               setEdges((es) =>
                 es.map((e) =>
-                  e.target === selection?.id && e.data
+                  e.target === selection?.id && e.data?.port !== undefined
                     ? {
                         ...e,
                         data: { ...e.data, port: data.port! },
@@ -752,15 +885,6 @@ function Workspace() {
               );
             }
           }}
-          updateEdge={(data) =>
-            setEdges((es) =>
-              es.map((e) =>
-                e.id === selection?.id
-                  ? { ...e, data, label: data.protocol + ' · ' + data.port }
-                  : e,
-              ),
-            )
-          }
           remove={remove}
         />
       </div>

@@ -59,6 +59,7 @@ test('multiple Java and search services share one host with independent slots', 
   const app = createNode('java', 'second', 0, 0);
   app.data.port = 8081;
   app.data.artifact = 'second.jar';
+  app.data.artifactRef = 'artifact-second';
   const search = createNode('elasticsearch', 'search', 0, 0);
   nodes.push(app, search);
   ({ nodes, edges } = placeWorkload(nodes, edges, 'second', 'vm'));

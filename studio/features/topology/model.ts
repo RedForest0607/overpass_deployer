@@ -1,5 +1,9 @@
 import type { Edge, Node } from '@xyflow/react';
-import type { JavaDeployment, VMDeployment } from '../../lib/api/contracts.ts';
+import type {
+  JavaDeployment,
+  UtilityDeployment,
+  VMDeployment,
+} from '../../lib/api/contracts.ts';
 
 export type Kind =
   | 'java'
@@ -22,10 +26,27 @@ export type NodeData = {
   secretRef: string;
   namespace: string;
   platform: string;
-  deployment?: VMDeployment | JavaDeployment;
+  deployment?: VMDeployment | JavaDeployment | UtilityDeployment;
 };
 export type TopologyNode = Node<NodeData, 'resource' | 'targetGroup'>;
-export type TopologyEdge = Edge<{ protocol: 'TCP' | 'UDP'; port: number }>;
+export type EdgePoint = { x: number; y: number };
+export type ConnectionVisualLayout = {
+  bendOffset?: EdgePoint;
+  labelPosition?: number;
+  /** @deprecated Read-only compatibility with the first movable-label draft. */
+  labelOffset?: EdgePoint;
+};
+export type TopologyEdgeData = {
+  protocol?: 'TCP' | 'UDP';
+  port?: number;
+  layout?: ConnectionVisualLayout;
+  onLayoutChange?: (layout: ConnectionVisualLayout) => void;
+  onSelect?: () => void;
+};
+export type TopologyEdge = Edge<
+  TopologyEdgeData,
+  'communication' | 'smoothstep'
+>;
 export type Issue = {
   id: string;
   nodeId?: string;
@@ -102,6 +123,12 @@ export function createNode(
   x: number,
   y: number,
 ): TopologyNode {
+  const deployment =
+    kind === 'redis'
+      ? { directories: ['/app/redis'], files: [], services: [] }
+      : kind === 'elasticsearch'
+        ? { directories: ['/app/elasticsearch'], files: [], services: [] }
+        : undefined;
   return {
     id,
     type: ['vm', 'kubernetes'].includes(kind) ? 'targetGroup' : 'resource',
@@ -129,6 +156,7 @@ export function createNode(
       secretRef: '',
       namespace: 'commerce-dev',
       platform: 'On-prem VM',
+      ...(deployment ? { deployment } : {}),
     },
   };
 }
@@ -137,7 +165,12 @@ export function sample(project = 'bo-pcweb'): {
   edges: TopologyEdge[];
 } {
   const app = createNode('java', 'app', 50, 100);
-  app.data = { ...app.data, label: project, artifact: project + '-1.2.0.jar' };
+  app.data = {
+    ...app.data,
+    label: project,
+    artifact: project + '-1.2.0.jar',
+    artifactRef: 'artifact-sample',
+  };
   app.parentId = 'vm';
   app.extent = 'parent';
   const vm = createNode('vm', 'vm', 90, 65);
@@ -181,7 +214,7 @@ export function sample(project = 'bo-pcweb'): {
         source: 'app',
         target: 'db',
         label: 'TCP · 5432',
-        type: 'smoothstep',
+        type: 'communication',
         data: { protocol: 'TCP', port: 5432 },
       },
       {
@@ -189,7 +222,7 @@ export function sample(project = 'bo-pcweb'): {
         source: 'app',
         target: 'redis',
         label: 'TCP · 6379',
-        type: 'smoothstep',
+        type: 'communication',
         data: { protocol: 'TCP', port: 6379 },
       },
     ],
@@ -268,12 +301,12 @@ export function validate(
           n.id,
         );
       if (n.data.kind !== 'java') continue;
-      if (!n.data.artifact.trim())
+      if (!n.data.artifactRef)
         issues.push({
           id: n.id + 'artifact',
           nodeId: n.id,
           severity: 'warning',
-          message: 'JAR 파일을 등록하세요. 지금은 파일명만 설정할 수 있습니다.',
+          message: '파일 메뉴에서 JAR를 등록하고 Java 노드에 연결하세요.',
         });
     }
   }
@@ -288,11 +321,11 @@ export function validate(
     )
       error(e.id, '허용되지 않은 연결입니다.', e.source);
     if (
-      e.data &&
+      e.data?.port !== undefined &&
       (!Number.isInteger(e.data.port) || e.data.port < 1 || e.data.port > 65535)
     )
       error(e.id + 'port', '연결 포트가 유효하지 않습니다.', e.target);
-    if (e.data && to && e.data.port !== to.data.port)
+    if (e.data?.port !== undefined && to && e.data.port !== to.data.port)
       error(
         e.id + 'binding',
         '연결 포트와 대상 노드의 포트가 다릅니다.',

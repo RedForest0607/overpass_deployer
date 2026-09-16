@@ -1,31 +1,80 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { APIError, request } from './client.ts';
+import { APIError, request, requestBlob } from './client.ts';
 import { projectsAPI } from './projects.ts';
 
-test('client preserves revision conflicts without retrying a write', async t => {
-  let count=0;
-  t.mock.method(globalThis,'fetch',async () => {
+test('client preserves revision conflicts without retrying a write', async (t) => {
+  let count = 0;
+  t.mock.method(globalThis, 'fetch', async () => {
     count++;
-    return new Response(JSON.stringify({error:{code:'REVISION_CONFLICT',message:'conflict'}}),{status:409});
+    return new Response(
+      JSON.stringify({
+        error: { code: 'REVISION_CONFLICT', message: 'conflict' },
+      }),
+      { status: 409 },
+    );
   });
-  await assert.rejects(request('/projects/a',{method:'PUT',body:'{}'}),
-    e=>e instanceof APIError && e.status===409 && e.code==='REVISION_CONFLICT');
-  assert.equal(count,1);
+  await assert.rejects(
+    request('/projects/a', { method: 'PUT', body: '{}' }),
+    (e) =>
+      e instanceof APIError &&
+      e.status === 409 &&
+      e.code === 'REVISION_CONFLICT',
+  );
+  assert.equal(count, 1);
 });
-test('project listing follows cursors and save sends the expected revision', async t => {
-  const calls=[];
-  t.mock.method(globalThis,'fetch',async (url,options) => {
-    calls.push({url,options});
-    return new Response(JSON.stringify(url.includes('topologies')?{revision:3}:
-      url.includes('cursor')?{items:[{id:'b'}],nextCursor:null}:{items:[{id:'a'}],nextCursor:'next'}));
+test('project listing follows cursors and save sends the expected revision', async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    calls.push({ url, options });
+    return new Response(
+      JSON.stringify(
+        url.includes('topologies')
+          ? { revision: 3 }
+          : url.includes('cursor')
+            ? { items: [{ id: 'b' }], nextCursor: null }
+            : { items: [{ id: 'a' }], nextCursor: 'next' },
+      ),
+    );
   });
-  assert.deepEqual((await projectsAPI.list()).map(p=>p.id),['a','b']);
-  await projectsAPI.save('a','qa',2,{blueprint:{},layout:{}});
-  assert.equal(JSON.parse(calls[2].options.body).expectedRevision,2);
-  assert.match(calls[2].url,/\/projects\/a\/topologies\/qa$/);
+  assert.deepEqual(
+    (await projectsAPI.list()).map((p) => p.id),
+    ['a', 'b'],
+  );
+  await projectsAPI.save('a', 'qa', 2, { blueprint: {}, layout: {} });
+  assert.equal(JSON.parse(calls[2].options.body).expectedRevision, 2);
+  assert.match(calls[2].url, /\/projects\/a\/topologies\/qa$/);
 });
-test('invalid server response is not presented as success',async t=>{
-  t.mock.method(globalThis,'fetch',async()=>new Response('not json'));
-  await assert.rejects(request('/projects'),e=>e.code==='INVALID_RESPONSE');
+test('invalid server response is not presented as success', async (t) => {
+  t.mock.method(globalThis, 'fetch', async () => new Response('not json'));
+  await assert.rejects(
+    request('/projects'),
+    (e) => e.code === 'INVALID_RESPONSE',
+  );
+});
+
+test('multipart requests keep the browser boundary and ZIP responses keep filename', async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, 'fetch', async (url, options = {}) => {
+    calls.push({ url, options });
+    if (String(url).endsWith('/download')) {
+      return new Response(new Blob(['zip']), {
+        headers: {
+          'Content-Disposition': 'attachment; filename="delivery.zip"',
+        },
+      });
+    }
+    return new Response(JSON.stringify({ id: 'artifact-1' }));
+  });
+  const form = new FormData();
+  form.set('kind', 'jar');
+  form.set('file', new File(['jar'], 'app.jar'));
+  await request('/projects/a/artifacts', { method: 'POST', body: form });
+  assert.equal(
+    new Headers(calls[0].options.headers).has('Content-Type'),
+    false,
+  );
+  const result = await requestBlob('/projects/a/packages/p/download');
+  assert.equal(result.filename, 'delivery.zip');
+  assert.equal(await result.blob.text(), 'zip');
 });
