@@ -23,7 +23,7 @@ Deployer의 Studio는 설계·차트 생성 도구이고 Crosswalk는 생성된 
 Studio 프론트는 프로젝트 생성/목록/수정, 환경별 토폴로지 GET/PUT, design/package 검증,
 artifact 등록/목록, generation 상태 조회, package preview·ZIP download를 호출한다.
 백엔드는 revision CAS와 SQLite 영속 저장, design/package 검증, immutable artifact 등록·목록,
-Crosswalk generation과 package preview·ZIP download를 지원한다. 공유 환경 인증은 후속이다.
+Crosswalk generation과 package preview·ZIP download를 지원한다. 공유 환경은 loopback API 앞의 SSO reverse proxy와 `trusted-header` 인증 모드로 지원한다.
 로컬 MVP generation은 요청에서 immutable snapshot과 idempotency key를 `queued` 상태로 먼저 저장하고 202를 반환한다.
 프로세스 내 worker가 비동기로 생성하며 프론트는 generation 조회 API를 polling해 완료 상태와 시도 횟수를 표시한다.
 재시작 시 중단된 작업은 최대 3회 범위에서 복구한다.
@@ -59,11 +59,11 @@ UI 컴포넌트에서 fetch·직렬화·검증 규칙을 한꺼번에 구현하�
 - 프로젝트 이름은 표시용이며 중복 허용. 배포 리소스 이름 제약은 별도 검증한다.
 - 환경은 MVP에서 `dev | qa | prod`. 서로 독립적인 토폴로지 슬롯이며 암묵적 복사·overlay가 없다.
 - 변경 API는 원자적 처리. 오류 응답으로 부분 저장된 데이터가 생기지 않아야 한다.
-- MVP는 loopback API + 동일 origin 개발 프록시를 권장한다. 공개 바인딩과 CORS wildcard 금지.
+- 기본 local 모드는 loopback API + 동일 origin 개발 프록시를 사용한다. 공개 바인딩과 CORS wildcard 금지.
   로컬 모드도 Host/Origin 검사와 요청 크기 제한을 적용한다.
-- 사내 공유 실행 전에 사용자 인증·프로젝트별 권한 검사를 구현한다.
-  쿠키 인증 채택 시 HttpOnly/SameSite 쿠키와 CSRF 방어를 적용한다.
-  아래 모든 ID 접근은 소유 프로젝트 범위 검사가 필요하다.
+- 사내 공유 실행은 SSO proxy가 검증한 불변 사용자 ID와 별도 proxy secret을 백엔드에 주입하는 `trusted-header` 모드를 사용한다.
+  백엔드는 `/healthz` 외 요청을 인증하고 아래 모든 ID 접근을 요청 owner의 프로젝트로 범위화한다.
+- browser unsafe method는 Fetch Metadata와 정확한 Origin allowlist로 CSRF를 방어한다. 인증 proxy는 외부에서 들어온 내부 신뢰 헤더를 반드시 덮어쓴다.
 - 비밀 값·SSH 키는 모델, URL, 오류, 로그, 미리보기에 포함하지 않는다.
 
 ### 공통 오류
@@ -109,7 +109,9 @@ UI 컴포넌트에서 fetch·직렬화·검증 규칙을 한꺼번에 구현하�
 | 환경별 설계 저장 | PUT /projects/{p}/topologies/{e} | 200 |
 | 검증 버튼 | POST /projects/{p}/validations | 200 |
 | 산출물 생성 | POST /projects/{p}/generations | 202 |
+| 생성 이력 | GET /projects/{p}/generations?environment={e}&limit=20&cursor=… | 200 |
 | 생성 진행 조회 | GET /projects/{p}/generations/{generationId} | 200 |
+| 실패 snapshot 재시도 | POST /projects/{p}/generations/{generationId}/retry | 202 |
 | 패키지 파일 목록 | GET /projects/{p}/packages/{packageId} | 200 |
 | 텍스트 미리보기 | GET /projects/{p}/packages/{packageId}/files/{fileId} | 200 |
 | ZIP 다운로드 | GET /projects/{p}/packages/{packageId}/download | 200 binary |
@@ -360,6 +362,7 @@ POST 및 GET 응답:
   "revision": 1,
   "status": "queued",
   "packageId": null,
+  "retryOfGenerationId": null,
   "error": null
 }
 ```
@@ -369,6 +372,8 @@ succeeded에만 packageId가 있고, failed에는 공통 오류의 error 객체�
 즉시 발견한 입력 오류는 422, 작업 실행 중 실패는 GET 200 + failed로 구분한다.
 프론트는 1초부터 최대 5초까지 간격을 늘려 조회하고 완료·실패·화면 이탈 시 중단한다.
 일시적 조회 실패를 작업 실패로 단정하지 않고 재시도 UI를 제공한다.
+
+생성 이력은 프로젝트·환경 범위에서 최신순 cursor pagination으로 조회한다. 실패 작업의 retry는 원본 row를 다시 queued로 바꾸지 않고, 원본 immutable snapshot을 복사한 새 generation을 만든다. 새 작업은 `retryOfGenerationId`로 원본을 가리키며 별도의 `Idempotency-Key`를 요구한다. queued/running/succeeded 작업의 retry는 409 `GENERATION_NOT_RETRYABLE`로 거부한다.
 
 패키지 상세 응답:
 
@@ -445,6 +450,6 @@ hosted Redis/Elasticsearch는 VM의 `utils`로 생성하며 자동 설치가 아
 6. Crosswalk VM 생성 작업·미리보기·ZIP 다운로드, 기존 로컬 생성기 대체.
 7. Crosswalk 입력 검증과 생성 패키지 호환성 테스트.
 
-결정 필요: Crosswalk 차트의 정식 버전 정책, 인증 방식, 업로드 용량 운영값,
+결정 필요: Crosswalk 차트의 정식 버전 정책, 조직/역할 기반 공유 권한 확장, 업로드 용량 운영값,
 실제 설정 파일 암호화와 Secret 관리, 설정 템플릿의 서비스별 배치 DTO.
 이 문서만으로 API 구현·SSH 실행·외부 게시를 수행하지 않는다.

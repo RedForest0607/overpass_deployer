@@ -17,6 +17,17 @@ type DeliveryRepository struct{ db *sql.DB }
 
 func NewDeliveryRepository(db *sql.DB) *DeliveryRepository { return &DeliveryRepository{db: db} }
 
+func (r *DeliveryRepository) ProjectOwner(ctx context.Context, projectID string) (string, error) {
+	var ownerID string
+	if err := r.db.QueryRowContext(ctx, `SELECT owner_id FROM projects WHERE id=?`, projectID).Scan(&ownerID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", repository.ErrNotFound
+		}
+		return "", err
+	}
+	return ownerID, nil
+}
+
 func (r *DeliveryRepository) CreateArtifact(ctx context.Context, ownerID string, value domain.Artifact) (domain.Artifact, error) {
 	result, err := r.db.ExecContext(ctx, `INSERT INTO artifacts(id,project_id,kind,original_name,blob_key,size_bytes,sha256,created_at)
 		SELECT ?,?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM projects WHERE id=? AND owner_id=?)`, value.ID, value.ProjectID, value.Kind, value.OriginalName, value.BlobKey, value.SizeBytes, value.SHA256, formatTime(value.CreatedAt), value.ProjectID, ownerID)
@@ -87,8 +98,8 @@ func (r *DeliveryRepository) CreateGeneration(ctx context.Context, ownerID, key,
 		return domain.Generation{}, err
 	}
 	defer tx.Rollback()
-	if _, err = tx.ExecContext(ctx, `INSERT INTO generations(id,project_id,environment,topology_revision,snapshot_json,generator,output,status,attempts,package_id,error_json,created_at,updated_at)
-		SELECT ?,?,?,?,?,?,?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM projects WHERE id=? AND owner_id=?)`, generation.ID, generation.ProjectID, generation.Environment, generation.Revision, string(generation.Snapshot), generation.Generator, generation.Output, "queued", 0, nil, nil, formatTime(generation.CreatedAt), formatTime(generation.UpdatedAt), generation.ProjectID, ownerID); err != nil {
+	if _, err = tx.ExecContext(ctx, `INSERT INTO generations(id,project_id,environment,topology_revision,snapshot_json,generator,output,status,attempts,package_id,error_json,created_at,updated_at,retry_of_generation_id)
+		SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE EXISTS (SELECT 1 FROM projects WHERE id=? AND owner_id=?)`, generation.ID, generation.ProjectID, generation.Environment, generation.Revision, string(generation.Snapshot), generation.Generator, generation.Output, "queued", 0, nil, nil, formatTime(generation.CreatedAt), formatTime(generation.UpdatedAt), generation.RetryOfGenerationID, generation.ProjectID, ownerID); err != nil {
 		return domain.Generation{}, err
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO idempotency_keys(owner_id,project_id,idempotency_key,request_hash,generation_id,expires_at) VALUES(?,?,?,?,?,?)`, ownerID, generation.ProjectID, key, requestHash, generation.ID, formatTime(generation.CreatedAt.Add(24*time.Hour))); err != nil {
@@ -103,7 +114,7 @@ func (r *DeliveryRepository) CreateGeneration(ctx context.Context, ownerID, key,
 
 func (r *DeliveryRepository) FindGenerationByKey(ctx context.Context, ownerID, projectID, key, requestHash string) (domain.Generation, error) {
 	var storedHash string
-	row := r.db.QueryRowContext(ctx, `SELECT g.id,g.project_id,g.environment,g.topology_revision,g.snapshot_json,g.generator,g.output,g.status,g.attempts,g.package_id,g.error_json,g.created_at,g.updated_at,k.request_hash FROM idempotency_keys k JOIN generations g ON g.id=k.generation_id JOIN projects p ON p.id=g.project_id WHERE k.owner_id=? AND k.project_id=? AND k.idempotency_key=? AND p.owner_id=?`, ownerID, projectID, key, ownerID)
+	row := r.db.QueryRowContext(ctx, `SELECT g.id,g.project_id,g.environment,g.topology_revision,g.snapshot_json,g.generator,g.output,g.status,g.attempts,g.package_id,g.error_json,g.created_at,g.updated_at,g.retry_of_generation_id,k.request_hash FROM idempotency_keys k JOIN generations g ON g.id=k.generation_id JOIN projects p ON p.id=g.project_id WHERE k.owner_id=? AND k.project_id=? AND k.idempotency_key=? AND p.owner_id=?`, ownerID, projectID, key, ownerID)
 	value, err := scanGeneration(row, &storedHash)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Generation{}, repository.ErrNotFound
@@ -117,17 +128,73 @@ func (r *DeliveryRepository) FindGenerationByKey(ctx context.Context, ownerID, p
 	return value, nil
 }
 func (r *DeliveryRepository) GetGeneration(ctx context.Context, ownerID, projectID, id string) (domain.Generation, error) {
-	value, err := scanGeneration(r.db.QueryRowContext(ctx, `SELECT g.id,g.project_id,g.environment,g.topology_revision,g.snapshot_json,g.generator,g.output,g.status,g.attempts,g.package_id,g.error_json,g.created_at,g.updated_at FROM generations g JOIN projects p ON p.id=g.project_id WHERE p.owner_id=? AND g.project_id=? AND g.id=?`, ownerID, projectID, id))
+	value, err := scanGeneration(r.db.QueryRowContext(ctx, `SELECT g.id,g.project_id,g.environment,g.topology_revision,g.snapshot_json,g.generator,g.output,g.status,g.attempts,g.package_id,g.error_json,g.created_at,g.updated_at,g.retry_of_generation_id FROM generations g JOIN projects p ON p.id=g.project_id WHERE p.owner_id=? AND g.project_id=? AND g.id=?`, ownerID, projectID, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Generation{}, repository.ErrNotFound
 	}
 	return value, err
 }
 
+type generationCursor struct{ CreatedAt, ID, Environment string }
+
+func (r *DeliveryRepository) ListGenerations(ctx context.Context, ownerID, projectID, environment string, limit int, cursorValue string) (repository.GenerationPage, error) {
+	query := `SELECT g.id,g.project_id,g.environment,g.topology_revision,g.snapshot_json,g.generator,g.output,g.status,g.attempts,g.package_id,g.error_json,g.created_at,g.updated_at,g.retry_of_generation_id FROM generations g JOIN projects p ON p.id=g.project_id WHERE p.owner_id=? AND g.project_id=?`
+	args := []any{ownerID, projectID}
+	if environment != "" {
+		query += ` AND g.environment=?`
+		args = append(args, environment)
+	}
+	if cursorValue != "" {
+		cursor, err := decodeGenerationCursor(cursorValue)
+		if err != nil {
+			return repository.GenerationPage{}, err
+		}
+		if cursor.Environment != environment {
+			return repository.GenerationPage{}, repository.ErrInvalidCursor
+		}
+		query += ` AND (g.created_at < ? OR (g.created_at = ? AND g.id < ?))`
+		args = append(args, cursor.CreatedAt, cursor.CreatedAt, cursor.ID)
+	}
+	query += ` ORDER BY g.created_at DESC,g.id DESC LIMIT ?`
+	args = append(args, limit+1)
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return repository.GenerationPage{}, err
+	}
+	defer rows.Close()
+	items := make([]domain.Generation, 0, limit+1)
+	for rows.Next() {
+		value, err := scanGeneration(rows)
+		if err != nil {
+			return repository.GenerationPage{}, err
+		}
+		items = append(items, value)
+	}
+	if err := rows.Err(); err != nil {
+		return repository.GenerationPage{}, err
+	}
+	page := repository.GenerationPage{Items: items}
+	if len(items) > limit {
+		last := items[limit-1]
+		encoded, err := encodeGenerationCursor(last, environment)
+		if err != nil {
+			return repository.GenerationPage{}, err
+		}
+		page.Items = items[:limit]
+		page.NextCursor = &encoded
+	}
+	if len(items) == 0 {
+		if _, err := r.projectExists(ctx, ownerID, projectID); err != nil {
+			return repository.GenerationPage{}, err
+		}
+	}
+	return page, nil
+}
+
 func (r *DeliveryRepository) ClaimNextGeneration(ctx context.Context, maxAttempts int, now time.Time) (domain.Generation, error) {
 	row := r.db.QueryRowContext(ctx, `UPDATE generations SET status='running',attempts=attempts+1,updated_at=?
 		WHERE id=(SELECT id FROM generations WHERE status='queued' AND attempts<? ORDER BY created_at,id LIMIT 1) AND status='queued'
-		RETURNING id,project_id,environment,topology_revision,snapshot_json,generator,output,status,attempts,package_id,error_json,created_at,updated_at`, formatTime(now), maxAttempts)
+		RETURNING id,project_id,environment,topology_revision,snapshot_json,generator,output,status,attempts,package_id,error_json,created_at,updated_at,retry_of_generation_id`, formatTime(now), maxAttempts)
 	value, err := scanGeneration(row)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Generation{}, repository.ErrNotFound
@@ -150,7 +217,7 @@ func (r *DeliveryRepository) CompleteGeneration(ctx context.Context, generationI
 		}
 	}
 	value, err := scanGeneration(tx.QueryRowContext(ctx, `UPDATE generations SET status='succeeded',package_id=?,error_json=NULL,updated_at=? WHERE id=? AND status='running'
-		RETURNING id,project_id,environment,topology_revision,snapshot_json,generator,output,status,attempts,package_id,error_json,created_at,updated_at`, pkg.ID, formatTime(now), generationID))
+		RETURNING id,project_id,environment,topology_revision,snapshot_json,generator,output,status,attempts,package_id,error_json,created_at,updated_at,retry_of_generation_id`, pkg.ID, formatTime(now), generationID))
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return domain.Generation{}, repository.ErrNotFound
@@ -315,8 +382,9 @@ func scanGeneration(row scanner, extra ...*string) (domain.Generation, error) {
 	var v domain.Generation
 	var env, snapshot, createdAt, updatedAt string
 	var packageID sql.NullString
+	var retryOfGenerationID sql.NullString
 	var failure sql.NullString
-	args := []any{&v.ID, &v.ProjectID, &env, &v.Revision, &snapshot, &v.Generator, &v.Output, &v.Status, &v.Attempts, &packageID, &failure, &createdAt, &updatedAt}
+	args := []any{&v.ID, &v.ProjectID, &env, &v.Revision, &snapshot, &v.Generator, &v.Output, &v.Status, &v.Attempts, &packageID, &failure, &createdAt, &updatedAt, &retryOfGenerationID}
 	if len(extra) > 0 {
 		args = append(args, extra[0])
 	}
@@ -331,12 +399,32 @@ func scanGeneration(row scanner, extra ...*string) (domain.Generation, error) {
 	if packageID.Valid {
 		v.PackageID = &packageID.String
 	}
+	if retryOfGenerationID.Valid {
+		v.RetryOfGenerationID = &retryOfGenerationID.String
+	}
 	if failure.Valid {
 		var f domain.Failure
 		_ = json.Unmarshal([]byte(failure.String), &f)
 		v.Error = &f
 	}
 	return v, nil
+}
+
+func encodeGenerationCursor(v domain.Generation, environment string) (string, error) {
+	body, err := json.Marshal(generationCursor{CreatedAt: formatTime(v.CreatedAt), ID: v.ID, Environment: environment})
+	return base64.RawURLEncoding.EncodeToString(body), err
+}
+
+func decodeGenerationCursor(value string) (generationCursor, error) {
+	body, err := base64.RawURLEncoding.DecodeString(value)
+	if err != nil {
+		return generationCursor{}, repository.ErrInvalidCursor
+	}
+	var cursor generationCursor
+	if json.Unmarshal(body, &cursor) != nil || cursor.CreatedAt == "" || cursor.ID == "" {
+		return generationCursor{}, repository.ErrInvalidCursor
+	}
+	return cursor, nil
 }
 func (r *DeliveryRepository) projectExists(ctx context.Context, owner, id string) (bool, error) {
 	var one int

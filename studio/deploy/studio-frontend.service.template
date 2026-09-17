@@ -1,0 +1,19 @@
+[Unit]
+Description=Overpass Studio Frontend
+After=network.target
+
+[Service]
+Type=simple
+User=overpass-studio
+Group=overpass-studio
+WorkingDirectory=/opt/overpass-studio/current/frontend
+ExecStart=/usr/bin/npm run start -- --hostname 127.0.0.1 --port 3000
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target

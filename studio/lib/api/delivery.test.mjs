@@ -44,6 +44,37 @@ test('generation sends an idempotency key with immutable revision', async (t) =>
   });
 });
 
+test('generation history and retry keep project and snapshot source scoped', async (t) => {
+  const calls = [];
+  t.mock.method(globalThis, 'fetch', async (url, options = {}) => {
+    calls.push({ url: String(url), options });
+    return new Response(
+      JSON.stringify(
+        String(url).endsWith('/retry')
+          ? { id: 'retry-1', retryOfGenerationId: 'failed/1' }
+          : { items: [], nextCursor: 'next' },
+      ),
+      { status: String(url).endsWith('/retry') ? 202 : 200 },
+    );
+  });
+
+  await deliveryAPI.listGenerations('project/1', 'qa', 'cursor/1');
+  await deliveryAPI.retryGeneration('project/1', 'failed/1', 'retry-key');
+
+  assert.match(
+    calls[0].url,
+    /projects\/project%2F1\/generations\?limit=10&environment=qa&cursor=cursor%2F1$/,
+  );
+  assert.match(
+    calls[1].url,
+    /projects\/project%2F1\/generations\/failed%2F1\/retry$/,
+  );
+  assert.equal(
+    new Headers(calls[1].options.headers).get('Idempotency-Key'),
+    'retry-key',
+  );
+});
+
 test('artifact upload uses multipart fields expected by the backend', async (t) => {
   let call;
   t.mock.method(globalThis, 'fetch', async (url, options) => {

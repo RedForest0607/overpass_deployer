@@ -54,6 +54,13 @@ func TestArtifactToCrosswalkPackageLifecycle(t *testing.T) {
 	if generation.Status != "succeeded" || generation.PackageID == nil {
 		t.Fatalf("completed generation=%+v", generation)
 	}
+	notRetryableRequest := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/projects/"+projectID+"/generations/"+generation.ID+"/retry", nil)
+	notRetryableRequest.Header.Set("Idempotency-Key", "retry-succeeded")
+	notRetryable := httptest.NewRecorder()
+	handler.ServeHTTP(notRetryable, notRetryableRequest)
+	if notRetryable.Code != http.StatusConflict || !strings.Contains(notRetryable.Body.String(), "GENERATION_NOT_RETRYABLE") {
+		t.Fatalf("retry succeeded generation=%d %s", notRetryable.Code, notRetryable.Body.String())
+	}
 
 	packageURL := "/api/v1/projects/" + projectID + "/packages/" + *generation.PackageID
 	metadata := httptest.NewRecorder()
@@ -129,6 +136,39 @@ func TestArtifactValidationAndProjectScope(t *testing.T) {
 	generation = awaitGeneration(t, handler, second, generation.ID)
 	if generation.Status != "failed" || generation.Error == nil || !strings.Contains(generation.Error.Message, "artifact") {
 		t.Fatalf("foreign generation=%+v", generation)
+	}
+
+	listed := httptest.NewRecorder()
+	handler.ServeHTTP(listed, httptest.NewRequest(http.MethodGet, "http://localhost/api/v1/projects/"+second+"/generations?environment=dev&limit=10", nil))
+	if listed.Code != http.StatusOK || !strings.Contains(listed.Body.String(), generation.ID) {
+		t.Fatalf("list generations=%d %s", listed.Code, listed.Body.String())
+	}
+
+	retryRequest := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/projects/"+second+"/generations/"+generation.ID+"/retry", nil)
+	retryRequest.Header.Set("Idempotency-Key", "retry-foreign-generation")
+	retried := httptest.NewRecorder()
+	handler.ServeHTTP(retried, retryRequest)
+	if retried.Code != http.StatusAccepted {
+		t.Fatalf("retry generation=%d %s", retried.Code, retried.Body.String())
+	}
+	var retry domain.Generation
+	if err := json.Unmarshal(retried.Body.Bytes(), &retry); err != nil {
+		t.Fatal(err)
+	}
+	if retry.ID == generation.ID || retry.RetryOfGenerationID == nil || *retry.RetryOfGenerationID != generation.ID || retry.Status != "queued" || retry.Attempts != 0 {
+		t.Fatalf("retried generation=%+v", retry)
+	}
+	retry = awaitGeneration(t, handler, second, retry.ID)
+	if retry.Status != "failed" {
+		t.Fatalf("retried generation final=%+v", retry)
+	}
+
+	replayRequest := httptest.NewRequest(http.MethodPost, "http://localhost/api/v1/projects/"+second+"/generations/"+generation.ID+"/retry", nil)
+	replayRequest.Header.Set("Idempotency-Key", "retry-foreign-generation")
+	replayed := httptest.NewRecorder()
+	handler.ServeHTTP(replayed, replayRequest)
+	if replayed.Code != http.StatusAccepted || !strings.Contains(replayed.Body.String(), retry.ID) {
+		t.Fatalf("retry replay=%d %s", replayed.Code, replayed.Body.String())
 	}
 }
 

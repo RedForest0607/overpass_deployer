@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"studio-backend/internal/domain"
+	"studio-backend/internal/identity"
 	"studio-backend/internal/repository"
 )
 
 type Projects struct {
 	store          repository.ProjectStore
-	ownerID        string
 	now            func() time.Time
 	newID          func() (string, error)
 	maxNodes       int
@@ -27,14 +27,18 @@ type InvalidInput struct{ Err error }
 func (e *InvalidInput) Error() string { return e.Err.Error() }
 func (e *InvalidInput) Unwrap() error { return e.Err }
 
-func NewProjects(store repository.ProjectStore, ownerID string, maxNodes, maxConnections int) (*Projects, error) {
-	if store == nil || strings.TrimSpace(ownerID) == "" {
-		return nil, errors.New("project store and owner are required")
+func NewProjects(store repository.ProjectStore, maxNodes, maxConnections int) (*Projects, error) {
+	if store == nil {
+		return nil, errors.New("project store is required")
 	}
-	return &Projects{store: store, ownerID: ownerID, now: time.Now, newID: randomProjectID, maxNodes: maxNodes, maxConnections: maxConnections}, nil
+	return &Projects{store: store, now: time.Now, newID: randomProjectID, maxNodes: maxNodes, maxConnections: maxConnections}, nil
 }
 
 func (s *Projects) Create(ctx context.Context, name, description string) (domain.Project, error) {
+	ownerID, err := requestOwner(ctx)
+	if err != nil {
+		return domain.Project{}, err
+	}
 	name = strings.TrimSpace(name)
 	if err := domain.ValidateProject(name, description); err != nil {
 		return domain.Project{}, &InvalidInput{Err: err}
@@ -44,19 +48,31 @@ func (s *Projects) Create(ctx context.Context, name, description string) (domain
 		return domain.Project{}, err
 	}
 	now := s.now().UTC()
-	return s.store.CreateProject(ctx, s.ownerID, domain.Project{ID: id, Name: name, Description: description, Revision: 1, CreatedAt: now, UpdatedAt: now})
+	return s.store.CreateProject(ctx, ownerID, domain.Project{ID: id, Name: name, Description: description, Revision: 1, CreatedAt: now, UpdatedAt: now})
 }
 
 func (s *Projects) List(ctx context.Context, limit int, cursor string) (repository.ProjectPage, error) {
-	return s.store.ListProjects(ctx, s.ownerID, limit, cursor)
+	ownerID, err := requestOwner(ctx)
+	if err != nil {
+		return repository.ProjectPage{}, err
+	}
+	return s.store.ListProjects(ctx, ownerID, limit, cursor)
 }
 
 func (s *Projects) Get(ctx context.Context, projectID string) (domain.Project, error) {
-	return s.store.GetProject(ctx, s.ownerID, projectID)
+	ownerID, err := requestOwner(ctx)
+	if err != nil {
+		return domain.Project{}, err
+	}
+	return s.store.GetProject(ctx, ownerID, projectID)
 }
 
 func (s *Projects) Update(ctx context.Context, projectID string, expected int64, changes repository.ProjectChanges) (domain.Project, error) {
-	current, err := s.store.GetProject(ctx, s.ownerID, projectID)
+	ownerID, err := requestOwner(ctx)
+	if err != nil {
+		return domain.Project{}, err
+	}
+	current, err := s.store.GetProject(ctx, ownerID, projectID)
 	if err != nil {
 		return domain.Project{}, err
 	}
@@ -73,18 +89,34 @@ func (s *Projects) Update(ctx context.Context, projectID string, expected int64,
 	if err := domain.ValidateProject(name, description); err != nil {
 		return domain.Project{}, &InvalidInput{Err: err}
 	}
-	return s.store.UpdateProject(ctx, s.ownerID, projectID, expected, repository.ProjectChanges{Name: &name, Description: &description}, s.now().UTC())
+	return s.store.UpdateProject(ctx, ownerID, projectID, expected, repository.ProjectChanges{Name: &name, Description: &description}, s.now().UTC())
 }
 
 func (s *Projects) GetTopology(ctx context.Context, projectID string, environment domain.Environment) (domain.Topology, error) {
-	return s.store.GetTopology(ctx, s.ownerID, projectID, environment)
+	ownerID, err := requestOwner(ctx)
+	if err != nil {
+		return domain.Topology{}, err
+	}
+	return s.store.GetTopology(ctx, ownerID, projectID, environment)
 }
 
 func (s *Projects) SaveTopology(ctx context.Context, projectID string, environment domain.Environment, expected int64, blueprint, layout json.RawMessage) (domain.Topology, error) {
+	ownerID, err := requestOwner(ctx)
+	if err != nil {
+		return domain.Topology{}, err
+	}
 	if err := domain.ValidateTopologyStructure(blueprint, layout, s.maxNodes, s.maxConnections); err != nil {
 		return domain.Topology{}, &InvalidInput{Err: err}
 	}
-	return s.store.SaveTopology(ctx, s.ownerID, domain.Topology{ProjectID: projectID, Environment: environment, Blueprint: cloneJSON(blueprint), Layout: cloneJSON(layout), UpdatedAt: s.now().UTC()}, expected)
+	return s.store.SaveTopology(ctx, ownerID, domain.Topology{ProjectID: projectID, Environment: environment, Blueprint: cloneJSON(blueprint), Layout: cloneJSON(layout), UpdatedAt: s.now().UTC()}, expected)
+}
+
+func requestOwner(ctx context.Context) (string, error) {
+	ownerID, ok := identity.OwnerID(ctx)
+	if !ok {
+		return "", errors.New("authenticated owner is missing from request context")
+	}
+	return ownerID, nil
 }
 
 func cloneJSON(value json.RawMessage) json.RawMessage { return append(json.RawMessage(nil), value...) }

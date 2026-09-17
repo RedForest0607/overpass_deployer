@@ -9,7 +9,9 @@ studio_repository_dir=$(CDPATH= cd -- "$studio_dir/.." && pwd)
 studio_backend_address=${STUDIO_LOCAL_BACKEND_ADDRESS:-127.0.0.1:8080}
 studio_frontend_host=${STUDIO_LOCAL_FRONTEND_HOST:-127.0.0.1}
 studio_frontend_port=${STUDIO_LOCAL_FRONTEND_PORT:-3000}
+studio_allowed_origins=${STUDIO_LOCAL_ALLOWED_ORIGINS:-"http://${studio_frontend_host}:${studio_frontend_port}"}
 studio_data_dir=${STUDIO_LOCAL_DATA_DIR:-"$studio_repository_dir/.cache/studio-local"}
+studio_ready_attempts=${STUDIO_LOCAL_READY_ATTEMPTS:-200}
 studio_api_target="http://$studio_backend_address"
 studio_backend_pid=""
 
@@ -28,20 +30,32 @@ for studio_command in go node npm curl; do
   fi
 done
 
+case "$studio_ready_attempts" in
+  ''|*[!0-9]*)
+    echo "STUDIO_LOCAL_READY_ATTEMPTS must be a positive integer." >&2
+    exit 1
+    ;;
+  0)
+    echo "STUDIO_LOCAL_READY_ATTEMPTS must be greater than zero." >&2
+    exit 1
+    ;;
+esac
+
 if [ ! -d "$studio_dir/node_modules" ]; then
   echo "studio/node_modules is missing; run 'cd studio && npm ci' first." >&2
   exit 1
 fi
 
 echo "Starting Studio Backend at $studio_api_target"
-go -C "$studio_backend_dir" run ./cmd/studio-api \
+STUDIO_ALLOWED_ORIGINS="$studio_allowed_origins" \
+  go -C "$studio_backend_dir" run ./cmd/studio-api \
   --address "$studio_backend_address" \
   --data-dir "$studio_data_dir" &
 studio_backend_pid=$!
 
 studio_backend_ready=false
 studio_attempt=0
-while [ "$studio_attempt" -lt 50 ]; do
+while [ "$studio_attempt" -lt "$studio_ready_attempts" ]; do
   if curl --fail --silent --show-error "$studio_api_target/healthz" >/dev/null 2>&1; then
     studio_backend_ready=true
     break

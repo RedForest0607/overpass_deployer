@@ -24,6 +24,7 @@ import {
   nextPollDelay,
   type IdempotencyAttempt,
 } from './generation-state';
+import GenerationHistory from './GenerationHistory';
 
 const wait = (milliseconds: number, signal: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
@@ -227,6 +228,29 @@ export default function ServerPackage({
     }
   }
 
+  async function resumeGeneration(value: Generation) {
+    if (!projectId || busy) return;
+    operation.current?.abort();
+    const controller = new AbortController();
+    operation.current = controller;
+    setBusy(true);
+    setGeneration(value);
+    setGeneratedPackage(null);
+    setMessage(
+      value.status === 'failed'
+        ? '실패한 snapshot을 다시 생성하고 있습니다…'
+        : '선택한 생성 작업을 불러오고 있습니다…',
+    );
+    try {
+      await loadPackage(projectId, value, controller.signal);
+    } finally {
+      if (operation.current === controller) {
+        operation.current = null;
+        setBusy(false);
+      }
+    }
+  }
+
   async function download() {
     if (!projectId || !generatedPackage) return;
     setBusy(true);
@@ -374,6 +398,15 @@ export default function ServerPackage({
         {message ||
           '생성 요청 전 프로젝트 artifact 참조와 Crosswalk VM capability를 확인합니다.'}
       </output>
+      {projectId && (
+        <GenerationHistory
+          key={projectId + ':' + environment}
+          projectId={projectId}
+          environment={environment}
+          activeGeneration={generation}
+          onResume={resumeGeneration}
+        />
+      )}
     </section>
   );
 }

@@ -30,11 +30,13 @@ go -C backend run ./cmd/studio-api --data-dir ./.studio-data
 
 ```sh
 npx tsc --noEmit
-node --test features/topology/model.test.mjs
-node --test features/topology/api-adapter.test.mjs
-node --test schemas/contracts.test.mjs
+npm run test:e2e:browser
 npm run build
 ```
+
+저장소 루트의 `make test-studio-local`은 백엔드·프런트 단위/계약 테스트, Studio→Crosswalk HTTP E2E와 실제 Chrome 브라우저 E2E를 함께 실행합니다.
+macOS에서는 시스템 Chrome을 자동 사용합니다. 다른 환경에서는 Playwright Chromium을 설치하거나 `PLAYWRIGHT_CHROME_PATH`에 Chrome/Chromium 실행 파일 경로를 지정하세요.
+브라우저 실패 시 trace·스크린샷·video와 HTML report는 저장소의 `.cache/studio-browser-e2e` 아래에 보존됩니다.
 
 ## 구현 범위
 
@@ -58,7 +60,7 @@ JSON으로 편집 내용을 보관한 뒤 확인 대화상자를 통해 서버 �
 검증 이후 설계가 변경되면 결과를 무효화합니다. 오류를 클릭하면 노드 설정과 관련 필드 오류를 표시합니다.
 현재 편집기는 서비스당 main TCP 포트 하나와 VM process/Kubernetes 배치를 지원합니다.
 API로 저장한 복수 포트·Compose 등 미지원 표현은 불러올 때 거부하며 원본을 변경하지 않습니다.
-JAR 파일명 입력은 로컬 초안 전용이며 영속 저장·업로드가 아닙니다. artifactRef 등록은 후속 작업입니다.
+프로젝트 artifact를 등록해 Java JAR·설정·추가 파일·script values와 hosted utility 파일에 매핑할 수 있습니다.
 
 ## 모듈
 
@@ -67,17 +69,20 @@ JAR 파일명 입력은 로컬 초안 전용이며 영속 저장·업로드가 �
 - `features/topology/api-adapter.ts`: 지원하는 React Flow 표현과 API Blueprint/layout 변환; 미지원 모델의 조용한 손실 방지
 - `features/studio/usePersistence.ts`: 프로젝트/환경 선택, revision 저장, dirty 상태 및 검증 응답 수명
 - `lib/api`: HTTP 오류 처리와 타입이 있는 프로젝트·설계·검증 호출
-- `features/generation`: 화면용 초안 직렬화, 파일 미리보기와 ZIP 다운로드
+- `features/generation`: 서버 generation 실행·이력·실패 snapshot 재시도, 파일 미리보기와 ZIP 다운로드
+- `e2e`: 실제 브라우저 delivery lifecycle과 immutable snapshot 재시도 검증
 - `components/ui`: scaffold가 제공한 UI primitives
 - `backend`: 독립 Go API 서버와 SQLite migration
+- `backend/cmd/studio-admin`: data directory 검사, checksum 백업 검증과 비파괴 복구 CLI
+- `deploy`: SSO same-origin Nginx, trusted-header 환경과 API service/롤백 참조 자산
 - `schemas`: OpenAPI 3.1과 Blueprint v1 JSON Schema
 
 ## 백엔드 경계
 
-현재 생성물은 설계 초안이며 실행 가능한 배포 번들이 아닙니다.
-JAR 업로드·보관, 설정/env 파일 패키징, Secret 저장, Go CLI 실행은 연결되지 않았습니다.
-VM YAML 초안은 Java→VM 배치만 매핑하며 DB/Redis 환경변수와 방화벽을 생성하지 않습니다.
-Redis/Elasticsearch의 배치는 JSON에 보존되지만 설치·실행 스크립트는 생성하지 않습니다.
+서버 package 생성은 실제 artifact가 포함된 Crosswalk VM ZIP을 만들고 Crosswalk CLI dry-run 호환성 E2E를 통과합니다.
+실제 Secret 값 저장과 원격 배포 실행은 연결하지 않으며 Crosswalk가 SSH 실행 책임을 유지합니다.
+VM 패키지는 DB 방화벽이나 클라우드 네트워크를 생성하지 않습니다.
+Hosted Redis/Elasticsearch는 Crosswalk utility 설정으로 변환하지만 운영 artifact와 service 절차는 사용자가 명시해야 합니다.
 AWS EC2는 VM 호스트 유형 표시이며 AWS 프로비저닝을 수행하지 않습니다.
 Helm/Terraform 노드는 설계용이며 해당 산출물 생성기는 후속 구현 대상입니다.
 운영 SSH 키나 비밀 값을 이 화면에 입력하지 마세요.

@@ -1,0 +1,21 @@
+[Unit]
+Description=Overpass Studio API
+After=network.target
+
+[Service]
+Type=simple
+User=overpass-studio
+Group=overpass-studio
+EnvironmentFile=/etc/overpass-studio/studio-api.env
+ExecStart=/opt/overpass-studio/current/backend/studio-api
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/overpass-studio
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

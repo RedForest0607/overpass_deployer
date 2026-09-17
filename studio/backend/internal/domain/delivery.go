@@ -38,19 +38,20 @@ type Artifact struct {
 }
 
 type Generation struct {
-	ID          string          `json:"id"`
-	ProjectID   string          `json:"projectId"`
-	Environment Environment     `json:"environment"`
-	Revision    int64           `json:"revision"`
-	Status      string          `json:"status"`
-	Generator   string          `json:"generator"`
-	Output      string          `json:"output"`
-	Attempts    int             `json:"attempts"`
-	PackageID   *string         `json:"packageId"`
-	Error       *Failure        `json:"error"`
-	Snapshot    json.RawMessage `json:"-"`
-	CreatedAt   time.Time       `json:"createdAt"`
-	UpdatedAt   time.Time       `json:"updatedAt"`
+	ID                  string          `json:"id"`
+	ProjectID           string          `json:"projectId"`
+	Environment         Environment     `json:"environment"`
+	Revision            int64           `json:"revision"`
+	Status              string          `json:"status"`
+	Generator           string          `json:"generator"`
+	Output              string          `json:"output"`
+	Attempts            int             `json:"attempts"`
+	PackageID           *string         `json:"packageId"`
+	RetryOfGenerationID *string         `json:"retryOfGenerationId"`
+	Error               *Failure        `json:"error"`
+	Snapshot            json.RawMessage `json:"-"`
+	CreatedAt           time.Time       `json:"createdAt"`
+	UpdatedAt           time.Time       `json:"updatedAt"`
 }
 
 type Failure struct {

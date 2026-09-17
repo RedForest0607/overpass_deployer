@@ -61,7 +61,15 @@ make smoke-studio-local
 make test-studio-local
 ```
 
-이 명령은 Go 백엔드 테스트와 Studio 타입·모델·adapter·계약 테스트를 실행한다.
+이 명령은 Go 백엔드 테스트, Studio 타입·모델·adapter·계약 테스트, Studio→Crosswalk HTTP E2E와 실제 Chrome 브라우저 E2E를 실행한다. 브라우저 테스트는 실행마다 격리된 `.cache/studio-browser-e2e/data/<run-id>`를 사용하며 실패 진단 자료도 `.cache/studio-browser-e2e`에 남긴다.
+
+브라우저 E2E만 실행하려면 다음 명령을 사용한다.
+
+```sh
+make test-studio-browser-e2e
+```
+
+macOS에서는 시스템 Chrome을 자동으로 사용한다. 다른 환경에서는 Playwright Chromium을 준비하거나 `PLAYWRIGHT_CHROME_PATH`로 Chrome/Chromium 실행 파일을 지정한다.
 프로덕션 빌드까지 확인하려면 다음 명령을 추가로 실행한다.
 
 ```sh
@@ -76,7 +84,9 @@ make build-studio
 | `STUDIO_LOCAL_BACKEND_ADDRESS` | `127.0.0.1:8080` | 통합 스크립트가 시작할 API 주소 |
 | `STUDIO_LOCAL_FRONTEND_HOST` | `127.0.0.1` | 프런트 개발 서버 host |
 | `STUDIO_LOCAL_FRONTEND_PORT` | `3000` | 프런트 개발 서버 port |
+| `STUDIO_LOCAL_ALLOWED_ORIGINS` | 실제 프런트 URL | 백엔드가 허용할 정확한 브라우저 Origin 목록 |
 | `STUDIO_LOCAL_DATA_DIR` | `.cache/studio-local` | SQLite·artifact·package 데이터 경로 |
+| `STUDIO_LOCAL_READY_ATTEMPTS` | `200` | 백엔드 준비 확인 횟수(회당 0.1초) |
 | `STUDIO_API_PROXY_TARGET` | `http://127.0.0.1:8080` | 프런트만 따로 실행할 때 사용할 API proxy 대상 |
 
 예를 들어 기본 포트가 이미 사용 중이면 다음과 같이 실행한다.
@@ -122,3 +132,5 @@ STUDIO_API_PROXY_TARGET=http://127.0.0.1:8080 npm run dev
 
 백엔드는 보안을 위해 loopback 주소만 허용한다. 외부 기기에서 접근하거나 공개 배포하는 용도로
 이 로컬 구성을 변경하지 않는다.
+
+로컬 통합 스크립트는 기본 `STUDIO_AUTH_MODE=local`을 사용해 기존 `local-user` 데이터를 유지한다. 여러 사용자가 함께 접근하는 환경에서는 개발 서버를 외부에 노출하지 말고 `studio/deploy/`의 trusted-header same-origin 경계를 사용한다.

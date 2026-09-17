@@ -15,12 +15,37 @@ go run ./cmd/studio-api --data-dir ./.local-data
 다른 로컬 origin은 `--allowed-origins` 또는 `STUDIO_ALLOWED_ORIGINS`로 지정합니다.
 공개 주소 bind는 현재 차단합니다.
 
+기본 인증 모드는 로컬 개발용 `local`이며 모든 데이터 소유자는 `local-user`입니다. 사내 공유 환경에서는 TLS/SSO reverse proxy 뒤에서 다음 설정을 사용합니다.
+
+```sh
+STUDIO_AUTH_MODE=trusted-header \
+STUDIO_AUTH_PROXY_SECRET='replace-with-at-least-32-random-base64url-characters' \
+STUDIO_ALLOWED_ORIGINS='https://studio.example.com' \
+go run ./cmd/studio-api --data-dir ./.local-data
+```
+
+proxy는 `X-Studio-Authenticated-User`와 `X-Studio-Proxy-Secret`을 외부 요청에서 제거한 뒤 검증 결과로 다시 설정해야 합니다. 사용자 헤더 이름은 `STUDIO_AUTH_HEADER`, secret 헤더 이름은 `STUDIO_AUTH_PROXY_SECRET_HEADER`로 변경할 수 있습니다. `/healthz` 외의 API는 인증되며 모든 저장소 접근은 요청 사용자 owner로 격리됩니다. 참조 구성과 롤백 절차는 `../deploy/README.md`를 참고합니다.
+
 ## 검증
 
 ```sh
 go test ./...
+go test -race ./...
 go vet ./...
 ```
+
+## 운영 백업과 복구
+
+`studio-admin`은 실행 중인 SQLite의 일관된 snapshot과 immutable artifact/package를 checksum manifest가 포함된 `tar.gz`로 저장합니다. 백업 파일과 복구 대상은 기존 경로를 덮어쓰지 않습니다.
+
+```sh
+go run ./cmd/studio-admin inspect --data-dir ./.local-data
+go run ./cmd/studio-admin backup --data-dir ./.local-data --output ./studio-backup.tar.gz
+go run ./cmd/studio-admin verify --input ./studio-backup.tar.gz
+go run ./cmd/studio-admin restore --input ./studio-backup.tar.gz --data-dir ./.restored-data
+```
+
+복구가 완료되면 새 data directory로 API를 기동해 프로젝트, artifact와 package 다운로드를 확인한 뒤 경로를 전환합니다. 상세 절차는 `../../docs/STUDIO-OPERATIONS.md`를 참고합니다.
 
 ## 현재 API
 

@@ -29,11 +29,23 @@ func Open(ctx context.Context, databasePath string) (*sql.DB, error) {
 		db.Close()
 		return nil, err
 	}
-	if err := os.Chmod(databasePath, 0o600); err != nil {
+	if err := secureDatabaseFiles(databasePath); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("secure sqlite database: %w", err)
+		return nil, err
 	}
 	return db, nil
+}
+
+func secureDatabaseFiles(databasePath string) error {
+	for _, path := range []string{databasePath, databasePath + "-wal", databasePath + "-shm"} {
+		if err := os.Chmod(path, 0o600); err != nil {
+			if os.IsNotExist(err) && path != databasePath {
+				continue
+			}
+			return fmt.Errorf("secure sqlite file %q: %w", path, err)
+		}
+	}
+	return nil
 }
 
 func configure(ctx context.Context, db *sql.DB) error {

@@ -2,7 +2,11 @@ openapi: 3.1.0
 info:
   title: Overpass Studio API
   version: 1.0.0-draft
-  description: Studio project, topology, artifact, validation, and package API.
+  description: >-
+    Studio project, topology, artifact, validation, and package API. The default
+    local mode uses the local-user owner. Shared deployments authenticate at a
+    same-origin reverse proxy; the backend validates proxy-injected identity and
+    secret headers and scopes every resource to that owner.
 servers:
   - url: /api/v1
 paths:
@@ -175,6 +179,26 @@ paths:
   /projects/{projectId}/generations:
     parameters:
       - { $ref: '#/components/parameters/ProjectId' }
+    get:
+      operationId: listGenerations
+      parameters:
+        - { $ref: '#/components/parameters/Limit' }
+        - { $ref: '#/components/parameters/Cursor' }
+        - name: environment
+          in: query
+          schema: { $ref: '#/components/schemas/Environment' }
+      responses:
+        '200':
+          description: Generation history page in reverse chronological order.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, nextCursor]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/Generation' } }
+                  nextCursor: { type: [string, 'null'] }
+        default: { $ref: '#/components/responses/Error' }
     post:
       operationId: createGeneration
       parameters:
@@ -206,6 +230,27 @@ paths:
       responses:
         '200':
           description: Generation status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Generation' }
+        default: { $ref: '#/components/responses/Error' }
+  /projects/{projectId}/generations/{generationId}/retry:
+    parameters:
+      - { $ref: '#/components/parameters/ProjectId' }
+      - name: generationId
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      operationId: retryGeneration
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 128 }
+      responses:
+        '202':
+          description: A new generation queued from the failed immutable snapshot.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Generation' }
@@ -446,7 +491,7 @@ components:
         output: { $ref: '#/components/schemas/Output' }
     Generation:
       type: object
-      required: [id, projectId, environment, revision, generator, output, status, attempts, packageId, error, createdAt, updatedAt]
+      required: [id, projectId, environment, revision, generator, output, status, attempts, packageId, retryOfGenerationId, error, createdAt, updatedAt]
       properties:
         id: { type: string }
         projectId: { type: string }
@@ -457,6 +502,7 @@ components:
         status: { type: string, enum: [queued, running, succeeded, failed] }
         attempts: { type: integer, minimum: 0 }
         packageId: { type: [string, 'null'] }
+        retryOfGenerationId: { type: [string, 'null'] }
         error:
           oneOf:
             - { $ref: '#/components/schemas/ErrorBody' }

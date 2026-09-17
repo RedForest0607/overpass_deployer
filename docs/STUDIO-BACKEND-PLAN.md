@@ -15,7 +15,7 @@
 - [x] Phase 4: immutable artifact streaming 업로드·목록, content-addressed 저장, JAR/ZIP·UTF-8·archive 검증 구현. 프론트 선택 UI는 Phase 6에 포함.
 - [x] Phase 5: Crosswalk deploy.yml renderer, 실제 artifact ZIP 배치, 용도별 artifact kind 재검증, persistent 비동기 worker/recovery, idempotent generation, package 메타데이터·preview·download API와 실제 Crosswalk loader/CLI dry-run E2E 구현.
 - [x] Phase 6: 프로젝트 CRUD, 환경별 저장/불러오기, dirty·409 처리, artifact 등록 및 토폴로지 전체 매핑, 서버 package 미리보기·ZIP 다운로드 구현. HTTP lifecycle과 실제 Crosswalk CLI를 잇는 로컬 E2E harness 추가.
-- [~] Phase 7: 24시간 grace 기반 orphan blob 정리 구현. generation 이력/재진입, 브라우저 조작 E2E와 운영 보강이 다음 단계.
+- [x] Phase 7: 데이터 수명주기, generation 이력·재시도, 실제 Chrome E2E, checksum backup/restore·권한 검사·race/load/log 보안 회귀, trusted-header 인증·CSRF·owner 격리와 same-origin 배포/롤백 계약 구현.
 
 ## 1. 목표
 
@@ -120,7 +120,7 @@ SQLite, 로컬 파일 저장소, Crosswalk 생성기는 interface 구현체이�
 | `projects` | id, owner_id, name, description, revision, created_at, updated_at |
 | `topologies` | project_id + environment unique, revision, blueprint_json, layout_json, updated_at |
 | `artifacts` | id, project_id, kind, original_name, blob_key, size, sha256, created_at; 수정 불가 |
-| `generations` | id, project_id, environment, topology_revision, generator, output, status, error_json, package_id |
+| `generations` | id, project_id, environment, topology_revision, generator, output, status, error_json, package_id, retry_of_generation_id |
 | `idempotency_keys` | owner_id + project_id + key unique, request_hash, generation_id, expires_at |
 | `packages` | id, project_id, snapshot metadata, generator_version, manifest_json, created_at |
 | `package_files` | package_id + path unique, blob_key, media_type, size, sha256, previewable |
@@ -239,11 +239,12 @@ worker panic과 프로세스 종료가 API 프로세스를 종료시키지 않�
 
 ### Phase 7 — 운영 준비
 
-- DB backup/restore와 data directory 권한 가이드를 작성한다.
-- `go test -race`, fuzz test, request size/load smoke test를 수행한다.
-- 로그에 Secret, 내부 경로, stack trace가 노출되지 않는지 검토한다.
-- 배포 바이너리/컨테이너 및 Studio 프론트와의 same-origin 실행 방식을 문서화한다.
-- 사내 공유 전에 실제 인증, CSRF 정책, project 권한 middleware를 구현한다.
+Phase 7은 기능 추가보다 이미 만든 로컬 배포 패키지 흐름을 재현·복구·운영할 수 있게 만드는 단계다.
+
+- [x] **7-A 데이터 수명주기·작업 재진입:** 24시간 grace orphan 정리, 중단 generation recovery, cursor 이력과 실패 immutable snapshot 재시도.
+- [x] **7-B 실제 사용자 흐름 검증:** Chrome에서 프로젝트 생성부터 artifact 등록·매핑, topology 저장, package 생성·ZIP 검증과 실패 snapshot 재시도 자동화.
+- [x] **7-C 운영 복구·보안:** 온라인 SQLite snapshot, checksum manifest, 비파괴 verify/restore, data directory·DB/WAL/SHM 권한과 symlink 검사, race/동시 read smoke, request 제한과 로그·panic·generation 오류 비노출 회귀, 복구 runbook.
+- [x] **7-D 공유·배포 경계:** `local`/`trusted-header` 인증 모드, proxy secret 검증, request owner 기반 project 전체 격리, generation worker owner 재조회, browser fetch metadata/Origin CSRF 방어, release build target과 Nginx·systemd·환경 파일·롤백 계약. API 공개 bind는 계속 차단하고 인증 reverse proxy만 외부 진입점으로 사용한다.
 
 완료 기준: 보안 체크리스트, 복구 훈련, 배포/롤백 문서, 전체 회귀 테스트 통과.
 
@@ -256,7 +257,7 @@ worker panic과 프로세스 종료가 API 프로세스를 종료시키지 않�
 - Generation: generator golden file과 동일 입력 결정성, idempotency, crash recovery를 검사한다.
 - Cross-product compatibility: 생성 YAML을 Crosswalk 실제 loader/validator로 읽는다.
 - Frontend: adapter round-trip, stale response 폐기, 409 보존 UX를 검사한다.
-- E2E: 실제 HTTP API에서 프로젝트 생성·artifact 업로드·설계 저장·package 다운로드 후 Crosswalk CLI dry-run까지 자동화한다. 브라우저 조작 E2E는 운영 준비 단계에서 별도로 추가한다.
+- E2E: 실제 HTTP API에서 프로젝트 생성·artifact 업로드·설계 저장·package 다운로드 후 Crosswalk CLI dry-run까지 자동화한다. Playwright는 동일 흐름의 UI 조작과 ZIP 내용, 실패 snapshot 재시도 계보를 실제 Chrome에서 검증한다.
 
 CI의 기본 gate는 backend unit/integration, frontend type/test/build, Crosswalk 전체 test,
 Studio→Crosswalk 호환성 test로 구성한다. 네트워크나 실제 SSH는 이 gate에 포함하지 않는다.
@@ -291,6 +292,21 @@ Studio→Crosswalk 호환성 test로 구성한다. 네트워크나 실제 SSH는
 - 방지 로직: API는 fileId만 받고 manifest 상대 경로를 정규화한다. 절대 경로, `..`, symlink를 거부하며
   package root 내부 파일만 descriptor 기반으로 연다.
 - 검증: encoded traversal, 중복 경로, symlink 및 악성 archive fixture test.
+
+### 6. 외부 사용자가 인증 사용자 헤더를 직접 위조함
+
+- 방지 로직: loopback API, reverse proxy가 inbound 신뢰 헤더를 덮어쓰는 계약, 별도 proxy secret의 constant-time 검증, 제한된 owner ID 문자 집합.
+- 검증: 인증 누락, 잘못된 secret, 잘못된 owner 형식과 정상 proxy 요청 middleware/HTTP test.
+
+### 7. 인증된 사용자가 다른 사용자의 project ID로 직접 접근함
+
+- 방지 로직: 서비스의 고정 owner를 제거하고 요청 context owner를 모든 repository query에 전달한다. worker만 project owner를 DB에서 재조회한다.
+- 검증: 사용자 A 생성 project가 B 목록에 없고 직접 GET도 404인 통합 test.
+
+### 8. 로그인 세션을 이용한 교차 사이트 변경 요청
+
+- 방지 로직: unsafe method에서 Fetch Metadata와 Origin allowlist를 함께 검사하고 same-origin reverse proxy만 허용한다.
+- 검증: cross-site, Origin 누락 browser mutation 거부와 same-origin/비브라우저 요청 회귀 test.
 
 계획 단계 검토 결과 위 방지 로직은 각 구현 Phase의 완료 기준과 테스트 항목에 포함되어 있다.
 구현 시에는 각 항목의 실패 주입 테스트가 통과하기 전 해당 Phase를 완료로 표시하지 않는다.

@@ -34,19 +34,22 @@ type Delivery struct {
 	repo                              repository.DeliveryStore
 	artifacts                         *localstore.Store
 	packages                          *localstore.Store
-	ownerID                           string
 	jarLimit, textLimit, previewLimit int64
 	now                               func() time.Time
 }
 
-func NewDelivery(projects *Projects, repo repository.DeliveryStore, artifacts, packages *localstore.Store, ownerID string, jarLimit, textLimit, previewLimit int64) (*Delivery, error) {
-	if projects == nil || repo == nil || artifacts == nil || packages == nil || ownerID == "" {
+func NewDelivery(projects *Projects, repo repository.DeliveryStore, artifacts, packages *localstore.Store, jarLimit, textLimit, previewLimit int64) (*Delivery, error) {
+	if projects == nil || repo == nil || artifacts == nil || packages == nil {
 		return nil, errors.New("delivery dependencies are required")
 	}
-	return &Delivery{projects: projects, repo: repo, artifacts: artifacts, packages: packages, ownerID: ownerID, jarLimit: jarLimit, textLimit: textLimit, previewLimit: previewLimit, now: time.Now}, nil
+	return &Delivery{projects: projects, repo: repo, artifacts: artifacts, packages: packages, jarLimit: jarLimit, textLimit: textLimit, previewLimit: previewLimit, now: time.Now}, nil
 }
 
 func (s *Delivery) CreateArtifact(ctx context.Context, projectID string, kind domain.ArtifactKind, originalName string, reader io.Reader) (domain.Artifact, error) {
+	ownerID, err := requestOwner(ctx)
+	if err != nil {
+		return domain.Artifact{}, err
+	}
 	if _, err := s.projects.Get(ctx, projectID); err != nil {
 		return domain.Artifact{}, err
 	}
@@ -79,7 +82,7 @@ func (s *Delivery) CreateArtifact(ctx context.Context, projectID string, kind do
 		return domain.Artifact{}, err
 	}
 	value := domain.Artifact{ID: id, ProjectID: projectID, Kind: kind, OriginalName: name, BlobKey: key, SizeBytes: staged.Size, SHA256: staged.SHA256, CreatedAt: s.now().UTC()}
-	return s.repo.CreateArtifact(ctx, s.ownerID, value)
+	return s.repo.CreateArtifact(ctx, ownerID, value)
 }
 
 type TooLarge struct{ Limit int64 }
@@ -272,14 +275,22 @@ func validateTar(filePath string, compressed bool) error {
 }
 
 func (s *Delivery) ListArtifacts(ctx context.Context, projectID string, limit int, cursor string) (repository.ArtifactPage, error) {
+	ownerID, err := requestOwner(ctx)
+	if err != nil {
+		return repository.ArtifactPage{}, err
+	}
 	if limit < 1 || limit > 100 {
 		return repository.ArtifactPage{}, &InvalidInput{Err: errors.New("limit must be between 1 and 100")}
 	}
-	return s.repo.ListArtifacts(ctx, s.ownerID, projectID, limit, cursor)
+	return s.repo.ListArtifacts(ctx, ownerID, projectID, limit, cursor)
 }
 
 func (s *Delivery) ReadArtifactText(ctx context.Context, projectID, artifactID string) (string, error) {
-	artifact, err := s.repo.GetArtifact(ctx, s.ownerID, projectID, artifactID)
+	ownerID, err := requestOwner(ctx)
+	if err != nil {
+		return "", err
+	}
+	artifact, err := s.repo.GetArtifact(ctx, ownerID, projectID, artifactID)
 	if err != nil {
 		return "", err
 	}
@@ -308,7 +319,13 @@ func (s *Delivery) ReadArtifactText(ctx context.Context, projectID, artifactID s
 }
 
 func (s *Delivery) ValidatePackage(ctx context.Context, projectID string, blueprint json.RawMessage, environment string, result domain.Validation) domain.Validation {
-	resolver := artifactResolver{repo: s.repo, store: s.artifacts, ownerID: s.ownerID, projectID: projectID}
+	ownerID, err := requestOwner(ctx)
+	if err != nil {
+		result.Valid = false
+		result.Issues = append(result.Issues, domain.Issue{Code: "AUTHENTICATION_REQUIRED", Severity: "error", Stage: "request", NodeIDs: []string{}, ConnectionIDs: []string{}, Path: "/", Message: "authenticated owner is missing"})
+		return result
+	}
+	resolver := artifactResolver{repo: s.repo, store: s.artifacts, ownerID: ownerID, projectID: projectID}
 	if _, err := crosswalkvm.Generate(ctx, blueprint, environment, resolver); err != nil {
 		stage, code := "generator", "GENERATOR_INVALID"
 		if strings.Contains(err.Error(), "artifact") || errors.Is(err, repository.ErrNotFound) {
@@ -326,13 +343,23 @@ type GenerationInput struct {
 	Generator, Output, IdempotencyKey string
 }
 
+type GenerationNotRetryable struct{ Status string }
+
+func (e *GenerationNotRetryable) Error() string {
+	return fmt.Sprintf("generation with status %q cannot be retried", e.Status)
+}
+
 func (s *Delivery) Generate(ctx context.Context, projectID string, input GenerationInput) (domain.Generation, error) {
+	ownerID, err := requestOwner(ctx)
+	if err != nil {
+		return domain.Generation{}, err
+	}
 	if input.Revision < 1 || input.Generator != crosswalkvm.ID || (input.Output != "draft" && input.Output != "package") || input.IdempotencyKey == "" || len(input.IdempotencyKey) > 128 {
 		return domain.Generation{}, &InvalidInput{Err: errors.New("generation request is invalid")}
 	}
 	hash := sha256.Sum256([]byte(fmt.Sprintf("%s\n%d\n%s\n%s", input.Environment, input.Revision, input.Generator, input.Output)))
 	requestHash := hex.EncodeToString(hash[:])
-	if existing, err := s.repo.FindGenerationByKey(ctx, s.ownerID, projectID, input.IdempotencyKey, requestHash); err == nil {
+	if existing, err := s.repo.FindGenerationByKey(ctx, ownerID, projectID, input.IdempotencyKey, requestHash); err == nil {
 		return existing, nil
 	} else if !errors.Is(err, repository.ErrNotFound) {
 		return domain.Generation{}, err
@@ -360,9 +387,76 @@ func (s *Delivery) Generate(ctx context.Context, projectID string, input Generat
 		return domain.Generation{}, fmt.Errorf("marshal generation snapshot: %w", err)
 	}
 	generation := domain.Generation{ID: generationID, ProjectID: projectID, Environment: input.Environment, Revision: input.Revision, Generator: input.Generator, Output: input.Output, Status: "queued", Snapshot: snapshot, CreatedAt: now, UpdatedAt: now}
-	created, err := s.repo.CreateGeneration(ctx, s.ownerID, input.IdempotencyKey, requestHash, generation)
+	created, err := s.repo.CreateGeneration(ctx, ownerID, input.IdempotencyKey, requestHash, generation)
 	if err != nil {
-		if existing, findErr := s.repo.FindGenerationByKey(ctx, s.ownerID, projectID, input.IdempotencyKey, requestHash); findErr == nil {
+		if existing, findErr := s.repo.FindGenerationByKey(ctx, ownerID, projectID, input.IdempotencyKey, requestHash); findErr == nil {
+			return existing, nil
+		}
+		return domain.Generation{}, err
+	}
+	return created, nil
+}
+
+func (s *Delivery) ListGenerations(ctx context.Context, projectID, environment string, limit int, cursor string) (repository.GenerationPage, error) {
+	ownerID, err := requestOwner(ctx)
+	if err != nil {
+		return repository.GenerationPage{}, err
+	}
+	if limit < 1 || limit > 100 {
+		return repository.GenerationPage{}, &InvalidInput{Err: errors.New("limit must be between 1 and 100")}
+	}
+	if environment != "" {
+		if _, err := domain.ParseEnvironment(environment); err != nil {
+			return repository.GenerationPage{}, &InvalidInput{Err: errors.New("environment is invalid")}
+		}
+	}
+	return s.repo.ListGenerations(ctx, ownerID, projectID, environment, limit, cursor)
+}
+
+func (s *Delivery) RetryGeneration(ctx context.Context, projectID, sourceID, idempotencyKey string) (domain.Generation, error) {
+	ownerID, err := requestOwner(ctx)
+	if err != nil {
+		return domain.Generation{}, err
+	}
+	key := strings.TrimSpace(idempotencyKey)
+	if sourceID == "" || key == "" || len(key) > 128 {
+		return domain.Generation{}, &InvalidInput{Err: errors.New("generation retry request is invalid")}
+	}
+	hash := sha256.Sum256([]byte("generation-retry\n" + sourceID))
+	requestHash := hex.EncodeToString(hash[:])
+	if existing, err := s.repo.FindGenerationByKey(ctx, ownerID, projectID, key, requestHash); err == nil {
+		return existing, nil
+	} else if !errors.Is(err, repository.ErrNotFound) {
+		return domain.Generation{}, err
+	}
+	source, err := s.repo.GetGeneration(ctx, ownerID, projectID, sourceID)
+	if err != nil {
+		return domain.Generation{}, err
+	}
+	if source.Status != "failed" {
+		return domain.Generation{}, &GenerationNotRetryable{Status: source.Status}
+	}
+	id, err := newID("gen_")
+	if err != nil {
+		return domain.Generation{}, err
+	}
+	now := s.now().UTC()
+	retry := domain.Generation{
+		ID:                  id,
+		ProjectID:           source.ProjectID,
+		Environment:         source.Environment,
+		Revision:            source.Revision,
+		Status:              "queued",
+		Generator:           source.Generator,
+		Output:              source.Output,
+		RetryOfGenerationID: &source.ID,
+		Snapshot:            append(json.RawMessage(nil), source.Snapshot...),
+		CreatedAt:           now,
+		UpdatedAt:           now,
+	}
+	created, err := s.repo.CreateGeneration(ctx, ownerID, key, requestHash, retry)
+	if err != nil {
+		if existing, findErr := s.repo.FindGenerationByKey(ctx, ownerID, projectID, key, requestHash); findErr == nil {
 			return existing, nil
 		}
 		return domain.Generation{}, err
@@ -384,7 +478,11 @@ func (s *Delivery) BuildGeneration(ctx context.Context, generation domain.Genera
 	if snapshot.Environment != generation.Environment || snapshot.Revision != generation.Revision || snapshot.Generator != generation.Generator || snapshot.Output != generation.Output || snapshot.Generator != crosswalkvm.ID {
 		return domain.Package{}, errors.New("generation snapshot metadata does not match the queued job")
 	}
-	resolver := artifactResolver{repo: s.repo, store: s.artifacts, ownerID: s.ownerID, projectID: generation.ProjectID}
+	ownerID, err := s.repo.ProjectOwner(ctx, generation.ProjectID)
+	if err != nil {
+		return domain.Package{}, fmt.Errorf("load generation project owner: %w", err)
+	}
+	resolver := artifactResolver{repo: s.repo, store: s.artifacts, ownerID: ownerID, projectID: generation.ProjectID}
 	bundle, err := crosswalkvm.Generate(ctx, snapshot.Blueprint, string(snapshot.Environment), resolver)
 	if err != nil {
 		return domain.Package{}, &InvalidArtifact{Err: err}
@@ -436,10 +534,18 @@ func (r artifactResolver) Resolve(ctx context.Context, id string) (crosswalkvm.A
 }
 
 func (s *Delivery) GetGeneration(ctx context.Context, projectID, id string) (domain.Generation, error) {
-	return s.repo.GetGeneration(ctx, s.ownerID, projectID, id)
+	ownerID, err := requestOwner(ctx)
+	if err != nil {
+		return domain.Generation{}, err
+	}
+	return s.repo.GetGeneration(ctx, ownerID, projectID, id)
 }
 func (s *Delivery) GetPackage(ctx context.Context, projectID, id string) (domain.Package, error) {
-	return s.repo.GetPackage(ctx, s.ownerID, projectID, id)
+	ownerID, err := requestOwner(ctx)
+	if err != nil {
+		return domain.Package{}, err
+	}
+	return s.repo.GetPackage(ctx, ownerID, projectID, id)
 }
 func (s *Delivery) OpenPackage(ctx context.Context, projectID, id string) (io.ReadCloser, domain.Package, error) {
 	pkg, err := s.GetPackage(ctx, projectID, id)
@@ -450,7 +556,11 @@ func (s *Delivery) OpenPackage(ctx context.Context, projectID, id string) (io.Re
 	return reader, pkg, err
 }
 func (s *Delivery) PreviewFile(ctx context.Context, projectID, packageID, fileID string) (string, bool, error) {
-	file, err := s.repo.GetPackageFile(ctx, s.ownerID, projectID, packageID, fileID)
+	ownerID, err := requestOwner(ctx)
+	if err != nil {
+		return "", false, err
+	}
+	file, err := s.repo.GetPackageFile(ctx, ownerID, projectID, packageID, fileID)
 	if err != nil {
 		return "", false, err
 	}

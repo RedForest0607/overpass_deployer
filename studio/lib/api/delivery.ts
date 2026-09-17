@@ -55,6 +55,7 @@ export type Generation = {
   output: 'draft' | 'package';
   attempts: number;
   packageId: string | null;
+  retryOfGenerationId: string | null;
   error: { code: string; message: string } | null;
   createdAt: string;
   updatedAt: string;
@@ -173,6 +174,36 @@ export const deliveryAPI = {
         '/generations/' +
         encodeURIComponent(generationId),
       { signal },
+    );
+  },
+  listGenerations(
+    projectId: string,
+    environment?: Environment,
+    cursor?: string,
+    signal?: AbortSignal,
+  ) {
+    const query = new URLSearchParams({ limit: '10' });
+    if (environment) query.set('environment', environment);
+    if (cursor) query.set('cursor', cursor);
+    return request<{ items: Generation[]; nextCursor: string | null }>(
+      projectPath(projectId) + '/generations?' + query.toString(),
+      { signal },
+    );
+  },
+  retryGeneration(
+    projectId: string,
+    generationId: string,
+    idempotencyKey: string,
+  ) {
+    return request<Generation>(
+      projectPath(projectId) +
+        '/generations/' +
+        encodeURIComponent(generationId) +
+        '/retry',
+      {
+        method: 'POST',
+        headers: { 'Idempotency-Key': idempotencyKey },
+      },
     );
   },
   getPackage(projectId: string, packageId: string, signal?: AbortSignal) {

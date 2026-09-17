@@ -54,7 +54,9 @@ func NewHandler(deps Dependencies) (http.Handler, error) {
 	mux.HandleFunc("POST /api/v1/projects/{projectId}/artifacts", delivery.createArtifact)
 	mux.HandleFunc("GET /api/v1/projects/{projectId}/artifacts/{artifactId}/content", delivery.getArtifactContent)
 	mux.HandleFunc("POST /api/v1/projects/{projectId}/generations", delivery.createGeneration)
+	mux.HandleFunc("GET /api/v1/projects/{projectId}/generations", delivery.listGenerations)
 	mux.HandleFunc("GET /api/v1/projects/{projectId}/generations/{generationId}", delivery.getGeneration)
+	mux.HandleFunc("POST /api/v1/projects/{projectId}/generations/{generationId}/retry", delivery.retryGeneration)
 	mux.HandleFunc("GET /api/v1/projects/{projectId}/packages/{packageId}", delivery.getPackage)
 	mux.HandleFunc("GET /api/v1/projects/{projectId}/packages/{packageId}/files/{fileId}", delivery.previewFile)
 	mux.HandleFunc("GET /api/v1/projects/{projectId}/packages/{packageId}/download", delivery.downloadPackage)
@@ -62,6 +64,13 @@ func NewHandler(deps Dependencies) (http.Handler, error) {
 
 	var handler http.Handler = mux
 	handler = middleware.BodyLimit(deps.Config.MaxRequestBytes, handler)
+	handler = middleware.CSRF(handler)
+	handler = middleware.Authentication(middleware.AuthenticationOptions{
+		Mode:              deps.Config.AuthMode,
+		IdentityHeader:    deps.Config.AuthHeader,
+		ProxySecretHeader: deps.Config.ProxySecretHeader,
+		ProxySecret:       deps.Config.ProxySecret,
+	}, handler)
 	handler = middleware.Security(deps.Config.AllowedHosts, deps.Config.AllowedOrigins, handler)
 	handler = middleware.Recovery(deps.Logger, handler)
 	handler = middleware.AccessLog(deps.Logger, handler)

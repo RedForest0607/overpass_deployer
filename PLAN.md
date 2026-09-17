@@ -136,7 +136,7 @@
 
 **완료 기준:** `docs/STUDIO-BACKEND-PLAN.md`의 Phase 0~7 완료 기준 통과
 **선행 조건:** Studio API 계약 확정, Crosswalk 차트 포맷/version 및 validation 경계 확정
-**현재 상태:** [~] Phase 0~4 완료. Crosswalk 생성기, immutable artifact 업로드·목록, package 검증, idempotent generation, package preview·ZIP download API 구현. 프론트 artifact/package 연결, 비동기 worker/recovery와 Crosswalk 실제 loader 자동 호환성 검증은 후속
+**현재 상태:** [~] Phase 1~7 완료. persistent worker/recovery, 이력·snapshot 재시도, Chrome E2E, checksum backup/비파괴 restore, 데이터 권한·symlink 검사, trusted-header 인증·CSRF·owner 격리, same-origin 배포/롤백 계약까지 구현. M6 완료를 위해 남은 항목은 Phase 0의 DTO 자동 생성과 Crosswalk chart version/공개 validation 경계 안정화
 
 ---
 

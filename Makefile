@@ -1,4 +1,4 @@
-.PHONY: test-crosswalk test-studio test-studio-backend test-studio-e2e test-studio-local build-crosswalk build-studio build-studio-backend dev-studio-local smoke-studio-local
+.PHONY: test-crosswalk test-studio test-studio-backend test-studio-backend-race test-studio-operational test-studio-e2e test-studio-browser-e2e test-studio-local build-crosswalk build-studio build-studio-backend build-studio-admin build-studio-release dev-studio-local smoke-studio-local
 
 test-crosswalk:
 	cd crosswalk && go test ./...
@@ -21,10 +21,19 @@ test-studio:
 test-studio-backend:
 	cd studio/backend && go test ./...
 
+test-studio-backend-race:
+	cd studio/backend && go test -race ./...
+
+test-studio-operational: test-studio-backend-race
+	cd studio/backend && go vet ./...
+
 test-studio-e2e:
 	cd studio && node scripts/e2e-studio-crosswalk.mjs
 
-test-studio-local: test-studio-backend test-studio test-studio-e2e
+test-studio-browser-e2e:
+	cd studio && npm run test:e2e:browser
+
+test-studio-local: test-studio-backend test-studio test-studio-e2e test-studio-browser-e2e
 
 build-crosswalk:
 	cd crosswalk && go build -o bin/deploy ./cmd/deploy
@@ -34,6 +43,11 @@ build-studio:
 
 build-studio-backend:
 	cd studio/backend && go build -o bin/studio-api ./cmd/studio-api
+
+build-studio-admin:
+	cd studio/backend && go build -o bin/studio-admin ./cmd/studio-admin
+
+build-studio-release: build-studio-backend build-studio-admin build-studio
 
 dev-studio-local:
 	cd studio && ./scripts/dev-local.sh

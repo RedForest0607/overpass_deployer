@@ -114,6 +114,23 @@ func (h deliveryHandlers) createGeneration(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Location", fmt.Sprintf("/api/v1/projects/%s/generations/%s", value.ProjectID, value.ID))
 	httpx.WriteJSON(w, 202, value)
 }
+func (h deliveryHandlers) listGenerations(w http.ResponseWriter, r *http.Request) {
+	limit := 20
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil {
+			writeRequestError(w, r, 400, "INVALID_REQUEST", "limit이 올바르지 않습니다.", nil)
+			return
+		}
+		limit = value
+	}
+	page, err := h.service.ListGenerations(r.Context(), r.PathValue("projectId"), r.URL.Query().Get("environment"), limit, r.URL.Query().Get("cursor"))
+	if err != nil {
+		writeDeliveryError(w, r, err, "NOT_FOUND")
+		return
+	}
+	httpx.WriteJSON(w, 200, map[string]any{"items": page.Items, "nextCursor": page.NextCursor})
+}
 func (h deliveryHandlers) getGeneration(w http.ResponseWriter, r *http.Request) {
 	value, err := h.service.GetGeneration(r.Context(), r.PathValue("projectId"), r.PathValue("generationId"))
 	if err != nil {
@@ -121,6 +138,15 @@ func (h deliveryHandlers) getGeneration(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	httpx.WriteJSON(w, 200, value)
+}
+func (h deliveryHandlers) retryGeneration(w http.ResponseWriter, r *http.Request) {
+	value, err := h.service.RetryGeneration(r.Context(), r.PathValue("projectId"), r.PathValue("generationId"), r.Header.Get("Idempotency-Key"))
+	if err != nil {
+		writeDeliveryError(w, r, err, "GENERATION_RETRY_FAILED")
+		return
+	}
+	w.Header().Set("Location", fmt.Sprintf("/api/v1/projects/%s/generations/%s", value.ProjectID, value.ID))
+	httpx.WriteJSON(w, 202, value)
 }
 func (h deliveryHandlers) getPackage(w http.ResponseWriter, r *http.Request) {
 	value, err := h.service.GetPackage(r.Context(), r.PathValue("projectId"), r.PathValue("packageId"))
@@ -164,6 +190,11 @@ func writeDeliveryError(w http.ResponseWriter, r *http.Request, err error, fallb
 	}
 	if errors.Is(err, repository.ErrIdempotencyConflict) {
 		writeRequestError(w, r, 409, "IDEMPOTENCY_CONFLICT", "같은 Idempotency-Key가 다른 요청에 사용됐습니다.", nil)
+		return
+	}
+	var notRetryable *service.GenerationNotRetryable
+	if errors.As(err, &notRetryable) {
+		writeRequestError(w, r, 409, "GENERATION_NOT_RETRYABLE", "실패한 생성 작업만 다시 시도할 수 있습니다.", map[string]any{"status": notRetryable.Status})
 		return
 	}
 	writeServiceError(w, r, err, fallback)

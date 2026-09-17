@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"runtime/debug"
 	"time"
 
 	"studio-backend/internal/domain"
@@ -49,7 +48,7 @@ func (w *GenerationWorker) Run(ctx context.Context) error {
 			return nil
 		case <-timer.C:
 			if err := w.processAvailable(ctx); err != nil && !errors.Is(err, context.Canceled) {
-				w.logger.Error("generation worker cycle failed", "error", err)
+				w.logger.Error("generation worker cycle failed", "error_type", fmt.Sprintf("%T", err))
 			}
 			timer.Reset(w.pollInterval)
 		}
@@ -77,9 +76,9 @@ func (w *GenerationWorker) processOne(parent context.Context, generation domain.
 	var jobErr error
 	func() {
 		defer func() {
-			if recovered := recover(); recovered != nil {
-				jobErr = fmt.Errorf("generation worker panic: %v", recovered)
-				w.logger.Error("generation worker panic", "generationId", generation.ID, "panic", recovered, "stack", string(debug.Stack()))
+			if recover() != nil {
+				jobErr = errors.New("generation worker panic")
+				w.logger.Error("generation worker panic", "generationId", generation.ID)
 			}
 		}()
 		pkg, jobErr = w.delivery.BuildGeneration(ctx, generation)
@@ -98,19 +97,30 @@ func (w *GenerationWorker) processOne(parent context.Context, generation domain.
 		return
 	}
 
-	failure := domain.Failure{Code: "GENERATION_FAILED", Message: jobErr.Error()}
+	failure := safeGenerationFailure(jobErr)
 	var invalidArtifact *InvalidArtifact
 	if generation.Attempts < w.maxAttempts && !errors.As(jobErr, &invalidArtifact) {
 		if retryErr := w.delivery.repo.RequeueGeneration(context.WithoutCancel(parent), generation.ID, failure, now); retryErr != nil {
-			w.logger.Error("requeue generation", "generationId", generation.ID, "error", retryErr, "cause", jobErr)
+			w.logger.Error("requeue generation", "generationId", generation.ID, "error_type", fmt.Sprintf("%T", retryErr), "failure_code", failure.Code)
 			return
 		}
-		w.logger.Warn("generation scheduled for retry", "generationId", generation.ID, "attempt", generation.Attempts, "error", jobErr)
+		w.logger.Warn("generation scheduled for retry", "generationId", generation.ID, "attempt", generation.Attempts, "failure_code", failure.Code)
 		return
 	}
 	if failErr := w.delivery.repo.FailGeneration(context.WithoutCancel(parent), generation.ID, failure, now); failErr != nil {
-		w.logger.Error("record generation failure", "generationId", generation.ID, "error", failErr, "cause", jobErr)
+		w.logger.Error("record generation failure", "generationId", generation.ID, "error_type", fmt.Sprintf("%T", failErr), "failure_code", failure.Code)
 		return
 	}
-	w.logger.Warn("generation failed", "generationId", generation.ID, "attempt", generation.Attempts, "error", jobErr)
+	w.logger.Warn("generation failed", "generationId", generation.ID, "attempt", generation.Attempts, "failure_code", failure.Code)
+}
+
+func safeGenerationFailure(err error) domain.Failure {
+	var invalidArtifact *InvalidArtifact
+	if errors.As(err, &invalidArtifact) {
+		return domain.Failure{Code: "INVALID_ARTIFACT", Message: "artifact 참조 또는 형식이 올바르지 않습니다."}
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return domain.Failure{Code: "GENERATION_TIMEOUT", Message: "패키지 생성 제한 시간을 초과했습니다."}
+	}
+	return domain.Failure{Code: "GENERATION_FAILED", Message: "패키지 생성 중 내부 오류가 발생했습니다."}
 }

@@ -1,0 +1,61 @@
+{
+  "environment": "dev",
+  "blueprint": {
+    "apiVersion": "studio.deployer/v1",
+    "deployment": {
+      "ssh": {
+        "user": "deploy",
+        "keyPath": "${DEPLOY_SSH_KEY_PATH}",
+        "knownHostsPath": "${DEPLOY_KNOWN_HOSTS}",
+        "hostKeyChecking": "strict"
+      }
+    },
+    "nodes": [
+      {
+        "id": "vm",
+        "kind": "vm",
+        "name": "dev-was-01",
+        "spec": {
+          "provider": "on-prem",
+          "host": "192.0.2.10",
+          "deployment": {
+            "bootstrap": { "packages": ["curl"] }
+          }
+        }
+      },
+      {
+        "id": "app",
+        "kind": "java",
+        "name": "commerce",
+        "spec": {
+          "artifactRef": "artifact-replace-commerce-jar",
+          "javaVersion": "21",
+          "maxHeap": "1g",
+          "ports": [
+            { "name": "main", "servicePort": 8080, "protocol": "TCP" }
+          ],
+          "deployment": {
+            "minHeap": "256m",
+            "configFiles": [
+              {
+                "artifactRef": "artifact-replace-commerce-application",
+                "remotePath": "/app/overpass/commerce/config/application.yml"
+              }
+            ]
+          }
+        }
+      }
+    ],
+    "placements": [
+      { "workloadRef": "app", "targetRef": "vm", "mode": "process" }
+    ],
+    "connections": []
+  },
+  "layout": {
+    "nodes": [
+      { "nodeId": "vm", "position": { "x": 80, "y": 60 } },
+      { "nodeId": "app", "position": { "x": 45, "y": 120 } }
+    ],
+    "viewport": { "x": 0, "y": 0, "zoom": 1 }
+  }
+}

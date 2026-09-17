@@ -23,9 +23,20 @@ func TestOpenAppliesMigrationsIdempotently(t *testing.T) {
 			db.Close()
 			t.Fatal(err)
 		}
-		if migrations != 3 {
+		if migrations != 4 {
 			db.Close()
-			t.Fatalf("migration count=%d, want 3", migrations)
+			t.Fatalf("migration count=%d, want 4", migrations)
+		}
+		for _, suffix := range []string{"", "-wal", "-shm"} {
+			info, statErr := os.Stat(path + suffix)
+			if statErr != nil {
+				db.Close()
+				t.Fatal(statErr)
+			}
+			if info.Mode().Perm() != 0o600 {
+				db.Close()
+				t.Fatalf("sqlite file %s mode=%o, want 600", suffix, info.Mode().Perm())
+			}
 		}
 		if err := db.Close(); err != nil {
 			t.Fatal(err)

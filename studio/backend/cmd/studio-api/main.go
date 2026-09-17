@@ -45,7 +45,7 @@ func run(args []string, lookupEnv config.LookupEnv, logger *slog.Logger) error {
 	}
 	defer db.Close()
 
-	projects, err := service.NewProjects(sqlite.NewProjectRepository(db), "local-user", cfg.TopologyNodes, cfg.TopologyEdges)
+	projects, err := service.NewProjects(sqlite.NewProjectRepository(db), cfg.TopologyNodes, cfg.TopologyEdges)
 	if err != nil {
 		return err
 	}
@@ -58,7 +58,7 @@ func run(args []string, lookupEnv config.LookupEnv, logger *slog.Logger) error {
 		return err
 	}
 	deliveryRepo := sqlite.NewDeliveryRepository(db)
-	delivery, err := service.NewDelivery(projects, deliveryRepo, artifactStore, packageStore, "local-user", cfg.JARBytes, cfg.TextArtifactBytes, cfg.PreviewBytes)
+	delivery, err := service.NewDelivery(projects, deliveryRepo, artifactStore, packageStore, cfg.JARBytes, cfg.TextArtifactBytes, cfg.PreviewBytes)
 	if err != nil {
 		return err
 	}

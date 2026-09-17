@@ -14,6 +14,9 @@ import (
 
 const (
 	defaultAddress           = "127.0.0.1:8080"
+	defaultAuthMode          = "local"
+	defaultAuthHeader        = "X-Studio-Authenticated-User"
+	defaultProxySecretHeader = "X-Studio-Proxy-Secret"
 	defaultMaxRequestBytes   = int64(257 << 20)
 	defaultJARBytes          = int64(256 << 20)
 	defaultTextArtifactBytes = int64(1 << 20)
@@ -25,6 +28,10 @@ type LookupEnv func(string) (string, bool)
 type Config struct {
 	Address           string
 	DataDir           string
+	AuthMode          string
+	AuthHeader        string
+	ProxySecretHeader string
+	ProxySecret       string
 	AllowedHosts      []string
 	AllowedOrigins    []string
 	MaxRequestBytes   int64
@@ -47,12 +54,19 @@ func Parse(args []string, lookupEnv LookupEnv) (Config, error) {
 	address := envOr(lookupEnv, "STUDIO_ADDRESS", defaultAddress)
 	dataDir := envOr(lookupEnv, "STUDIO_DATA_DIR", "")
 	origins := envOr(lookupEnv, "STUDIO_ALLOWED_ORIGINS", "http://127.0.0.1:3000,http://localhost:3000")
+	authMode := envOr(lookupEnv, "STUDIO_AUTH_MODE", defaultAuthMode)
+	authHeader := envOr(lookupEnv, "STUDIO_AUTH_HEADER", defaultAuthHeader)
+	proxySecretHeader := envOr(lookupEnv, "STUDIO_AUTH_PROXY_SECRET_HEADER", defaultProxySecretHeader)
+	proxySecret := envOr(lookupEnv, "STUDIO_AUTH_PROXY_SECRET", "")
 
 	set := flag.NewFlagSet("studio-api", flag.ContinueOnError)
 	set.SetOutput(io.Discard)
 	set.StringVar(&address, "address", address, "HTTP listen address")
 	set.StringVar(&dataDir, "data-dir", dataDir, "persistent data directory")
 	set.StringVar(&origins, "allowed-origins", origins, "comma-separated browser origins")
+	set.StringVar(&authMode, "auth-mode", authMode, "authentication mode: local or trusted-header")
+	set.StringVar(&authHeader, "auth-header", authHeader, "trusted identity header")
+	set.StringVar(&proxySecretHeader, "auth-proxy-secret-header", proxySecretHeader, "trusted proxy secret header")
 	if err := set.Parse(args); err != nil {
 		return Config{}, err
 	}
@@ -71,10 +85,21 @@ func Parse(args []string, lookupEnv LookupEnv) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	authMode = strings.ToLower(strings.TrimSpace(authMode))
+	authHeader = strings.TrimSpace(authHeader)
+	proxySecretHeader = strings.TrimSpace(proxySecretHeader)
+	proxySecret = strings.TrimSpace(proxySecret)
+	if err := validateAuthentication(authMode, authHeader, proxySecretHeader, proxySecret); err != nil {
+		return Config{}, err
+	}
 
 	return Config{
 		Address:           address,
 		DataDir:           dataDir,
+		AuthMode:          authMode,
+		AuthHeader:        authHeader,
+		ProxySecretHeader: proxySecretHeader,
+		ProxySecret:       proxySecret,
 		AllowedHosts:      allowedHosts(address),
 		AllowedOrigins:    allowedOrigins,
 		MaxRequestBytes:   defaultMaxRequestBytes,
@@ -88,6 +113,35 @@ func Parse(args []string, lookupEnv LookupEnv) (Config, error) {
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       60 * time.Second,
 	}, nil
+}
+
+func validateAuthentication(mode, identityHeader, secretHeader, proxySecret string) error {
+	if mode != "local" && mode != "trusted-header" {
+		return fmt.Errorf("invalid auth mode %q: use local or trusted-header", mode)
+	}
+	if !validHeaderName(identityHeader) || !validHeaderName(secretHeader) {
+		return errors.New("authentication header names must contain only letters, digits, and hyphens")
+	}
+	if strings.EqualFold(identityHeader, secretHeader) {
+		return errors.New("authentication identity and proxy secret headers must differ")
+	}
+	if mode == "trusted-header" && len(proxySecret) < 32 {
+		return errors.New("STUDIO_AUTH_PROXY_SECRET must contain at least 32 characters in trusted-header mode")
+	}
+	return nil
+}
+
+func validHeaderName(value string) bool {
+	if value == "" {
+		return false
+	}
+	for _, character := range value {
+		if (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') || (character >= '0' && character <= '9') || character == '-' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func envOr(lookupEnv LookupEnv, key, fallback string) string {

@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,16 +31,21 @@ func testHandler(t *testing.T, ready readinessFunc) http.Handler {
 	if err != nil {
 		t.Fatal(err)
 	}
+	return testHandlerWithConfig(t, ready, cfg)
+}
+
+func testHandlerWithConfig(t *testing.T, ready readinessFunc, cfg config.Config) http.Handler {
+	t.Helper()
 	db, err := sqlite.Open(context.Background(), filepath.Join(t.TempDir(), "studio.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	projects, err := service.NewProjects(sqlite.NewProjectRepository(db), "local-user", cfg.TopologyNodes, cfg.TopologyEdges)
+	projects, err := service.NewProjects(sqlite.NewProjectRepository(db), cfg.TopologyNodes, cfg.TopologyEdges)
 	if err != nil {
 		t.Fatal(err)
 	}
-	paths, err := storage.Prepare(dataDir)
+	paths, err := storage.Prepare(cfg.DataDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +58,7 @@ func testHandler(t *testing.T, ready readinessFunc) http.Handler {
 		t.Fatal(err)
 	}
 	deliveryRepo := sqlite.NewDeliveryRepository(db)
-	delivery, err := service.NewDelivery(projects, deliveryRepo, artifactStore, packageStore, "local-user", cfg.JARBytes, cfg.TextArtifactBytes, cfg.PreviewBytes)
+	delivery, err := service.NewDelivery(projects, deliveryRepo, artifactStore, packageStore, cfg.JARBytes, cfg.TextArtifactBytes, cfg.PreviewBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,6 +90,72 @@ func testHandler(t *testing.T, ready readinessFunc) http.Handler {
 		t.Fatal(err)
 	}
 	return handler
+}
+
+func TestTrustedHeaderAuthenticationIsolatesProjectOwners(t *testing.T) {
+	secret := strings.Repeat("s", 32)
+	values := map[string]string{
+		"STUDIO_DATA_DIR":          t.TempDir(),
+		"STUDIO_AUTH_MODE":         "trusted-header",
+		"STUDIO_AUTH_PROXY_SECRET": secret,
+	}
+	cfg, err := config.Parse(nil, func(key string) (string, bool) {
+		value, ok := values[key]
+		return value, ok
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := testHandlerWithConfig(t, nil, cfg)
+	authenticated := func(request *http.Request, owner, providedSecret string) *http.Request {
+		request.Header.Set(cfg.AuthHeader, owner)
+		request.Header.Set(cfg.ProxySecretHeader, providedSecret)
+		return request
+	}
+
+	missing := httptest.NewRecorder()
+	handler.ServeHTTP(missing, httptest.NewRequest(http.MethodGet, "http://localhost/api/v1/projects", nil))
+	if missing.Code != http.StatusUnauthorized || !strings.Contains(missing.Body.String(), `"code":"AUTHENTICATION_REQUIRED"`) {
+		t.Fatalf("missing auth status=%d body=%s", missing.Code, missing.Body.String())
+	}
+
+	created := httptest.NewRecorder()
+	handler.ServeHTTP(created, authenticated(jsonRequest(http.MethodPost, "/api/v1/projects", `{"name":"Alice project","description":""}`), "alice@example.com", secret))
+	if created.Code != http.StatusCreated {
+		t.Fatalf("create status=%d body=%s", created.Code, created.Body.String())
+	}
+	location := created.Header().Get("Location")
+	projectID := strings.TrimPrefix(location, "/api/v1/projects/")
+
+	aliceList := httptest.NewRecorder()
+	handler.ServeHTTP(aliceList, authenticated(httptest.NewRequest(http.MethodGet, "http://localhost/api/v1/projects", nil), "alice@example.com", secret))
+	if aliceList.Code != http.StatusOK || !strings.Contains(aliceList.Body.String(), projectID) {
+		t.Fatalf("alice list status=%d body=%s", aliceList.Code, aliceList.Body.String())
+	}
+
+	bobList := httptest.NewRecorder()
+	handler.ServeHTTP(bobList, authenticated(httptest.NewRequest(http.MethodGet, "http://localhost/api/v1/projects", nil), "bob@example.com", secret))
+	if bobList.Code != http.StatusOK || strings.Contains(bobList.Body.String(), projectID) {
+		t.Fatalf("bob list status=%d body=%s", bobList.Code, bobList.Body.String())
+	}
+
+	bobGet := httptest.NewRecorder()
+	handler.ServeHTTP(bobGet, authenticated(httptest.NewRequest(http.MethodGet, "http://localhost"+location, nil), "bob@example.com", secret))
+	if bobGet.Code != http.StatusNotFound {
+		t.Fatalf("bob get status=%d body=%s", bobGet.Code, bobGet.Body.String())
+	}
+
+	wrongSecret := httptest.NewRecorder()
+	handler.ServeHTTP(wrongSecret, authenticated(httptest.NewRequest(http.MethodGet, "http://localhost/api/v1/projects", nil), "alice@example.com", "wrong"))
+	if wrongSecret.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong secret status=%d body=%s", wrongSecret.Code, wrongSecret.Body.String())
+	}
+
+	health := httptest.NewRecorder()
+	handler.ServeHTTP(health, httptest.NewRequest(http.MethodGet, "http://localhost/healthz", nil))
+	if health.Code != http.StatusOK {
+		t.Fatalf("health status=%d body=%s", health.Code, health.Body.String())
+	}
 }
 
 func jsonRequest(method, target, body string) *http.Request {
@@ -206,5 +278,32 @@ func TestUnknownRouteUsesErrorContract(t *testing.T) {
 	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "http://localhost/missing", nil))
 	if recorder.Code != http.StatusNotFound || !strings.Contains(recorder.Body.String(), `"code":"NOT_FOUND"`) {
 		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestReadOnlyEndpointsConcurrentSmoke(t *testing.T) {
+	handler := testHandler(t, nil)
+	const requests = 64
+	errors := make(chan string, requests)
+	var wait sync.WaitGroup
+	for index := 0; index < requests; index++ {
+		wait.Add(1)
+		go func(index int) {
+			defer wait.Done()
+			path := "/healthz"
+			if index%2 == 0 {
+				path = "/api/v1/capabilities"
+			}
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "http://localhost"+path, nil))
+			if recorder.Code != http.StatusOK || recorder.Header().Get("X-Request-ID") == "" {
+				errors <- path
+			}
+		}(index)
+	}
+	wait.Wait()
+	close(errors)
+	for path := range errors {
+		t.Errorf("concurrent request failed: %s", path)
 	}
 }

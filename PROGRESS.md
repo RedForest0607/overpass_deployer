@@ -1,5 +1,15 @@
 # Progress
 
+- 2026-09-17 Studio Phase 7-D 공유·배포 경계 구현: 기존 `local-user` 호환 `local` 모드와 SSO reverse proxy용 `trusted-header` 모드를 분리하고, proxy secret constant-time 검증·제한된 사용자 ID·공개 health check를 추가. 서비스의 고정 owner를 제거해 요청 context owner가 project/topology/artifact/generation/package 전체 query를 범위화하도록 변경했으며 worker는 queued project owner를 DB에서 재조회. Fetch Metadata와 Origin allowlist를 결합한 CSRF 방어, 사용자 A/B 간 목록·직접 ID 접근 격리 통합 테스트를 추가. release build target과 Vinext production start, loopback backend를 유지하는 Nginx auth_request, API/frontend systemd·환경 골격, 배포 전 백업·same-origin 검증·비파괴 롤백 runbook을 `studio/deploy/`에 추가. backend race/vet, frontend 46개 테스트·typecheck/build, release build·production frontend 응답과 Studio→Crosswalk HTTP E2E 통과. Chrome E2E 재실행은 동일 작업 폴더의 기존 Vinext 개발 서버가 있어 사용자 프로세스를 종료하지 않고 보류했으며 직전 Phase 7-B의 2개 시나리오 통과 기록은 유지. 다음은 M6 잔여 Phase 0 항목인 OpenAPI DTO 자동 생성과 Crosswalk chart version/공개 validation 경계 안정화.
+
+- 2026-09-16 Studio Phase 7-C 운영 복구·보안 구현: `studio-admin`에 data directory 권한/symlink 검사, 실행 중 SQLite committed WAL을 포함하는 online snapshot, artifact/package 이중 checksum manifest 백업, archive verify와 기존 경로를 덮어쓰지 않는 staging restore를 추가. 복구 시 path traversal·중복 entry·symlink를 거부하고 SQLite integrity 및 `0700/0600` 권한을 재검사하며, API 시작 시 DB/WAL/SHM도 `0600`으로 고정. generation worker의 panic stack·내부 경로/raw 오류 기록을 안전한 failure code로 교체하고 access log query/header/body 비노출, 64개 동시 read smoke, race/vet 회귀를 추가. 실제 `.cache/studio-local` 49개 entry를 `/private/tmp` archive로 백업·검증·새 경로 복구한 뒤 별도 API에서 health, 프로젝트, generation 이력과 기존 package ZIP 전체 entry 무결성을 확인. 다음은 Phase 7-D 인증·CSRF·project 권한 middleware와 same-origin 배포/롤백 패키징.
+
+- 2026-09-16 Studio 브라우저 E2E 자동화 구현: Playwright와 시스템 Chrome을 사용해 UI 프로젝트 생성, 유효 JAR·설정 업로드, topology JSON import, artifact 추천 매핑, revision 저장, generation 완료, 실제 ZIP 다운로드·내용 검증을 자동화하고, 실패 generation의 immutable snapshot 재시도 계보도 별도 시나리오로 검증. 실행별 data directory 격리, Vite 감시 경로 밖의 trace/screenshot/video 저장, 실제 프런트 포트 기반 Origin 허용, cold Go build readiness 대기를 추가했으며 브라우저 E2E 2개, 프런트 46개 테스트·타입 검사·production build, backend 전체 테스트, Studio→Crosswalk HTTP E2E를 통과. 다음은 Phase 7 운영 보강(DB backup/restore·권한 가이드·request/load smoke·로그 비밀정보 점검)과 JSON Pointer 오류 세분화.
+
+- 2026-09-16 Studio generation 이력·snapshot 재시도 구현: 프로젝트/환경 범위의 최신순 cursor pagination API와 UI를 추가하고, 실패한 generation의 immutable snapshot을 새 generation으로 재등록하는 idempotent retry 경로를 구현. 원본 실패 이력을 보존하면서 `retryOfGenerationId`로 계보를 기록하며, 성공·진행 중 작업 재시도와 다른 환경 cursor 재사용을 차단. SQLite migration, repository/API/client 회귀 테스트와 backend 전체 테스트, 프론트 타입 검사·계약 테스트·production build를 통과. 다음은 실제 파일 fixture 기반 브라우저 조작 E2E와 JSON Pointer 오류 세분화.
+
+- 2026-09-16 iSTOCK-MALL PRD Crosswalk 대시보드 구성: 운영 bastion `/home/ec2-user/overpass-istockmall-prd-build`에 `deploy-dashboard-20260916-r1`과 고정 서버 4대(`app1`, `app2`, `bo1`, `bo2`)의 Java 앱 12개 인스턴스를 담은 `deploy.yml`을 반영. AWS 대상 그룹에서 별도 확인한 Auto Scaling `fo-pcweb`, `fo-mobile`, `fo-api` 인스턴스는 교체 시 IP와 host key가 바뀌므로 고정 SSH 대상인 Crosswalk 설정에서 의도적으로 제외. 실제 앱 디렉터리·`server.sh`·기본 로그 경로를 읽기 전용으로 확인하고 Crosswalk 화면에서 `Status refresh completed: 12 application(s)`를 검증했으며 10개 `RUNNING`, 로그 파일이 없는 `bo1/bo2`의 `po-mobile` 2개는 `STOPPED`로 표시됨. 앱 시작·중지·재시작·배포는 실행하지 않았고 검증용 대시보드 및 tail 프로세스는 모두 종료. 다음은 필요 시 운영 `po-mobile`의 의도된 정지 여부 확인.
+
 - 2026-09-15 Crosswalk 로그 앱 전환 오류 수정: 대시보드 행의 방향키/마우스 선택 변경을 즉시 내부 대상에 반영하고, 이전 앱의 지연된 SSH 로그 연결이 새 선택을 덮어쓰지 못하도록 스트림 세대 검증을 추가. 새 로그 시작 시 기존 출력을 비우며 `Activity and Logs: <app>` 제목을 고정 표시. iSTOCK-MALL DEV에서 `fo-pcweb` 로그 tail 생성, `fo-mobile` 선택 시 기존 tail 종료, 새 로그 요청 시 `/app/overpass/fo-mobile/logs/fo-mobile.log` tail 전환을 확인했고 검증용 원격 프로세스도 정리. 다음은 필요 시 앱별 로그 파일 선택과 검색/필터 기능 추가.
 
 - 2026-09-15 iSTOCK-MALL DEV Crosswalk 대시보드 확장: bastion `/home/ec2-user/overpass-istockmall-dev-build/deploy.yml`과 `dashboard.dev.yml`에 `devwas` Java 앱 10개를 등록하고 기존 OA 전용 설정을 `dashboard.dev.yml.bak.20260915-all-apps`로 보존. 상태 조회가 자체 shell 명령을 Java 프로세스로 오인하던 `pgrep` 방식을 실제 `comm=java` 프로세스 필터로 교체해 `po-mobile=STOPPED` 등 실제 상태를 표시하도록 수정. Crosswalk 전체 테스트·race 검사와 DEV `Status refresh completed: 10 application(s)`를 확인했으며 앱 제어·로그 스트리밍·배포는 실행하지 않음. 다음은 필요 시 좁은 터미널에서도 10개 앱의 스크롤/선택 가시성을 개선.
@@ -234,8 +244,8 @@
 - iSTOCKMALL 운영 배포 전 현재 APP_NAME만 포함한 최소 logback 템플릿을 실제 appender/rolling 정책 파일로 교체하고, dummy JAR를 앱별 실제 빌드 artifact로 교체.
 - stock-company prod 제외 자산 후속: 실제 비밀값이 포함된 env/OLD/요약 파일은 placeholder 템플릿으로 정제하고, 256MiB를 초과하는 archive는 용량 정책·분할/외부 Object Storage 방식을 확정한 뒤 등록.
 - Studio UI 수동 확인: 작은 viewport와 대용량·단일 행 JSON 붙여넣기에서 가져오기 버튼이 계속 노출되고 편집기 내부 스크롤이 동작하는지 확인.
-- Studio Backend 후속: generation 이력 pagination·재진입 API, JSON Pointer 단위 package 오류 세분화, worker 관측 지표와 수동 retry 정책.
-- Studio 프론트 후속: 실제 파일 fixture를 사용하는 브라우저 업로드→artifact 선택→설계 저장→package 생성→ZIP 내용 검증 E2E, 설정·일반 파일용 구조화 편집기, generation 이력/재진입 화면.
+- Studio Backend 후속: JSON Pointer 단위 package 오류 세분화, worker 관측 지표와 재시도 보존·만료 정책.
+- Studio 프론트 후속: 실제 파일 fixture를 사용하는 브라우저 업로드→artifact 선택→설계 저장→package 생성→ZIP 내용 검증 E2E와 설정·일반 파일용 구조화 편집기.
 - Studio 계약 후속: OpenAPI DTO 자동 생성, Crosswalk chart version 안정화, 공유 환경 인증·Secret 참조 정책 확정.
 - 생성기 후속: 환경별 overlay와 Docker Compose·Helm·GitLab CI·Argo CD 생성기를 capability 기반으로 추가하고 Terraform은 이후 단계로 분리.
 - 실행 계층 후속: Redis/Elasticsearch 설치·실행 생성기, 포트 매핑 및 서비스별 복수 포트 모델, 실제 브라우저 조작 QA 추가.
