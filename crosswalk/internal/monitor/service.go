@@ -2,7 +2,6 @@ package monitor
 
 import (
 	"fmt"
-	"path"
 	"strings"
 	"time"
 
@@ -78,7 +77,7 @@ func (s Service) Control(cfg *config.Config, target Target, action Action) (stri
 	return output, nil
 }
 
-// OpenLog은 선택한 앱의 표준 로그 파일을 최근 200줄부터 이어서 읽는다.
+// OpenLog은 선택한 앱의 설정된 로그 파일을 최근 200줄부터 읽기 전용으로 이어서 읽는다.
 func (s Service) OpenLog(cfg *config.Config, target Target) (*LogStream, error) {
 	server, app, err := resolveTarget(cfg, target)
 	if err != nil {
@@ -115,11 +114,12 @@ func resolveTarget(cfg *config.Config, target Target) (config.ServerConfig, conf
 }
 
 func statusCommand(app config.AppConfig) string {
+	settings := settingsFor(app)
 	inner := strings.Join([]string{
 		"script=" + ssh.ShellQuote(app.Script.RemotePath),
-		"app_name=" + ssh.ShellQuote(app.Name),
+		"process_match=" + ssh.ShellQuote(settings.ProcessMatch),
 		"if [ ! -x \"$script\" ]; then printf 'state=unknown\\nmessage=control script is not executable\\n'; exit 0; fi",
-		"pid=$(ps -eo pid=,comm=,args= | awk -v app=\"$app_name\" '$2 == \"java\" && index($0, app) { print $1; exit }')",
+		"pid=$(ps -eo pid=,comm=,args= | awk -v match=\"$process_match\" '$2 == \"java\" && index($0, match) { print $1; exit }')",
 		"if [ -z \"$pid\" ]; then printf 'state=stopped\\n'; exit 0; fi",
 		"printf 'state=running\\npid=%s\\n' \"$pid\"",
 		"ps -p \"$pid\" -o etime= -o %cpu= -o %mem= -o command= | head -n 1 | sed 's/^/process=/'",
@@ -133,12 +133,12 @@ func controlCommand(scriptPath string, action Action) string {
 }
 
 func logCommand(logFilePath string) string {
-	inner := "mkdir -p " + ssh.ShellQuote(path.Dir(logFilePath)) + "; touch " + ssh.ShellQuote(logFilePath) + "; exec tail -n 200 -F " + ssh.ShellQuote(logFilePath) + " 2>&1"
+	inner := "log_file=" + ssh.ShellQuote(logFilePath) + "; if [ ! -f \"$log_file\" ]; then printf 'log file does not exist: %s\\n' \"$log_file\" >&2; exit 1; fi; exec tail -n 200 -F \"$log_file\" 2>&1"
 	return "sh -lc " + ssh.ShellQuote(inner)
 }
 
 func logPath(app config.AppConfig) string {
-	return path.Join(app.BaseDir, "logs", app.Name+".log")
+	return settingsFor(app).LogPath
 }
 
 type parsedStatus struct {

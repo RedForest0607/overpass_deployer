@@ -29,7 +29,7 @@ M4는 운영자가 배포 전후 상태를 안전하게 확인하고, 필요한 
 - [x] 대시보드 실행 시 배포 원본 파일이 없어도 monitoring 전용 검증 경로로 설정을 읽을 수 있다
 - [x] 로그 stream 종료 시 원격 tail 프로세스가 남지 않도록 세션 종료를 처리한다
 - [~] `script.mode: local-file` 앱의 상태 판별 규약을 실제 운영 환경 기준으로 확정한다
-- [ ] 앱별 로그 경로 override 스키마를 확정하고 구현한다
+- [x] 앱별 process match/log path override 스키마를 확정하고 구현한다
 - [ ] 서버/앱별 실행 결과 요약 테이블을 제공한다
 - [ ] SSH 연결 실패/타임아웃/부분 실패를 대시보드에서 재시도 가능한 형태로 보여준다
 - [ ] 명시적 target/service 선택 UX와 기존 tag 기반 선택 배포의 관계를 문서화한다
@@ -50,11 +50,11 @@ M4는 운영자가 배포 전후 상태를 안전하게 확인하고, 필요한 
 
 - [x] `internal/monitor` 서비스 추가
 - [x] 서버별 SSH 연결 후 앱 상태 read-only 조회
-- [x] `pgrep -f java.*<app.name>` 기반 PID 조회
+- [x] 실제 `java` 실행 파일의 명령행에서 앱별 literal process match를 찾는 PID 조회
 - [x] 기본 로그 경로 `{base_dir}/logs/{app.name}.log` 사용
 - [x] 로그 스트리밍용 SSH session 시작/종료 처리
 - [~] local-file 스크립트나 커스텀 프로세스명 앱에서 상태 판별 규약 검증
-- [ ] 앱별 process match/log path override 지원
+- [x] `monitor.process_match`/`monitor.log_path` override 지원
 
 ---
 
@@ -88,3 +88,4 @@ M4는 운영자가 배포 전후 상태를 안전하게 확인하고, 필요한 
 | 2026-07-31 | `deploy dashboard` TUI, 상태 조회, 로그 stream, 앱 제어/배포 확인창 구현 | 1차 완료 |
 | 2026-07-31 | DEV bastion에서 `oa` 상태 조회와 로그 stream 확인 | read-only 검증 완료 |
 | 2026-08-24 | 대시보드를 공식 M4 마일스톤으로 편입 | 진행 중 |
+| 2026-09-17 | 앱별 process match/log path override 및 read-only 로그 조회 구현 | 로컬 검증 완료 |

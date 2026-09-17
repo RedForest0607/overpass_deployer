@@ -440,6 +440,26 @@ func validateMonitoringApp(app *AppConfig, prefix string, errs *[]string, checkU
 	if app.Port != 0 {
 		validatePort(app.Port, prefix+".port", errs)
 	}
+	validateMonitorConfig(app, prefix, errs, checkUnresolvedEnv)
+}
+
+// validateMonitorConfig는 원격 shell에 전달되는 관측 기준과 로그 경로를 정규화한다.
+func validateMonitorConfig(app *AppConfig, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
+	rawProcessMatch := app.Monitor.ProcessMatch
+	rawLogPath := app.Monitor.LogPath
+	app.Monitor.ProcessMatch = strings.TrimSpace(rawProcessMatch)
+	app.Monitor.LogPath = filepath.ToSlash(strings.TrimSpace(rawLogPath))
+
+	checkUnresolvedEnv(app.Monitor.ProcessMatch, prefix+".monitor.process_match")
+	checkUnresolvedEnv(app.Monitor.LogPath, prefix+".monitor.log_path")
+	if strings.ContainsAny(rawProcessMatch, "\r\n\x00") {
+		*errs = append(*errs, prefix+".monitor.process_match must not contain newlines or NUL bytes")
+	}
+	if strings.ContainsAny(rawLogPath, "\r\n\x00") {
+		*errs = append(*errs, prefix+".monitor.log_path must not contain newlines or NUL bytes")
+	} else if app.Monitor.LogPath != "" && !strings.HasPrefix(app.Monitor.LogPath, "/") {
+		*errs = append(*errs, prefix+".monitor.log_path must be an absolute path")
+	}
 }
 
 // validateDirectoryDefaultsConfig는 경로 prefix별 기본 소유권 규칙을 검증하고 정규화한다.
@@ -638,6 +658,7 @@ func validateAppConfig(app *AppConfig, prefix string, errs *[]string, checkUnres
 	if app.BaseDir == "" {
 		*errs = append(*errs, prefix+".base_dir is required")
 	}
+	validateMonitorConfig(app, prefix, errs, checkUnresolvedEnv)
 
 	checkUnresolvedEnv(app.Jar.LocalPath, prefix+".jar.local_path")
 	if app.Jar.LocalPath == "" {

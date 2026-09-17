@@ -967,6 +967,38 @@ func TestValidateAndApplyDefaultsRejectsMixedAppAndApps(t *testing.T) {
 	}
 }
 
+func TestValidateForMonitoringRejectsUnsafeOverrides(t *testing.T) {
+	keyPath := writeTempFile(t, "monitor_id_rsa", "key")
+	cfg := &Config{
+		SSH: SSHConfig{User: "deploy", KeyPath: keyPath},
+		Servers: []ServerConfig{{
+			Host: "app.example.com",
+			App: AppConfig{
+				Name:    "sample",
+				BaseDir: "/opt/sample",
+				Monitor: MonitorConfig{
+					ProcessMatch: "sample\nother",
+					LogPath:      "logs/sample.log",
+				},
+				Script: ScriptConfig{RemotePath: "/opt/sample/bin/server.sh"},
+			},
+		}},
+	}
+
+	err := ValidateForMonitoring(cfg)
+	if err == nil {
+		t.Fatal("expected unsafe monitoring override errors")
+	}
+	for _, fragment := range []string{
+		"servers[0].app.monitor.process_match must not contain newlines or NUL bytes",
+		"servers[0].app.monitor.log_path must be an absolute path",
+	} {
+		if !strings.Contains(err.Error(), fragment) {
+			t.Fatalf("expected error to contain %q, got %v", fragment, err)
+		}
+	}
+}
+
 func TestValidateAndApplyDefaultsSupportsLocalFileScriptMode(t *testing.T) {
 	keyPath := writeTempFile(t, "id_rsa", "key")
 	jarPath := writeTempFile(t, "app.jar", "jar")

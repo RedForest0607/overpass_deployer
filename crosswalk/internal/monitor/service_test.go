@@ -27,12 +27,41 @@ func TestParseStatus(t *testing.T) {
 }
 
 func TestStatusCommandEscapesConfiguredValues(t *testing.T) {
-	command := statusCommand(config.AppConfig{Name: "app'unsafe", Script: config.ScriptConfig{RemotePath: "/app/example'unsafe/server.sh"}})
+	command := statusCommand(config.AppConfig{
+		Name:    "app-default",
+		Monitor: config.MonitorConfig{ProcessMatch: "app'unsafe"},
+		Script:  config.ScriptConfig{RemotePath: "/app/example'unsafe/server.sh"},
+	})
 	if !strings.HasPrefix(command, "sh -lc '") || !strings.Contains(command, "'\"'\"'") {
 		t.Fatalf("statusCommand() did not safely quote configured values: %q", command)
 	}
 	if strings.Contains(command, "pgrep") || !strings.Contains(command, "comm=") || !strings.Contains(command, "$2 == \"java\"") {
 		t.Fatalf("statusCommand() must inspect actual java executables without matching its own shell: %q", command)
+	}
+}
+
+func TestSettingsForUsesDefaultsAndOverrides(t *testing.T) {
+	app := config.AppConfig{Name: "sample-api", BaseDir: "/app/sample-api"}
+	if actual := settingsFor(app); actual.ProcessMatch != "sample-api" || actual.LogPath != "/app/sample-api/logs/sample-api.log" {
+		t.Fatalf("settingsFor(defaults) = %#v", actual)
+	}
+
+	app.Monitor = config.MonitorConfig{ProcessMatch: "sample-api.jar", LogPath: "/var/log/apps/sample.log"}
+	if actual := settingsFor(app); actual.ProcessMatch != "sample-api.jar" || actual.LogPath != "/var/log/apps/sample.log" {
+		t.Fatalf("settingsFor(overrides) = %#v", actual)
+	}
+}
+
+func TestLogCommandIsReadOnlyAndQuotesPath(t *testing.T) {
+	command := logCommand("/var/log/app's/output.log")
+	if strings.Contains(command, "mkdir") || strings.Contains(command, "touch") {
+		t.Fatalf("logCommand() must not create or mutate remote files: %q", command)
+	}
+	if !strings.Contains(command, "test") && !strings.Contains(command, "[ ! -f") {
+		t.Fatalf("logCommand() must reject a missing file: %q", command)
+	}
+	if !strings.Contains(command, "'\"'\"'") {
+		t.Fatalf("logCommand() did not safely quote the configured path: %q", command)
 	}
 }
 

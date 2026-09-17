@@ -187,6 +187,9 @@ func TestLoadForMonitoringAllowsMinimalRemoteOnlyAppConfig(t *testing.T) {
 		"    apps:",
 		"      - name: sample-api",
 		"        base_dir: /app/sample-api",
+		"        monitor:",
+		"          process_match: sample-api.jar",
+		"          log_path: /var/log/sample-api/application.log",
 		"        script:",
 		"          remote_path: /app/sample-api/bin/server.sh",
 	}, "\n")
@@ -199,6 +202,9 @@ func TestLoadForMonitoringAllowsMinimalRemoteOnlyAppConfig(t *testing.T) {
 	app := cfg.Servers[0].Apps[0]
 	if app.Jar.LocalPath != "" || app.Script.RemotePath != "/app/sample-api/bin/server.sh" {
 		t.Fatalf("unexpected monitoring config: %#v", app)
+	}
+	if app.Monitor.ProcessMatch != "sample-api.jar" || app.Monitor.LogPath != "/var/log/sample-api/application.log" {
+		t.Fatalf("unexpected monitoring overrides: %#v", app.Monitor)
 	}
 }
 

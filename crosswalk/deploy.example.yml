@@ -62,6 +62,11 @@ servers:
       tags: [api, sample, template]
       base_dir: /opt/sample-api
       port: 8080
+      # 선택 사항: 기본값은 앱 이름을 포함하는 Java 프로세스와
+      # {base_dir}/logs/{name}.log 입니다.
+      monitor:
+        process_match: sample-api.jar
+        log_path: /var/log/sample-api/application.log
       extra_opts:
         - --spring.profiles.active=prod
       jar:

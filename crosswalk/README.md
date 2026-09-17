@@ -166,6 +166,9 @@ servers:
       tags: [api]
       base_dir: /opt/sample-api
       port: 8080
+      monitor:
+        process_match: sample-api.jar
+        log_path: /var/log/sample-api/application.log
       jar:
         local_path: ./dist/sample-api.jar
         remote_path: /app/overpass/sample-api/bin/sample-api.jar
@@ -182,6 +185,8 @@ servers:
 - `app`와 `apps`를 동시에 정의할 수는 없습니다.
 - `tags`는 선택 배포에 사용됩니다.
 - `config_files`, `extra_files`, `script`는 모두 로컬 파일 존재 여부를 사전 검증합니다.
+
+`monitor`는 대시보드 전용 선택 설정입니다. `process_match`는 실제 `java` 프로세스의 전체 명령행에서 찾을 리터럴 문자열이며, 비어 있으면 앱 `name`을 사용합니다. `log_path`는 원격 절대 경로여야 하고, 비어 있으면 `{base_dir}/logs/{name}.log`를 사용합니다. 로그 열기는 파일을 생성하지 않는 읽기 전용 동작이므로 파일이 없으면 오류 메시지를 표시합니다.
 
 ### `script.mode`
 

@@ -171,16 +171,24 @@ type DirectoryOwnershipRule struct {
 }
 
 type AppConfig struct {
-	Name        string       `yaml:"name"`
-	Tags        []string     `yaml:"tags"`
-	BaseDir     string       `yaml:"base_dir"`
-	Jar         JarConfig    `yaml:"jar"`
-	Jvm         JvmConfig    `yaml:"jvm"`
-	Port        int          `yaml:"port"`
-	ExtraOpts   StringList   `yaml:"extra_opts"`
-	ConfigFiles []ConfigFile `yaml:"config_files"`
-	ExtraFiles  []ExtraFile  `yaml:"extra_files"`
-	Script      ScriptConfig `yaml:"script"`
+	Name        string        `yaml:"name"`
+	Tags        []string      `yaml:"tags"`
+	BaseDir     string        `yaml:"base_dir"`
+	Monitor     MonitorConfig `yaml:"monitor"`
+	Jar         JarConfig     `yaml:"jar"`
+	Jvm         JvmConfig     `yaml:"jvm"`
+	Port        int           `yaml:"port"`
+	ExtraOpts   StringList    `yaml:"extra_opts"`
+	ConfigFiles []ConfigFile  `yaml:"config_files"`
+	ExtraFiles  []ExtraFile   `yaml:"extra_files"`
+	Script      ScriptConfig  `yaml:"script"`
+}
+
+// MonitorConfig는 대시보드가 앱 프로세스와 로그를 찾는 방법을 선택적으로 재정의한다.
+// 비어 있는 값은 앱 이름과 기본 로그 경로에서 계산하므로 기존 chart와 호환된다.
+type MonitorConfig struct {
+	ProcessMatch string `yaml:"process_match"`
+	LogPath      string `yaml:"log_path"`
 }
 
 type JarConfig struct {
