@@ -1,14 +1,17 @@
 import { request, requestBlob } from './client.ts';
-import type { Blueprint, Environment } from './contracts.ts';
 import type {
   Artifact,
   ArtifactContent,
   ArtifactKind,
+  Blueprint,
   Capabilities,
+  CreateGeneration,
+  Environment,
   Generation,
   GeneratorCapability,
   Package as GeneratedPackage,
   PackageFile,
+  ValidationRequest,
 } from './generated.ts';
 import type { Validation } from './projects.ts';
 
@@ -79,15 +82,16 @@ export const deliveryAPI = {
     blueprint: Blueprint,
     clientRequestId: string,
   ) {
+    const body: ValidationRequest = {
+      environment,
+      blueprint,
+      clientRequestId,
+      purpose: 'package',
+      generator: 'crosswalk-vm',
+    };
     return request<Validation>(projectPath(projectId) + '/validations', {
       method: 'POST',
-      body: JSON.stringify({
-        environment,
-        blueprint,
-        clientRequestId,
-        purpose: 'package',
-        generator: 'crosswalk-vm',
-      }),
+      body: JSON.stringify(body),
     });
   },
   createGeneration(
@@ -97,15 +101,16 @@ export const deliveryAPI = {
     output: 'draft' | 'package',
     idempotencyKey: string,
   ) {
+    const body: CreateGeneration = {
+      environment,
+      revision,
+      generator: 'crosswalk-vm',
+      output,
+    };
     return request<Generation>(projectPath(projectId) + '/generations', {
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKey },
-      body: JSON.stringify({
-        environment,
-        revision,
-        generator: 'crosswalk-vm',
-        output,
-      }),
+      body: JSON.stringify(body),
     });
   },
   getGeneration(projectId: string, generationId: string, signal?: AbortSignal) {

@@ -79,6 +79,7 @@ API로 저장한 복수 포트·Compose 등 미지원 표현은 불러올 때 �
 - `schemas`: OpenAPI 3.1과 Blueprint v1 JSON Schema
 
 OpenAPI를 수정한 뒤에는 `npm run generate:api`로 Go request DTO와 TypeScript API 타입을 함께 갱신한다. `npm run check:api-generated`는 커밋된 산출물의 drift를 실패로 처리한다.
+프론트는 서버 capability의 `crosswalk-vm` package output과 `crosswalk/v1` 지원을 모두 확인하고, 생성된 package의 차트 포맷을 다시 검사한 뒤 generator version과 topology snapshot 정보를 표시한다.
 
 ## 백엔드 경계
 

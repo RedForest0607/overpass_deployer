@@ -1,9 +1,15 @@
 import { request } from './client.ts';
-import type { Blueprint, Layout, Environment } from './contracts.ts';
 import type {
+  Blueprint,
+  CreateProject,
+  Environment,
   Issue,
+  Layout,
   Project,
+  SaveTopology,
   Topology,
+  UpdateProject,
+  ValidationRequest,
   ValidationResult,
 } from './generated.ts';
 
@@ -29,19 +35,21 @@ export const projectsAPI = {
     return items;
   },
   create(name: string, description: string) {
+    const body: CreateProject = { name, description };
     return request<Project>('/projects', {
       method: 'POST',
-      body: JSON.stringify({ name, description }),
+      body: JSON.stringify(body),
     });
   },
   update(project: Project, name: string, description: string) {
+    const body: UpdateProject = {
+      expectedRevision: project.revision,
+      name,
+      description,
+    };
     return request<Project>(projectPath(project.id), {
       method: 'PATCH',
-      body: JSON.stringify({
-        expectedRevision: project.revision,
-        name,
-        description,
-      }),
+      body: JSON.stringify(body),
     });
   },
   load(id: string, environment: Environment, signal?: AbortSignal) {
@@ -55,9 +63,10 @@ export const projectsAPI = {
     expectedRevision: number,
     document: { blueprint: Blueprint; layout: Layout },
   ) {
+    const body: SaveTopology = { expectedRevision, ...document };
     return request<Topology>(projectPath(id) + '/topologies/' + environment, {
       method: 'PUT',
-      body: JSON.stringify({ expectedRevision, ...document }),
+      body: JSON.stringify(body),
     });
   },
   validate(
@@ -66,14 +75,15 @@ export const projectsAPI = {
     blueprint: Blueprint,
     clientRequestId: string,
   ) {
+    const body: ValidationRequest = {
+      environment,
+      blueprint,
+      clientRequestId,
+      purpose: 'design',
+    };
     return request<Validation>(projectPath(id) + '/validations', {
       method: 'POST',
-      body: JSON.stringify({
-        environment,
-        blueprint,
-        clientRequestId,
-        purpose: 'design',
-      }),
+      body: JSON.stringify(body),
     });
   },
 };

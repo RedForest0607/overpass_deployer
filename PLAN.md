@@ -136,7 +136,7 @@
 
 **완료 기준:** `docs/STUDIO-BACKEND-PLAN.md`의 Phase 0~7 완료 기준 통과
 **선행 조건:** Studio API 계약 확정, Crosswalk 차트 포맷/version 및 validation 경계 확정
-**현재 상태:** [x] Phase 0~7 완료. OpenAPI 기반 TypeScript/Go DTO 생성·drift gate, `crosswalk/v1`/legacy 호환 정책과 공개 validator를 포함해 persistent worker/recovery, 이력·snapshot 재시도, Chrome E2E, checksum backup/비파괴 restore, trusted-header 인증·CSRF·owner 격리, same-origin 배포/롤백 계약까지 구현
+**현재 상태:** [x] Phase 0~7 및 프론트 계약 적용 후속 완료. OpenAPI 기반 TypeScript/Go DTO 생성·drift gate, 프론트 request DTO 적용, `crosswalk/v1` capability 사전 차단과 package 포맷·generator version 표시를 포함해 persistent worker/recovery, 이력·snapshot 재시도, Chrome E2E, checksum backup/비파괴 restore, trusted-header 인증·CSRF·owner 격리, same-origin 배포/롤백 계약까지 구현
 
 ---
 

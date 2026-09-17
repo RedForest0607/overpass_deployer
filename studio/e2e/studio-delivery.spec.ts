@@ -148,10 +148,16 @@ test('uploads artifacts, maps a topology, saves it, and verifies the downloaded 
   await page.getByRole('button', { name: '배포 패키지', exact: true }).click();
   await page.getByRole('button', { name: '검증 후 생성' }).click();
   await expect(
-    page.getByText(/revision 1 기반 패키지를 생성했습니다/),
+    page.getByText(
+      /revision 1 · crosswalk\/v1 · crosswalk-vm@1\.0\.0 패키지를 생성했습니다/,
+    ),
   ).toBeVisible({
     timeout: 30_000,
   });
+  const contract = page.getByLabel('생성 패키지 계약 정보');
+  await expect(contract).toContainText('차트 포맷crosswalk/v1');
+  await expect(contract).toContainText('생성기crosswalk-vm@1.0.0');
+  await expect(contract).toContainText('토폴로지 스냅샷QA · revision 1');
   await expect(page.getByText('생성 이력')).toBeVisible();
   await expect(page.getByText('완료', { exact: true }).first()).toBeVisible();
 

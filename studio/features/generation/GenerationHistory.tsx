@@ -25,11 +25,13 @@ export default function GenerationHistory({
   environment,
   activeGeneration,
   onResume,
+  generationBlockedReason,
 }: {
   projectId: string;
   environment: Environment;
   activeGeneration: Generation | null;
   onResume: (generation: Generation) => Promise<void>;
+  generationBlockedReason: string | null;
 }) {
   const [items, setItems] = useState<Generation[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -59,12 +61,16 @@ export default function GenerationHistory({
         nextCursor,
       );
       if (version !== loadVersion.current) return;
-      setItems((current) => (append ? [...current, ...page.items] : page.items));
+      setItems((current) =>
+        append ? [...current, ...page.items] : page.items,
+      );
       setCursor(page.nextCursor);
     } catch (cause) {
       if (version !== loadVersion.current) return;
       setMessage(
-        cause instanceof Error ? cause.message : '생성 이력을 불러오지 못했습니다.',
+        cause instanceof Error
+          ? cause.message
+          : '생성 이력을 불러오지 못했습니다.',
       );
     } finally {
       if (version === loadVersion.current) setLoading(false);
@@ -97,6 +103,10 @@ export default function GenerationHistory({
   }, [projectId, environment]);
 
   async function retry(generation: Generation) {
+    if (generationBlockedReason) {
+      setMessage(generationBlockedReason);
+      return;
+    }
     setActionId(generation.id);
     setMessage('');
     try {
@@ -114,7 +124,9 @@ export default function GenerationHistory({
       await onResume(queued);
     } catch (cause) {
       setMessage(
-        cause instanceof Error ? cause.message : '생성 작업을 다시 시도하지 못했습니다.',
+        cause instanceof Error
+          ? cause.message
+          : '생성 작업을 다시 시도하지 못했습니다.',
       );
     } finally {
       setActionId('');
@@ -128,7 +140,9 @@ export default function GenerationHistory({
       await onResume(generation);
     } catch (cause) {
       setMessage(
-        cause instanceof Error ? cause.message : '생성 작업을 다시 열지 못했습니다.',
+        cause instanceof Error
+          ? cause.message
+          : '생성 작업을 다시 열지 못했습니다.',
       );
     } finally {
       setActionId('');
@@ -164,7 +178,8 @@ export default function GenerationHistory({
               </p>
               {item.status === 'failed' ? (
                 <button
-                  disabled={loading || !!actionId}
+                  disabled={loading || !!actionId || !!generationBlockedReason}
+                  title={generationBlockedReason || undefined}
                   onClick={() => void retry(item)}
                 >
                   <RotateCcw size={14} /> snapshot 재시도
@@ -174,7 +189,9 @@ export default function GenerationHistory({
                   disabled={loading || !!actionId}
                   onClick={() => void resume(item)}
                 >
-                  {item.status === 'succeeded' ? '패키지 열기' : '작업 다시 연결'}
+                  {item.status === 'succeeded'
+                    ? '패키지 열기'
+                    : '작업 다시 연결'}
                 </button>
               )}
             </article>
@@ -182,7 +199,9 @@ export default function GenerationHistory({
         </div>
       ) : (
         <div className="generation-history-empty">
-          {loading ? '생성 이력을 불러오는 중…' : '이 환경의 생성 이력이 없습니다.'}
+          {loading
+            ? '생성 이력을 불러오는 중…'
+            : '이 환경의 생성 이력이 없습니다.'}
         </div>
       )}
       {cursor && (
@@ -194,7 +213,9 @@ export default function GenerationHistory({
           이전 이력 더 보기
         </button>
       )}
-      {message && <output className="generation-history-message">{message}</output>}
+      {message && (
+        <output className="generation-history-message">{message}</output>
+      )}
     </section>
   );
 }

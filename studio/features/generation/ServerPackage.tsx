@@ -25,6 +25,11 @@ import {
   type IdempotencyAttempt,
 } from './generation-state';
 import GenerationHistory from './GenerationHistory';
+import {
+  evaluatePackageCapability,
+  packageContractError,
+  REQUIRED_CHART_FORMAT,
+} from './package-contract';
 
 const wait = (milliseconds: number, signal: AbortSignal) =>
   new Promise<void>((resolve, reject) => {
@@ -73,13 +78,16 @@ export default function ServerPackage({
   const [truncated, setTruncated] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [capabilityError, setCapabilityError] = useState('');
   const operation = useRef<AbortController | null>(null);
   const retry = useRef<IdempotencyAttempt | null>(null);
   const signature = projectId + ':' + environment + ':' + revision + ':package';
-  const capability = capabilities?.generators.find(
-    (candidate) => candidate.id === 'crosswalk-vm',
-  );
-  const supported = !!capability?.outputs.includes('package');
+  const packageCapability = evaluatePackageCapability(capabilities);
+  const capabilityBlockedReason = capabilityError
+    ? capabilityError
+    : capabilities
+      ? packageCapability.reason
+      : '서버의 패키지 호환성을 확인하고 있습니다…';
   const selected = generatedPackage?.files.find(
     (file) => file.id === selectedId,
   );
@@ -89,22 +97,26 @@ export default function ServerPackage({
       ? '미저장 변경이 있습니다. immutable revision을 만들기 위해 설계를 먼저 저장하세요.'
       : revision < 1
         ? '저장된 topology revision이 없습니다.'
-        : capabilities && !supported
-          ? '서버에서 crosswalk-vm package 생성을 지원하지 않습니다.'
+        : capabilityBlockedReason
+          ? capabilityBlockedReason
           : '';
 
   useEffect(() => {
     const controller = new AbortController();
     deliveryAPI
       .capabilities(controller.signal)
-      .then(setCapabilities)
+      .then((value) => {
+        setCapabilities(value);
+        setCapabilityError('');
+      })
       .catch((cause) => {
         if (!(cause instanceof DOMException && cause.name === 'AbortError')) {
-          setMessage(
+          const error =
             cause instanceof Error
               ? cause.message
-              : '서버 기능을 확인하지 못했습니다.',
-          );
+              : '서버 기능을 확인하지 못했습니다.';
+          setCapabilityError(error);
+          setMessage(error);
         }
       });
     return () => controller.abort();
@@ -162,6 +174,8 @@ export default function ServerPackage({
       current.packageId,
       signal,
     );
+    const contractError = packageContractError(result);
+    if (contractError) throw new Error(contractError);
     setGeneratedPackage(result);
     const deploy = result.files.find(
       (file) => file.path === 'deploy.yml' && file.previewable,
@@ -172,7 +186,9 @@ export default function ServerPackage({
       result.files[0];
     setSelectedId(first?.id ?? '');
     retry.current = null;
-    setMessage('revision ' + result.revision + ' 기반 패키지를 생성했습니다.');
+    setMessage(
+      `revision ${result.revision} · ${result.chartFormat} · ${result.generator}@${result.generatorVersion} 패키지를 생성했습니다.`,
+    );
   }
 
   async function generate() {
@@ -318,6 +334,8 @@ export default function ServerPackage({
       <div className={blockedReason ? 'draft-notice' : 'package-status'}>
         {blockedReason ||
           'crosswalk-vm · ' +
+            REQUIRED_CHART_FORMAT +
+            ' · ' +
             environment +
             ' · topology revision ' +
             revision +
@@ -325,6 +343,34 @@ export default function ServerPackage({
               ? ` · ${generationStatus[generation.status]} · ${generation.attempts}차 시도`
               : '')}
       </div>
+      {generatedPackage && (
+        <dl
+          className="package-contract-info"
+          aria-label="생성 패키지 계약 정보"
+        >
+          <div>
+            <dt>차트 포맷</dt>
+            <dd>
+              <code>{generatedPackage.chartFormat}</code>
+            </dd>
+          </div>
+          <div>
+            <dt>생성기</dt>
+            <dd>
+              <code>
+                {generatedPackage.generator}@{generatedPackage.generatorVersion}
+              </code>
+            </dd>
+          </div>
+          <div>
+            <dt>토폴로지 스냅샷</dt>
+            <dd>
+              {generatedPackage.environment.toUpperCase()} · revision{' '}
+              {generatedPackage.revision}
+            </dd>
+          </div>
+        </dl>
+      )}
       {validation && !validation.valid && (
         <div className="package-issues" role="alert">
           {validation.issues.map((issue, index) => (
@@ -405,6 +451,7 @@ export default function ServerPackage({
           environment={environment}
           activeGeneration={generation}
           onResume={resumeGeneration}
+          generationBlockedReason={capabilityBlockedReason}
         />
       )}
     </section>
