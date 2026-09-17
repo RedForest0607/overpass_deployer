@@ -73,11 +73,23 @@ func (c *Client) RawClient() *ssh.Client {
 
 // Run은 원격 명령을 실행하고 stdout/stderr를 함께 수집해 호출자에게 돌려준다.
 func (c *Client) Run(cmd string) (string, error) {
+	return c.run(cmd, nil)
+}
+
+// RunWithStdin은 비밀값을 명령 인자에 포함하지 않고 원격 프로세스의 표준 입력으로 전달한다.
+func (c *Client) RunWithStdin(cmd string, input io.Reader) (string, error) {
+	return c.run(cmd, input)
+}
+
+func (c *Client) run(cmd string, input io.Reader) (string, error) {
 	session, err := c.client.NewSession()
 	if err != nil {
 		return "", fmt.Errorf("creating ssh session: %w", err)
 	}
 	defer session.Close()
+	if input != nil {
+		session.Stdin = input
+	}
 
 	var buf synchronizedBuffer
 	session.Stdout = &buf

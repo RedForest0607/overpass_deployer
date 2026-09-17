@@ -5,7 +5,7 @@ Deployer 프로젝트의 배포 실행 산출물입니다. 아래 개발 명령�
 
 단일 바이너리 기반 VM bootstrap/deploy CLI입니다.
 
-현재 기준으로 M1(VM 모드 MVP)은 완료되었고, `deploy update`는 사용할 수 있습니다. `deploy docker`는 placeholder 상태이며 아직 구현되지 않았습니다.
+현재 기준으로 M1(VM 모드 MVP)은 완료되었고, `deploy update`는 사용할 수 있습니다. `deploy docker`는 M3 Phase 2의 설정 검증, 안전한 dry-run, 명시적 원격 preflight를 지원하며 image pull과 container 적용은 아직 차단됩니다.
 
 핵심 포인트:
 
@@ -33,10 +33,12 @@ Deployer 프로젝트의 배포 실행 산출물입니다. 아래 개발 명령�
 - `deploy version`
 - `deploy update`, `deploy update --check`, `deploy update --version ...`
 - `deploy dashboard --config ...`: 상태 조회, 로그 모니터링, 앱 제어와 선택 배포를 위한 터미널 대시보드. 모니터링 전용 설정은 배포 원본 파일 없이 실행할 수 있습니다.
+- `deploy docker --dry-run --config deploy.docker.example.yml`: digest 기반 Docker 배포 계획 검토(M3 Phase 1)
+- `deploy docker --preflight --config deploy.docker.example.yml`: SSH Docker daemon 접근과 Registry 인증 확인(M3 Phase 2, pull/container 변경 없음)
 
 비지원 또는 미구현:
 
-- `deploy docker`: 아직 미구현(M3)
+- `deploy docker --config ...` 실제 image pull·container reconcile(M3 Phase 3~4)
 - M2/M4/M5 범위의 고도화 기능은 로드맵 단계이며 README에서는 구현된 내용만 다룹니다.
 
 주의:
@@ -59,8 +61,18 @@ go run ./cmd/deploy validate --config deploy.yml
 
 ```bash
 go run ./cmd/deploy vm --dry-run --config deploy.example.yml
+go run ./cmd/deploy docker --dry-run --config deploy.docker.example.yml
 go run ./cmd/deploy dashboard --config deploy.example.yml
 ```
+
+Docker 원격 사전 점검은 Registry token을 현재 shell의 환경변수에 설정한 뒤 명시적으로 실행합니다.
+
+```bash
+export HARBOR_TOKEN='replace-with-runtime-secret'
+go run ./cmd/deploy docker --preflight --config deploy.docker.example.yml
+```
+
+`--preflight`는 image pull이나 container 변경을 하지 않지만 `docker login`이 대상 SSH 사용자의 Docker credential 파일 또는 credential store를 갱신할 수 있습니다. 원격 접근과 token 조회가 전혀 없는 검토가 필요하면 `--dry-run`을 사용합니다.
 
 릴리스 바이너리로 설치해서 사용하려면 아카이브를 풀고 `deploy version`으로 동작을 확인하면 됩니다. 자세한 절차는 아래 문서를 참고하세요.
 
@@ -211,7 +223,8 @@ CLI 기준 현재 서브커맨드:
 - `validate --config ...`: 서버 연결 없이 chart format과 실제 배포 입력 전체를 검증
 - `update`
 - `dashboard`
-- `docker` (미구현)
+- `docker --dry-run --config ...`: Docker 배포 설정 검증과 비밀값 없는 작업 계획 출력(M3 Phase 1)
+- `docker --preflight --config ...`: 원격 Docker daemon 권한과 password-stdin Registry 인증 확인(M3 Phase 2)
 
 `--parallel`은 여러 서버를 동시에 배포합니다. 기본값은 `1`이며, 운영에서는 SSH/네트워크 여유에 맞춰 `2~4`부터 올리는 것을 권장합니다. 실제 배포에서는 서버별 원격 checksum을 배치 조회하고 SFTP 세션을 재사용해 SSH 왕복과 연결 생성 비용을 줄입니다.
 
@@ -220,6 +233,7 @@ CLI 기준 현재 서브커맨드:
 ```text
 cmd/deploy               CLI entrypoint
 internal/config          설정 로드/검증/기본값 처리
+internal/docker          Docker 배포 계획, daemon preflight, Registry 인증과 단계별 executor
 internal/vm              VM 배포 실행 흐름
 internal/ssh             SSH 연결 및 원격 실행
 internal/scp             파일 전송 및 checksum 비교

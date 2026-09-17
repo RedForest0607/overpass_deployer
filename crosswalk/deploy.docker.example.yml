@@ -1,0 +1,28 @@
+format: crosswalk/v1
+
+ssh:
+  user: ec2-user
+  key_path: ~/.ssh/id_rsa
+  host_key_checking: accept-new
+
+docker:
+  registry:
+    host: harbor.example.com
+    username: robot$deployer
+    token_env: HARBOR_TOKEN
+
+servers:
+  - name: app-1
+    host: 10.0.0.10
+    containers:
+      - name: commerce-api
+        image: team/commerce-api
+        digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        restart: unless-stopped
+        ports:
+          - host: 8080
+            container: 8080
+            protocol: tcp
+        environment:
+          SPRING_PROFILES_ACTIVE: prod
+          DB_PASSWORD_FILE: /run/secrets/db_password

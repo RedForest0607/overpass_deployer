@@ -6,6 +6,7 @@ type Config struct {
 	Format            string                  `yaml:"format"`
 	SSH               SSHConfig               `yaml:"ssh"`
 	Bastion           BastionConfig           `yaml:"bastion"`
+	Docker            DockerDeploymentConfig  `yaml:"docker"`
 	Bootstrap         BootstrapConfig         `yaml:"bootstrap"`
 	DirectoryDefaults DirectoryDefaultsConfig `yaml:"directory_defaults"`
 	Servers           []ServerConfig          `yaml:"servers"`
@@ -36,18 +37,51 @@ type BastionConfig struct {
 }
 
 type ServerConfig struct {
-	Host           string          `yaml:"host"`
-	Name           string          `yaml:"name"`
-	Tags           []string        `yaml:"tags"`
-	SSHPort        int             `yaml:"ssh_port"`
-	BastionHost    string          `yaml:"bastion_host"`
-	BastionSSHPort int             `yaml:"bastion_ssh_port"`
-	Bootstrap      BootstrapConfig `yaml:"bootstrap"`
-	Directories    []string        `yaml:"directories"`
-	ExtraFiles     []ExtraFile     `yaml:"extra_files"`
-	Utils          []UtilityConfig `yaml:"utils"`
-	App            AppConfig       `yaml:"app"`
-	Apps           []AppConfig     `yaml:"apps"`
+	Host           string            `yaml:"host"`
+	Name           string            `yaml:"name"`
+	Tags           []string          `yaml:"tags"`
+	SSHPort        int               `yaml:"ssh_port"`
+	BastionHost    string            `yaml:"bastion_host"`
+	BastionSSHPort int               `yaml:"bastion_ssh_port"`
+	Bootstrap      BootstrapConfig   `yaml:"bootstrap"`
+	Directories    []string          `yaml:"directories"`
+	ExtraFiles     []ExtraFile       `yaml:"extra_files"`
+	Utils          []UtilityConfig   `yaml:"utils"`
+	Containers     []ContainerConfig `yaml:"containers"`
+	App            AppConfig         `yaml:"app"`
+	Apps           []AppConfig       `yaml:"apps"`
+}
+
+// DockerDeploymentConfig는 Docker 모드가 공통으로 사용할 registry 설정을 선언한다.
+// 인증 토큰 값은 YAML에 저장하지 않고 TokenEnv가 가리키는 실행 환경 변수에서만 읽는다.
+type DockerDeploymentConfig struct {
+	Registry DockerRegistryConfig `yaml:"registry"`
+}
+
+type DockerRegistryConfig struct {
+	Host     string `yaml:"host"`
+	Username string `yaml:"username"`
+	TokenEnv string `yaml:"token_env"`
+}
+
+type ContainerConfig struct {
+	Name          string            `yaml:"name"`
+	Image         string            `yaml:"image"`
+	Digest        string            `yaml:"digest"`
+	Ports         []ContainerPort   `yaml:"ports"`
+	Environment   map[string]string `yaml:"environment"`
+	RestartPolicy string            `yaml:"restart"`
+}
+
+type ContainerPort struct {
+	Host      int    `yaml:"host"`
+	Container int    `yaml:"container"`
+	Protocol  string `yaml:"protocol"`
+}
+
+// ImageReference는 tag 대신 검증된 digest로 고정된 registry image 참조를 만든다.
+func (c DockerRegistryConfig) ImageReference(container ContainerConfig) string {
+	return c.Host + "/" + container.Image + "@" + container.Digest
 }
 
 type BootstrapConfig struct {

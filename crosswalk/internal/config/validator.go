@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	templatepkg "go-deployer/internal/template"
@@ -121,6 +122,7 @@ func ValidateAndApplyDefaults(cfg *Config) error {
 	validateBastionConfig(cfg, &errs, checkUnresolvedEnv)
 	validateBootstrapConfig(&cfg.Bootstrap, "bootstrap", &errs, checkUnresolvedEnv)
 	validateDirectoryDefaultsConfig(&cfg.DirectoryDefaults, "directory_defaults", &errs, checkUnresolvedEnv)
+	validateDockerDeploymentConfig(cfg, &errs, checkUnresolvedEnv)
 
 	// 2. Server Configs
 	if len(cfg.Servers) == 0 {
@@ -149,12 +151,13 @@ func ValidateAndApplyDefaults(cfg *Config) error {
 		prodLikeServer := hasProdLikeTags(cfg.Servers[i].Tags)
 		validateExtraFiles(&cfg.Servers[i].ExtraFiles, prefix+".extra_files", &errs, checkUnresolvedEnv, prodLikeServer)
 		validateUtilityConfigs(cfg.Servers[i].Utils, prefix+".utils", &errs, checkUnresolvedEnv, prodLikeServer)
+		validateContainerConfigs(cfg.Servers[i].Containers, prefix+".containers", &errs, checkUnresolvedEnv)
 
 		if s.UsesLegacyApp() && len(s.Apps) > 0 {
 			errs = append(errs, prefix+" cannot define both app and apps")
 		}
-		if !s.UsesLegacyApp() && len(s.Apps) == 0 && len(cfg.Servers[i].Directories) == 0 && len(cfg.Servers[i].ExtraFiles) == 0 && len(cfg.Servers[i].Utils) == 0 && !hasBootstrapSettings(cfg.Servers[i].Bootstrap) {
-			errs = append(errs, prefix+" must define app, apps, directories, extra_files, utils, or bootstrap settings")
+		if !s.UsesLegacyApp() && len(s.Apps) == 0 && len(cfg.Servers[i].Containers) == 0 && len(cfg.Servers[i].Directories) == 0 && len(cfg.Servers[i].ExtraFiles) == 0 && len(cfg.Servers[i].Utils) == 0 && !hasBootstrapSettings(cfg.Servers[i].Bootstrap) {
+			errs = append(errs, prefix+" must define app, apps, containers, directories, extra_files, utils, or bootstrap settings")
 		}
 
 		if s.UsesLegacyApp() {
@@ -288,6 +291,122 @@ func validateChartFormat(cfg *Config, errs *[]string) {
 	if cfg.Format != ChartFormatV1 && cfg.Format != ChartFormatLegacy {
 		*errs = append(*errs, fmt.Sprintf("format must be %q or %q", ChartFormatV1, ChartFormatLegacy))
 	}
+}
+
+func validateDockerDeploymentConfig(cfg *Config, errs *[]string, checkUnresolvedEnv func(string, string)) {
+	hasContainers := false
+	for _, server := range cfg.Servers {
+		if len(server.Containers) > 0 {
+			hasContainers = true
+			break
+		}
+	}
+	if !hasContainers {
+		return
+	}
+
+	registry := &cfg.Docker.Registry
+	registry.Host = strings.ToLower(strings.TrimSpace(registry.Host))
+	registry.Username = strings.TrimSpace(registry.Username)
+	registry.TokenEnv = strings.TrimSpace(registry.TokenEnv)
+	checkUnresolvedEnv(registry.Host, "docker.registry.host")
+	checkUnresolvedEnv(registry.Username, "docker.registry.username")
+	if registry.Host == "" {
+		*errs = append(*errs, "docker.registry.host is required when containers are configured")
+	} else if !isValidDockerRegistryHost(registry.Host) {
+		*errs = append(*errs, "docker.registry.host must be a hostname with an optional port")
+	}
+	if registry.Username == "" {
+		*errs = append(*errs, "docker.registry.username is required when containers are configured")
+	} else if !dockerRegistryUsernamePattern.MatchString(registry.Username) {
+		*errs = append(*errs, "docker.registry.username contains unsupported characters")
+	}
+	if !environmentNamePattern.MatchString(registry.TokenEnv) {
+		*errs = append(*errs, "docker.registry.token_env must be an environment variable name")
+	}
+}
+
+func validateContainerConfigs(containers []ContainerConfig, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
+	names := make(map[string]struct{}, len(containers))
+	hostPorts := make(map[string]string)
+	for index := range containers {
+		container := &containers[index]
+		fieldPrefix := fmt.Sprintf("%s[%d]", prefix, index)
+		container.Name = strings.TrimSpace(container.Name)
+		container.Image = strings.ToLower(strings.TrimSpace(container.Image))
+		container.Digest = strings.ToLower(strings.TrimSpace(container.Digest))
+		container.RestartPolicy = strings.ToLower(strings.TrimSpace(container.RestartPolicy))
+		checkUnresolvedEnv(container.Name, fieldPrefix+".name")
+		checkUnresolvedEnv(container.Image, fieldPrefix+".image")
+		checkUnresolvedEnv(container.Digest, fieldPrefix+".digest")
+
+		if !containerNamePattern.MatchString(container.Name) {
+			*errs = append(*errs, fieldPrefix+".name must be a valid Docker container name")
+		} else if _, exists := names[container.Name]; exists {
+			*errs = append(*errs, fmt.Sprintf("%s.name %q must be unique on the server", fieldPrefix, container.Name))
+		}
+		names[container.Name] = struct{}{}
+		if !dockerRepositoryPattern.MatchString(container.Image) {
+			*errs = append(*errs, fieldPrefix+".image must be a lowercase repository path without a tag or digest")
+		}
+		if !dockerDigestPattern.MatchString(container.Digest) {
+			*errs = append(*errs, fieldPrefix+".digest must be a sha256 digest")
+		}
+		if container.RestartPolicy == "" {
+			container.RestartPolicy = "unless-stopped"
+		} else if !allowedRestartPolicies[container.RestartPolicy] {
+			*errs = append(*errs, fieldPrefix+".restart must be one of no, always, on-failure, or unless-stopped")
+		}
+
+		for portIndex := range container.Ports {
+			port := &container.Ports[portIndex]
+			portPrefix := fmt.Sprintf("%s.ports[%d]", fieldPrefix, portIndex)
+			validatePort(port.Host, portPrefix+".host", errs)
+			validatePort(port.Container, portPrefix+".container", errs)
+			port.Protocol = strings.ToLower(strings.TrimSpace(port.Protocol))
+			if port.Protocol == "" {
+				port.Protocol = "tcp"
+			} else if port.Protocol != "tcp" && port.Protocol != "udp" {
+				*errs = append(*errs, portPrefix+".protocol must be tcp or udp")
+			}
+			key := fmt.Sprintf("%d/%s", port.Host, port.Protocol)
+			if previous, exists := hostPorts[key]; exists {
+				*errs = append(*errs, fmt.Sprintf("%s.host conflicts with %s on %s", portPrefix, previous, key))
+			} else {
+				hostPorts[key] = portPrefix
+			}
+		}
+
+		for name, value := range container.Environment {
+			if !environmentNamePattern.MatchString(name) {
+				*errs = append(*errs, fmt.Sprintf("%s.environment key %q is invalid", fieldPrefix, name))
+			}
+			checkUnresolvedEnv(value, fmt.Sprintf("%s.environment.%s", fieldPrefix, name))
+		}
+	}
+}
+
+func isValidDockerRegistryHost(value string) bool {
+	host := value
+	if strings.Count(value, ":") > 1 {
+		return false
+	}
+	if before, port, found := strings.Cut(value, ":"); found {
+		host = before
+		parsed, err := strconv.Atoi(port)
+		if err != nil || parsed < 1 || parsed > 65535 {
+			return false
+		}
+	}
+	if !dockerRegistryHostPattern.MatchString(host) || strings.Contains(host, "..") {
+		return false
+	}
+	for _, label := range strings.Split(host, ".") {
+		if label == "" || strings.HasPrefix(label, "-") || strings.HasSuffix(label, "-") {
+			return false
+		}
+	}
+	return true
 }
 
 func validateMonitoringApp(app *AppConfig, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
@@ -978,6 +1097,18 @@ func normalizeTag(value string) string {
 var bastionAliasPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 var fileModePattern = regexp.MustCompile(`^[0-7]{3,4}$`)
 var sysctlNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
+var containerNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
+var dockerRegistryHostPattern = regexp.MustCompile(`^[a-z0-9.-]+$`)
+var dockerRegistryUsernamePattern = regexp.MustCompile(`^[A-Za-z0-9_.@+$-]+$`)
+var dockerRepositoryPattern = regexp.MustCompile(`^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*$`)
+var dockerDigestPattern = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
+var environmentNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+var allowedRestartPolicies = map[string]bool{
+	"no":             true,
+	"always":         true,
+	"on-failure":     true,
+	"unless-stopped": true,
+}
 
 // isValidBastionAlias는 SSH alias로 안전하게 사용할 수 있는 문자만 포함하는지 확인한다.
 func isValidBastionAlias(value string) bool {

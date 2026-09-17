@@ -22,7 +22,7 @@
 |---|---|---|---|
 | M1 | VM 모드 MVP | [x] | `docs/M1-PLAN.md` |
 | M2 | VM 모드 완성 (멱등성) | [x] | `docs/M2-PLAN.md` |
-| M3 | Docker 모드 | [ ] | `docs/M3-PLAN.md` |
+| M3 | Docker 모드 | [~] | `docs/M3-PLAN.md` |
 | M4 | UX, Reliability & Dashboard | [~] | `docs/M4-PLAN.md` |
 | M5 | AWS Extension | [ ] | `docs/M5-PLAN.md` |
 | M6 | Studio Backend | [x] | `docs/STUDIO-BACKEND-PLAN.md` |
@@ -81,6 +81,7 @@
 
 **완료 기준:** `docs/M3-PLAN.md` 체크리스트 전체 통과
 **선행 조건:** M1 완료 (SSH / SCP / Config 공유 레이어 재사용)
+**현재 상태:** [~] Phase 1~2 완료. 계약·dry-run에 이어 SSH Docker daemon 접근과 `docker login --password-stdin` 인증을 수행하는 명시적 `--preflight`를 추가. image pull·digest 상태 판정·container reconcile 일반 apply는 Phase 3~4 완료 전까지 차단
 
 ---
 

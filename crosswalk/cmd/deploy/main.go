@@ -11,6 +11,7 @@ import (
 	"go-deployer/internal/buildinfo"
 	"go-deployer/internal/config"
 	"go-deployer/internal/dashboard"
+	dockerdeploy "go-deployer/internal/docker"
 	"go-deployer/internal/update"
 	"go-deployer/internal/vm"
 	"go-deployer/pkg/chart"
@@ -26,6 +27,7 @@ func main() {
 		runVM:             vm.RunWithOptions,
 		runUpdate:         update.Execute,
 		runDashboard:      dashboard.Run,
+		runDocker:         dockerdeploy.Run,
 		buildInfo:         buildinfo.Current,
 		validateConfig:    chart.ValidateFile,
 	}))
@@ -39,6 +41,7 @@ type dependencies struct {
 	runVM             func(cfg *config.Config, opts vm.RunOptions) error
 	runUpdate         func(ctx context.Context, cfg update.Config, opts update.Options) (*update.Result, error)
 	runDashboard      func(cfg *config.Config) error
+	runDocker         func(cfg *config.Config, opts dockerdeploy.Options) error
 	buildInfo         func() buildinfo.Info
 	validateConfig    func(path string) (chart.Metadata, error)
 }
@@ -62,13 +65,34 @@ func run(args []string, deps dependencies) int {
 	case "validate":
 		return runValidate(args[1:], deps)
 	case "docker":
-		fmt.Fprintln(deps.stderr, "docker mode is not implemented yet (M3)")
-		return 1
+		return runDocker(args[1:], deps)
 	default:
 		fmt.Fprintf(deps.stderr, "Unknown subcommand: %s\n", args[0])
 		printUsage(deps.stderr)
 		return 1
 	}
+}
+
+// runDocker는 Docker 모드의 설정과 dry-run/preflight 경계를 파싱한다.
+func runDocker(args []string, deps dependencies) int {
+	dockerCmd := flag.NewFlagSet("docker", flag.ContinueOnError)
+	dockerCmd.SetOutput(deps.stderr)
+	configPath := dockerCmd.String("config", "deploy.yml", "Path to deploy.yml configuration file")
+	dryRun := dockerCmd.Bool("dry-run", false, "Print the Docker deployment plan without remote changes")
+	preflight := dockerCmd.Bool("preflight", false, "Verify remote Docker access and registry authentication without pulling images")
+	if err := dockerCmd.Parse(args); err != nil {
+		return 1
+	}
+	cfg, err := deps.loadConfig(*configPath)
+	if err != nil {
+		fmt.Fprintf(deps.stderr, "Failed to load configuration: %v\n", err)
+		return 1
+	}
+	if err := deps.runDocker(cfg, dockerdeploy.Options{DryRun: *dryRun, Preflight: *preflight}); err != nil {
+		fmt.Fprintf(deps.stderr, "Docker deployment failed: %v\n", err)
+		return 1
+	}
+	return 0
 }
 
 func runValidate(args []string, deps dependencies) int {
@@ -213,7 +237,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintf(w, "  update  Check for or install a newer release\n")
 	fmt.Fprintf(w, "  dashboard  Open the interactive deployment dashboard\n")
 	fmt.Fprintf(w, "  validate   Validate a chart without connecting to servers\n")
-	fmt.Fprintf(w, "  docker  Not implemented yet (M3)\n\n")
+	fmt.Fprintf(w, "  docker  Plan or preflight Docker deployments (M3 Phase 2)\n\n")
 	fmt.Fprintf(w, "Flags for 'vm':\n")
 	fmt.Fprintf(w, "  --config string   Path to configuration file (default: deploy.yml)\n")
 	fmt.Fprintf(w, "  --dry-run         Print planned actions without remote changes\n")
@@ -221,6 +245,10 @@ func printUsage(w io.Writer) {
 	fmt.Fprintf(w, "  --server-tag      Deploy only servers matching any provided tags (comma-separated)\n")
 	fmt.Fprintf(w, "  --app-tag         Deploy only apps matching any provided tags (comma-separated)\n")
 	fmt.Fprintf(w, "  --parallel int    Maximum number of servers to deploy concurrently (default: 1)\n")
+	fmt.Fprintf(w, "\nFlags for 'docker':\n")
+	fmt.Fprintf(w, "  --config string   Path to deploy.yml configuration file (default: deploy.yml)\n")
+	fmt.Fprintf(w, "  --dry-run         Print the Docker deployment plan without remote changes\n")
+	fmt.Fprintf(w, "  --preflight       Verify remote Docker and registry access without pulling images\n")
 	fmt.Fprintf(w, "\nFlags for 'update':\n")
 	fmt.Fprintf(w, "  --check           Check for updates without replacing the current binary\n")
 	fmt.Fprintf(w, "  --version string  Install a specific release tag\n")

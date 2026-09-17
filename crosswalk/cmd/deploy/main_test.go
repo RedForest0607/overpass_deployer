@@ -9,10 +9,69 @@ import (
 
 	"go-deployer/internal/buildinfo"
 	"go-deployer/internal/config"
+	dockerdeploy "go-deployer/internal/docker"
 	"go-deployer/internal/update"
 	"go-deployer/internal/vm"
 	"go-deployer/pkg/chart"
 )
+
+func TestRunDockerRoutesDryRunWithoutRemoteMutation(t *testing.T) {
+	var gotPath string
+	var gotOptions dockerdeploy.Options
+	exitCode := run([]string{"docker", "--config", "docker.yml", "--dry-run"}, dependencies{
+		stdout: &bytes.Buffer{},
+		stderr: &bytes.Buffer{},
+		loadConfig: func(path string) (*config.Config, error) {
+			gotPath = path
+			return &config.Config{}, nil
+		},
+		runDocker: func(_ *config.Config, options dockerdeploy.Options) error {
+			gotOptions = options
+			return nil
+		},
+	})
+	if exitCode != 0 || gotPath != "docker.yml" || !gotOptions.DryRun || gotOptions.Preflight {
+		t.Fatalf("exit=%d path=%q options=%#v", exitCode, gotPath, gotOptions)
+	}
+}
+
+func TestRunDockerRoutesPreflight(t *testing.T) {
+	var gotOptions dockerdeploy.Options
+	exitCode := run([]string{"docker", "--config", "docker.yml", "--preflight"}, dependencies{
+		stdout: &bytes.Buffer{},
+		stderr: &bytes.Buffer{},
+		loadConfig: func(string) (*config.Config, error) {
+			return &config.Config{}, nil
+		},
+		runDocker: func(_ *config.Config, options dockerdeploy.Options) error {
+			gotOptions = options
+			return nil
+		},
+	})
+	if exitCode != 0 || gotOptions.DryRun || !gotOptions.Preflight {
+		t.Fatalf("exit=%d options=%#v", exitCode, gotOptions)
+	}
+}
+
+func TestRunDockerReportsApplyBoundary(t *testing.T) {
+	stderr := &bytes.Buffer{}
+	exitCode := run([]string{"docker", "--config", "docker.yml"}, dependencies{
+		stdout: &bytes.Buffer{},
+		stderr: stderr,
+		loadConfig: func(string) (*config.Config, error) {
+			return &config.Config{}, nil
+		},
+		runDocker: func(_ *config.Config, options dockerdeploy.Options) error {
+			if options.DryRun || options.Preflight {
+				t.Fatal("apply path must not be dry-run or preflight")
+			}
+			return dockerdeploy.ErrApplyNotImplemented
+		},
+	})
+	if exitCode != 1 || !strings.Contains(stderr.String(), "use --dry-run") {
+		t.Fatalf("exit=%d stderr=%q", exitCode, stderr.String())
+	}
+}
 
 func TestRunVMRoutesDryRunOption(t *testing.T) {
 	t.Helper()
