@@ -73,13 +73,14 @@ func run(args []string, deps dependencies) int {
 	}
 }
 
-// runDocker는 Docker 모드의 설정과 dry-run/preflight 경계를 파싱한다.
+// runDocker는 Docker 모드의 설정과 dry-run/preflight/pull 경계를 파싱한다.
 func runDocker(args []string, deps dependencies) int {
 	dockerCmd := flag.NewFlagSet("docker", flag.ContinueOnError)
 	dockerCmd.SetOutput(deps.stderr)
 	configPath := dockerCmd.String("config", "deploy.yml", "Path to deploy.yml configuration file")
 	dryRun := dockerCmd.Bool("dry-run", false, "Print the Docker deployment plan without remote changes")
 	preflight := dockerCmd.Bool("preflight", false, "Verify remote Docker access and registry authentication without pulling images")
+	pull := dockerCmd.Bool("pull", false, "Inspect container image state and pull missing digest-pinned images")
 	if err := dockerCmd.Parse(args); err != nil {
 		return 1
 	}
@@ -88,7 +89,7 @@ func runDocker(args []string, deps dependencies) int {
 		fmt.Fprintf(deps.stderr, "Failed to load configuration: %v\n", err)
 		return 1
 	}
-	if err := deps.runDocker(cfg, dockerdeploy.Options{DryRun: *dryRun, Preflight: *preflight}); err != nil {
+	if err := deps.runDocker(cfg, dockerdeploy.Options{DryRun: *dryRun, Preflight: *preflight, Pull: *pull}); err != nil {
 		fmt.Fprintf(deps.stderr, "Docker deployment failed: %v\n", err)
 		return 1
 	}
@@ -237,7 +238,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintf(w, "  update  Check for or install a newer release\n")
 	fmt.Fprintf(w, "  dashboard  Open the interactive deployment dashboard\n")
 	fmt.Fprintf(w, "  validate   Validate a chart without connecting to servers\n")
-	fmt.Fprintf(w, "  docker  Plan or preflight Docker deployments (M3 Phase 2)\n\n")
+	fmt.Fprintf(w, "  docker  Plan, preflight, or pull Docker images (M3 Phase 3)\n\n")
 	fmt.Fprintf(w, "Flags for 'vm':\n")
 	fmt.Fprintf(w, "  --config string   Path to configuration file (default: deploy.yml)\n")
 	fmt.Fprintf(w, "  --dry-run         Print planned actions without remote changes\n")
@@ -249,6 +250,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintf(w, "  --config string   Path to deploy.yml configuration file (default: deploy.yml)\n")
 	fmt.Fprintf(w, "  --dry-run         Print the Docker deployment plan without remote changes\n")
 	fmt.Fprintf(w, "  --preflight       Verify remote Docker and registry access without pulling images\n")
+	fmt.Fprintf(w, "  --pull            Inspect state and pull missing digest-pinned images\n")
 	fmt.Fprintf(w, "\nFlags for 'update':\n")
 	fmt.Fprintf(w, "  --check           Check for updates without replacing the current binary\n")
 	fmt.Fprintf(w, "  --version string  Install a specific release tag\n")

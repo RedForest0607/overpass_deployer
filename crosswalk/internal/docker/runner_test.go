@@ -125,7 +125,7 @@ func TestRunPreflightRedactsRegistryFailure(t *testing.T) {
 }
 
 func TestRunRejectsMutuallyExclusiveModes(t *testing.T) {
-	err := Run(dockerConfig(), Options{DryRun: true, Preflight: true})
+	err := Run(dockerConfig(), Options{DryRun: true, Pull: true})
 	if err == nil || !strings.Contains(err.Error(), "only one") {
 		t.Fatalf("error=%v", err)
 	}

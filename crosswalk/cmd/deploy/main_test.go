@@ -30,7 +30,7 @@ func TestRunDockerRoutesDryRunWithoutRemoteMutation(t *testing.T) {
 			return nil
 		},
 	})
-	if exitCode != 0 || gotPath != "docker.yml" || !gotOptions.DryRun || gotOptions.Preflight {
+	if exitCode != 0 || gotPath != "docker.yml" || !gotOptions.DryRun || gotOptions.Preflight || gotOptions.Pull {
 		t.Fatalf("exit=%d path=%q options=%#v", exitCode, gotPath, gotOptions)
 	}
 }
@@ -48,7 +48,25 @@ func TestRunDockerRoutesPreflight(t *testing.T) {
 			return nil
 		},
 	})
-	if exitCode != 0 || gotOptions.DryRun || !gotOptions.Preflight {
+	if exitCode != 0 || gotOptions.DryRun || !gotOptions.Preflight || gotOptions.Pull {
+		t.Fatalf("exit=%d options=%#v", exitCode, gotOptions)
+	}
+}
+
+func TestRunDockerRoutesPull(t *testing.T) {
+	var gotOptions dockerdeploy.Options
+	exitCode := run([]string{"docker", "--config", "docker.yml", "--pull"}, dependencies{
+		stdout: &bytes.Buffer{},
+		stderr: &bytes.Buffer{},
+		loadConfig: func(string) (*config.Config, error) {
+			return &config.Config{}, nil
+		},
+		runDocker: func(_ *config.Config, options dockerdeploy.Options) error {
+			gotOptions = options
+			return nil
+		},
+	})
+	if exitCode != 0 || gotOptions.DryRun || gotOptions.Preflight || !gotOptions.Pull {
 		t.Fatalf("exit=%d options=%#v", exitCode, gotOptions)
 	}
 }
@@ -62,8 +80,8 @@ func TestRunDockerReportsApplyBoundary(t *testing.T) {
 			return &config.Config{}, nil
 		},
 		runDocker: func(_ *config.Config, options dockerdeploy.Options) error {
-			if options.DryRun || options.Preflight {
-				t.Fatal("apply path must not be dry-run or preflight")
+			if options.DryRun || options.Preflight || options.Pull {
+				t.Fatal("apply path must not select a staged mode")
 			}
 			return dockerdeploy.ErrApplyNotImplemented
 		},

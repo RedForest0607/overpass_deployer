@@ -81,7 +81,7 @@
 
 **완료 기준:** `docs/M3-PLAN.md` 체크리스트 전체 통과
 **선행 조건:** M1 완료 (SSH / SCP / Config 공유 레이어 재사용)
-**현재 상태:** [~] Phase 1~2 완료. 계약·dry-run에 이어 SSH Docker daemon 접근과 `docker login --password-stdin` 인증을 수행하는 명시적 `--preflight`를 추가. image pull·digest 상태 판정·container reconcile 일반 apply는 Phase 3~4 완료 전까지 차단
+**현재 상태:** [~] Phase 1~3 완료. 계약·dry-run·원격 preflight에 이어 실행 중 container image ID/RepoDigest 조회와 local digest 기반 조건부 pull, pull 사후 digest 검증을 수행하는 명시적 `--pull`을 추가. container reconcile 일반 apply는 Phase 4 완료 전까지 차단
 
 ---
 

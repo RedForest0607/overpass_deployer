@@ -10,11 +10,12 @@ import (
 	"go-deployer/pkg/logger"
 )
 
-var ErrApplyNotImplemented = errors.New("docker apply is not implemented yet; use --dry-run or --preflight")
+var ErrApplyNotImplemented = errors.New("docker apply is not implemented yet; use --dry-run, --preflight, or --pull")
 
 type Options struct {
 	DryRun    bool
 	Preflight bool
+	Pull      bool
 }
 
 type remoteRunner interface {
@@ -35,10 +36,11 @@ var connectDockerSSH = func(sshCfg config.SSHConfig, host string) (remoteRunner,
 	)
 }
 
-// Run은 dry-run과 명시적 preflight만 실행한다. pull/reconcile이 완성될 때까지 일반 apply는 차단한다.
+// Run은 dry-run, preflight, pull 단계를 명시적으로 분리한다.
+// container reconcile이 완성될 때까지 일반 apply는 차단한다.
 func Run(cfg *config.Config, opts Options) error {
-	if opts.DryRun && opts.Preflight {
-		return errors.New("docker mode accepts only one of --dry-run or --preflight")
+	if enabledModeCount(opts) > 1 {
+		return errors.New("docker mode accepts only one of --dry-run, --preflight, or --pull")
 	}
 	plan, err := BuildPlan(cfg)
 	if err != nil {
@@ -50,7 +52,7 @@ func Run(cfg *config.Config, opts Options) error {
 		}
 		return nil
 	}
-	if !opts.Preflight {
+	if !opts.Preflight && !opts.Pull {
 		return ErrApplyNotImplemented
 	}
 
@@ -62,14 +64,24 @@ func Run(cfg *config.Config, opts Options) error {
 		if len(server.Containers) == 0 {
 			continue
 		}
-		if err := preflightServer(cfg, server, token); err != nil {
-			return fmt.Errorf("docker preflight for %s: %w", server.Name, err)
+		if err := runServer(cfg, server, token, opts.Pull); err != nil {
+			return fmt.Errorf("docker operation for %s: %w", server.Name, err)
 		}
 	}
 	return nil
 }
 
-func preflightServer(cfg *config.Config, server config.ServerConfig, token string) error {
+func enabledModeCount(opts Options) int {
+	count := 0
+	for _, enabled := range []bool{opts.DryRun, opts.Preflight, opts.Pull} {
+		if enabled {
+			count++
+		}
+	}
+	return count
+}
+
+func runServer(cfg *config.Config, server config.ServerConfig, token string, pull bool) error {
 	sshCfg := server.SSHSettings(cfg.SSH)
 	runner, err := connectDockerSSH(sshCfg, server.Host)
 	if err != nil {
@@ -86,5 +98,14 @@ func preflightServer(cfg *config.Config, server config.ServerConfig, token strin
 		return err
 	}
 	logger.Ok(server.Name, "Registry authentication preflight passed for %s", cfg.Docker.Registry.Host)
+	if !pull {
+		return nil
+	}
+
+	for _, container := range server.Containers {
+		if err := prepareContainerImage(runner, server.Name, cfg.Docker.Registry, container); err != nil {
+			return fmt.Errorf("container %s: %w", container.Name, err)
+		}
+	}
 	return nil
 }

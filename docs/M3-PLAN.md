@@ -2,7 +2,7 @@
 
 작성일: 2026-09-17
 
-상태: Phase 1~2 완료, Phase 3 대기
+상태: Phase 1~3 완료, Phase 4 대기
 
 ## 목표
 
@@ -51,6 +51,8 @@ internal/docker/plan.go       # 비밀값 없는 결정적 배포 계획
 internal/docker/runner.go     # 실행 모드 경계와 서버별 오케스트레이션
 internal/docker/preflight.go  # Docker daemon/권한 확인
 internal/docker/registry.go   # password-stdin 인증
+internal/docker/inspect.go    # container image ID와 local RepoDigest 조회
+internal/docker/pull.go       # 조건부 digest pull과 사후 검증
 internal/docker/reconcile.go  # container spec 비교와 안전한 교체(Phase 4)
 cmd/deploy                  # CLI flag와 의존성 조립
 ```
@@ -83,10 +85,15 @@ cmd/deploy                  # CLI flag와 의존성 조립
 
 ### Phase 3 — digest 상태 판정과 pull
 
-- [ ] 실행 중 container의 image ID와 RepoDigest 조회
-- [ ] 원하는 digest가 로컬에 있으면 pull skip
-- [ ] Registry manifest/pull 결과 digest 재검증
-- [ ] tag 이동과 digest 불일치 시 배포 중단
+- [x] `--pull`에서 실행 중 container의 image ID와 RepoDigest 조회
+- [x] 원하는 digest가 로컬에 있으면 pull skip
+- [x] digest-pinned pull 이후 local RepoDigests 재검증
+- [x] tag 입력과 pull 결과 digest 불일치 시 배포 중단
+
+`--pull`은 Phase 2의 daemon/Registry preflight를 먼저 수행하고 image cache만 변경한다. container 생성·중지·삭제·교체는
+수행하지 않으며, 옵션 없는 `deploy docker`는 Phase 4 reconcile이 완성될 때까지 계속 거부한다.
+
+완료 기준: local desired digest는 pull 없이 건너뛰고, missing digest만 exact `repository@sha256`로 pull하며, 사후 RepoDigest가 다르면 중단한다.
 
 ### Phase 4 — container reconcile
 
@@ -108,4 +115,5 @@ cmd/deploy                  # CLI flag와 의존성 조립
 2. dry-run 로그에 Secret이 노출됨: plan은 environment key와 token 환경변수 이름만 보존한다.
 3. Docker가 없거나 daemon 권한이 없음: 자동 설치를 추측하지 않고 preflight에서 중단한다.
 4. 같은 host port를 여러 container가 사용함: 설정 로드 단계에서 server 범위 충돌로 거부한다.
-5. 새 container가 기동하지 못함: 기존 container를 제거하기 전 검증 가능한 교체·rollback 순서를 Phase 4에서 구현한다.
+5. pull 이후 digest가 요청값과 다름: local RepoDigests를 재검증하고 container 변경 전에 중단한다.
+6. 새 container가 기동하지 못함: 기존 container를 제거하기 전 검증 가능한 교체·rollback 순서를 Phase 4에서 구현한다.
