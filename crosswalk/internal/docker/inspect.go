@@ -26,24 +26,16 @@ type localImageState struct {
 
 // inspectContainerImage는 이름이 정확히 일치하는 container와 그 image digest 상태를 조회한다.
 func inspectContainerImage(runner remoteRunner, name string) (containerImageState, error) {
-	listCommand := "docker container ls --all --filter " + ssh.ShellQuote("name="+name) + " --format '{{.Names}}'"
-	output, err := runner.Run(listCommand)
+	found, err := containerExists(runner, name)
 	if err != nil {
-		return containerImageState{}, errors.New("failed to list Docker containers")
-	}
-	found := false
-	for _, candidate := range strings.Fields(output) {
-		if candidate == name {
-			found = true
-			break
-		}
+		return containerImageState{}, err
 	}
 	if !found {
 		return containerImageState{}, nil
 	}
 
 	inspectCommand := "docker container inspect --format '{{.Image}}' " + ssh.ShellQuote(name)
-	output, err = runner.Run(inspectCommand)
+	output, err := runner.Run(inspectCommand)
 	if err != nil {
 		return containerImageState{}, fmt.Errorf("failed to inspect container %s", name)
 	}
@@ -57,6 +49,20 @@ func inspectContainerImage(runner remoteRunner, name string) (containerImageStat
 		return containerImageState{}, fmt.Errorf("container %s image metadata is unavailable", name)
 	}
 	return containerImageState{Exists: true, ImageID: imageID, RepoDigests: digests}, nil
+}
+
+func containerExists(runner remoteRunner, name string) (bool, error) {
+	listCommand := "docker container ls --all --filter " + ssh.ShellQuote("name="+name) + " --format '{{.Names}}'"
+	output, err := runner.Run(listCommand)
+	if err != nil {
+		return false, errors.New("failed to list Docker containers")
+	}
+	for _, candidate := range strings.Fields(output) {
+		if candidate == name {
+			return true, nil
+		}
+	}
+	return false, nil
 }
 
 // inspectLocalImage는 exact digest reference가 로컬에 존재하는지 확인하고 RepoDigests를 재검증한다.

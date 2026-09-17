@@ -5,7 +5,7 @@ Deployer 프로젝트의 배포 실행 산출물입니다. 아래 개발 명령�
 
 단일 바이너리 기반 VM bootstrap/deploy CLI입니다.
 
-현재 기준으로 M1(VM 모드 MVP)은 완료되었고, `deploy update`는 사용할 수 있습니다. `deploy docker`는 M3 Phase 3의 설정 검증, 안전한 dry-run, 원격 preflight, digest 고정 image pull을 지원하며 container 적용은 아직 차단됩니다.
+현재 기준으로 M1(VM 모드 MVP)은 완료되었고, `deploy update`는 사용할 수 있습니다. `deploy docker`는 M3 Phase 4의 설정 검증, dry-run, 원격 preflight, digest 고정 image pull, container reconcile과 실패 rollback을 지원합니다.
 
 핵심 포인트:
 
@@ -36,10 +36,12 @@ Deployer 프로젝트의 배포 실행 산출물입니다. 아래 개발 명령�
 - `deploy docker --dry-run --config deploy.docker.example.yml`: digest 기반 Docker 배포 계획 검토(M3 Phase 1)
 - `deploy docker --preflight --config deploy.docker.example.yml`: SSH Docker daemon 접근과 Registry 인증 확인(M3 Phase 2, pull/container 변경 없음)
 - `deploy docker --pull --config deploy.docker.example.yml`: 현재 image digest 조회, missing digest pull과 사후 검증(M3 Phase 3, container 변경 없음)
+- `deploy docker --config deploy.docker.example.yml`: canonical spec 기반 생성·skip·보존형 교체와 readiness rollback(M3 Phase 4)
+- `deploy docker --config ... --server-tag wave1 --container-tag api --parallel 2`: 선택·제한 병렬 배포와 결과 summary(M3 Phase 5)
 
 비지원 또는 미구현:
 
-- `deploy docker --config ...` container 생성·교체와 rollback을 포함한 reconcile(M3 Phase 4)
+- 지정된 Docker/Podman SSH fixture와 Harbor에서의 실제 smoke 결과 기록(M3 Phase 5 잔여)
 - M2/M4/M5 범위의 고도화 기능은 로드맵 단계이며 README에서는 구현된 내용만 다룹니다.
 
 주의:
@@ -72,10 +74,12 @@ Docker 원격 사전 점검은 Registry token을 현재 shell의 환경변수에
 export HARBOR_TOKEN='replace-with-runtime-secret'
 go run ./cmd/deploy docker --preflight --config deploy.docker.example.yml
 go run ./cmd/deploy docker --pull --config deploy.docker.example.yml
+go run ./cmd/deploy docker --config deploy.docker.example.yml
 ```
 
 `--preflight`는 image pull이나 container 변경을 하지 않지만 `docker login`이 대상 SSH 사용자의 Docker credential 파일 또는 credential store를 갱신할 수 있습니다. 원격 접근과 token 조회가 전혀 없는 검토가 필요하면 `--dry-run`을 사용합니다.
 `--pull`은 Registry 인증 후 원하는 digest가 없는 서버의 Docker image cache를 변경하지만 실행 중 container는 변경하지 않습니다.
+옵션 없는 Docker 명령은 container를 실제 생성하거나 교체합니다. 교체 시 기존 container를 `<name>-crosswalk-backup`으로 보존하고 새 container가 정상화된 후 삭제하며, 실패 시 이전 container를 복구합니다. 같은 host port를 사용하므로 현재 방식은 무중단 rolling 배포가 아닙니다.
 
 릴리스 바이너리로 설치해서 사용하려면 아카이브를 풀고 `deploy version`으로 동작을 확인하면 됩니다. 자세한 절차는 아래 문서를 참고하세요.
 
@@ -229,6 +233,8 @@ CLI 기준 현재 서브커맨드:
 - `docker --dry-run --config ...`: Docker 배포 설정 검증과 비밀값 없는 작업 계획 출력(M3 Phase 1)
 - `docker --preflight --config ...`: 원격 Docker daemon 권한과 password-stdin Registry 인증 확인(M3 Phase 2)
 - `docker --pull --config ...`: container/local image 상태 조회와 digest 고정 image의 조건부 pull·검증(M3 Phase 3)
+- `docker --config ...`: canonical spec 기반 container reconcile과 readiness 실패 rollback(M3 Phase 4)
+- Docker 공통 옵션: `--server-tag`, `--container-tag`, `--parallel`(M3 Phase 5)
 
 `--parallel`은 여러 서버를 동시에 배포합니다. 기본값은 `1`이며, 운영에서는 SSH/네트워크 여유에 맞춰 `2~4`부터 올리는 것을 권장합니다. 실제 배포에서는 서버별 원격 checksum을 배치 조회하고 SFTP 세션을 재사용해 SSH 왕복과 연결 생성 비용을 줄입니다.
 
@@ -237,7 +243,7 @@ CLI 기준 현재 서브커맨드:
 ```text
 cmd/deploy               CLI entrypoint
 internal/config          설정 로드/검증/기본값 처리
-internal/docker          Docker 배포 계획, daemon/Registry preflight, digest 상태 조회·pull과 단계별 executor
+internal/docker          Docker 계획, preflight, digest pull, canonical reconcile과 rollback
 internal/vm              VM 배포 실행 흐름
 internal/ssh             SSH 연결 및 원격 실행
 internal/scp             파일 전송 및 checksum 비교

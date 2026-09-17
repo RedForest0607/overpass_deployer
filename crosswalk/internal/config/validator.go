@@ -13,19 +13,20 @@ import (
 )
 
 const (
-	ChartFormatLegacy     = "crosswalk/legacy"
-	ChartFormatV1         = "crosswalk/v1"
-	DefaultSSHTimeout     = 30
-	DefaultJvmMin         = "256m"
-	DefaultJvmMax         = "1g"
-	DefaultSSHPort        = 22
-	DefaultJDKVendor      = "corretto"
-	ServiceStateStarted   = "started"
-	ServiceStateStopped   = "stopped"
-	ServiceStateRestarted = "restarted"
-	HostKeyStrict         = "strict"
-	HostKeyAcceptNew      = "accept-new"
-	HostKeyInsecure       = "insecure"
+	ChartFormatLegacy             = "crosswalk/legacy"
+	ChartFormatV1                 = "crosswalk/v1"
+	DefaultSSHTimeout             = 30
+	DefaultJvmMin                 = "256m"
+	DefaultJvmMax                 = "1g"
+	DefaultSSHPort                = 22
+	DefaultJDKVendor              = "corretto"
+	DefaultDockerHealthTimeoutSec = 60
+	ServiceStateStarted           = "started"
+	ServiceStateStopped           = "stopped"
+	ServiceStateRestarted         = "restarted"
+	HostKeyStrict                 = "strict"
+	HostKeyAcceptNew              = "accept-new"
+	HostKeyInsecure               = "insecure"
 )
 
 // expandHome은 ~/로 시작하는 경로를 현재 사용자 홈 디렉터리의 절대 경로로 확장한다.
@@ -336,12 +337,15 @@ func validateContainerConfigs(containers []ContainerConfig, prefix string, errs 
 		container.Image = strings.ToLower(strings.TrimSpace(container.Image))
 		container.Digest = strings.ToLower(strings.TrimSpace(container.Digest))
 		container.RestartPolicy = strings.ToLower(strings.TrimSpace(container.RestartPolicy))
+		validateTags(&container.Tags, fieldPrefix+".tags", errs, checkUnresolvedEnv)
 		checkUnresolvedEnv(container.Name, fieldPrefix+".name")
 		checkUnresolvedEnv(container.Image, fieldPrefix+".image")
 		checkUnresolvedEnv(container.Digest, fieldPrefix+".digest")
 
 		if !containerNamePattern.MatchString(container.Name) {
 			*errs = append(*errs, fieldPrefix+".name must be a valid Docker container name")
+		} else if strings.HasSuffix(container.Name, DockerBackupContainerSuffix) {
+			*errs = append(*errs, fieldPrefix+".name uses the reserved Crosswalk backup suffix")
 		} else if _, exists := names[container.Name]; exists {
 			*errs = append(*errs, fmt.Sprintf("%s.name %q must be unique on the server", fieldPrefix, container.Name))
 		}
@@ -356,6 +360,11 @@ func validateContainerConfigs(containers []ContainerConfig, prefix string, errs 
 			container.RestartPolicy = "unless-stopped"
 		} else if !allowedRestartPolicies[container.RestartPolicy] {
 			*errs = append(*errs, fieldPrefix+".restart must be one of no, always, on-failure, or unless-stopped")
+		}
+		if container.HealthTimeoutSec == 0 {
+			container.HealthTimeoutSec = DefaultDockerHealthTimeoutSec
+		} else if container.HealthTimeoutSec < 1 || container.HealthTimeoutSec > 3600 {
+			*errs = append(*errs, fieldPrefix+".health_timeout_sec must be between 1 and 3600")
 		}
 
 		for portIndex := range container.Ports {
@@ -382,6 +391,9 @@ func validateContainerConfigs(containers []ContainerConfig, prefix string, errs 
 				*errs = append(*errs, fmt.Sprintf("%s.environment key %q is invalid", fieldPrefix, name))
 			}
 			checkUnresolvedEnv(value, fmt.Sprintf("%s.environment.%s", fieldPrefix, name))
+			if strings.ContainsAny(value, "\r\n\x00") {
+				*errs = append(*errs, fmt.Sprintf("%s.environment.%s must not contain newlines or NUL bytes", fieldPrefix, name))
+			}
 		}
 	}
 }

@@ -2,6 +2,8 @@ package config
 
 import "path/filepath"
 
+const DockerBackupContainerSuffix = "-crosswalk-backup"
+
 type Config struct {
 	Format            string                  `yaml:"format"`
 	SSH               SSHConfig               `yaml:"ssh"`
@@ -65,12 +67,14 @@ type DockerRegistryConfig struct {
 }
 
 type ContainerConfig struct {
-	Name          string            `yaml:"name"`
-	Image         string            `yaml:"image"`
-	Digest        string            `yaml:"digest"`
-	Ports         []ContainerPort   `yaml:"ports"`
-	Environment   map[string]string `yaml:"environment"`
-	RestartPolicy string            `yaml:"restart"`
+	Name             string            `yaml:"name"`
+	Tags             []string          `yaml:"tags"`
+	Image            string            `yaml:"image"`
+	Digest           string            `yaml:"digest"`
+	Ports            []ContainerPort   `yaml:"ports"`
+	Environment      map[string]string `yaml:"environment"`
+	RestartPolicy    string            `yaml:"restart"`
+	HealthTimeoutSec int               `yaml:"health_timeout_sec"`
 }
 
 type ContainerPort struct {

@@ -14,11 +14,14 @@ docker:
 servers:
   - name: app-1
     host: 10.0.0.10
+    tags: [prod, wave1]
     containers:
       - name: commerce-api
+        tags: [api, wave1]
         image: team/commerce-api
         digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
         restart: unless-stopped
+        health_timeout_sec: 60
         ports:
           - host: 8080
             container: 8080

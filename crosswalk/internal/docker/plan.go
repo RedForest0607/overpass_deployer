@@ -77,11 +77,12 @@ func containerSummary(container config.ContainerConfig, image string) string {
 	}
 	sort.Strings(environmentKeys)
 	return fmt.Sprintf(
-		"reconcile %s with image %s, ports [%s], environment keys [%s], restart %s",
+		"reconcile %s with image %s, ports [%s], environment keys [%s], restart %s, health timeout %ds",
 		container.Name,
 		image,
 		strings.Join(ports, ", "),
 		strings.Join(environmentKeys, ", "),
 		container.RestartPolicy,
+		container.HealthTimeoutSec,
 	)
 }

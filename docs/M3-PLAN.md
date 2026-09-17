@@ -2,7 +2,7 @@
 
 작성일: 2026-09-17
 
-상태: Phase 1~3 완료, Phase 4 대기
+상태: Phase 1~4 완료, Phase 5 로컬 구현 완료·실환경 smoke 대기
 
 ## 목표
 
@@ -24,8 +24,10 @@ docker:
 servers:
   - name: app-1
     host: 10.0.0.10
+    tags: [prod, wave1]
     containers:
       - name: commerce-api
+        tags: [api, wave1]
         image: team/commerce-api
         digest: sha256:<64 lowercase hex characters>
         restart: unless-stopped
@@ -53,7 +55,9 @@ internal/docker/preflight.go  # Docker daemon/권한 확인
 internal/docker/registry.go   # password-stdin 인증
 internal/docker/inspect.go    # container image ID와 local RepoDigest 조회
 internal/docker/pull.go       # 조건부 digest pull과 사후 검증
-internal/docker/reconcile.go  # container spec 비교와 안전한 교체(Phase 4)
+internal/docker/spec.go       # 비밀값 비노출 canonical spec 비교
+internal/docker/health.go     # running/HEALTHCHECK readiness 확인
+internal/docker/reconcile.go  # container 생성, 보존형 교체와 rollback
 cmd/deploy                  # CLI flag와 의존성 조립
 ```
 
@@ -91,23 +95,40 @@ cmd/deploy                  # CLI flag와 의존성 조립
 - [x] tag 입력과 pull 결과 digest 불일치 시 배포 중단
 
 `--pull`은 Phase 2의 daemon/Registry preflight를 먼저 수행하고 image cache만 변경한다. container 생성·중지·삭제·교체는
-수행하지 않으며, 옵션 없는 `deploy docker`는 Phase 4 reconcile이 완성될 때까지 계속 거부한다.
+수행하지 않는다. Phase 3 시점에는 옵션 없는 `deploy docker`를 Phase 4 reconcile 완성 전까지 거부했다.
 
 완료 기준: local desired digest는 pull 없이 건너뛰고, missing digest만 exact `repository@sha256`로 pull하며, 사후 RepoDigest가 다르면 중단한다.
 
 ### Phase 4 — container reconcile
 
-- [ ] port/environment/restart/image로 canonical spec hash 계산
-- [ ] 동일 상태 container는 skip
-- [ ] 다른 상태는 기존 container를 보존할 수 있는 교체·rollback 경계 구현
-- [ ] health 상태 확인과 실패 시 이전 container 복구
+- [x] port/environment/restart/image로 메모리 내 canonical spec hash 계산
+- [x] 동일 spec이며 healthy인 container는 replacement skip
+- [x] 다른 상태는 기존 container를 backup 이름으로 보존한 뒤 교체
+- [x] running/HEALTHCHECK 확인과 실패 시 이전 container 복구
+- [x] environment 값은 명령 인자·label 대신 권한 600 임시 env-file에 stdin 전달
+
+옵션 없는 `deploy docker --config ...`가 preflight → digest 준비 → reconcile 전체 흐름을 실행한다.
+`health_timeout_sec` 기본값은 60초이며 image에 HEALTHCHECK가 있으면 `healthy`, 없으면 `running`을 완료 조건으로 사용한다.
+환경변수 값은 canonical 비교 메모리에만 존재하며 Docker label에는 Crosswalk 관리 여부와 환경변수 key 목록만 기록한다.
+
+동일 host port를 새 container와 동시에 바인딩할 수 없으므로 현재 교체는 무중단 rolling 배포가 아니다. 기존 container를 중지하고
+`<name>-crosswalk-backup`으로 보존한 뒤 새 container가 정상화되면 backup을 삭제한다. 실패하면 새 container를 제거하고 이전 이름과
+실행 상태를 복구한다. 이미 backup 이름이 존재하면 운영자 확인 없이 덮어쓰거나 삭제하지 않고 교체 전에 중단한다.
+
+완료 기준: 최초 생성, 무변경 재실행, spec 변경 교체, unhealthy 실패 rollback이 mock Docker 경계에서 검증되고 secret이 명령·label·오류에 나타나지 않는다.
 
 ### Phase 5 — 운영 완성
 
-- [ ] server/container tag filter와 제한된 병렬 실행
-- [ ] 서버별 done/skipped/failed 요약
-- [ ] Podman/Docker SSH fixture에서 최초 배포·무변경 재실행·digest 변경·실패 rollback 검증
-- [ ] Harbor test registry smoke 및 운영 runbook
+- [x] server/container tag filter와 제한된 병렬 실행
+- [x] 서버별 결정적 done/skipped/failed 요약과 복수 실패 집계
+- [x] mock Docker runner에서 최초 배포·무변경 재실행·digest 변경·실패 rollback 검증
+- [x] 실제 SSH/Harbor 검증 절차와 rollback 운영 runbook
+- [ ] 지정된 Podman/Docker SSH fixture와 Harbor에서 smoke 결과 기록
+
+필터는 OR 조건으로 동작하며 일치 대상이 없으면 오류를 반환한다. `--parallel`은 서버 단위 worker 수만 제한하고 한 서버 안의
+container 순서는 유지한다. 병렬 완료 순서와 관계없이 summary는 설정 파일의 서버 순서로 출력한다.
+
+실환경 smoke는 원격 credential store, image cache와 container 상태를 변경하므로 구체적인 fixture/Registry가 지정된 후 별도로 실행한다.
 
 ## 오류 케이스
 
@@ -116,4 +137,4 @@ cmd/deploy                  # CLI flag와 의존성 조립
 3. Docker가 없거나 daemon 권한이 없음: 자동 설치를 추측하지 않고 preflight에서 중단한다.
 4. 같은 host port를 여러 container가 사용함: 설정 로드 단계에서 server 범위 충돌로 거부한다.
 5. pull 이후 digest가 요청값과 다름: local RepoDigests를 재검증하고 container 변경 전에 중단한다.
-6. 새 container가 기동하지 못함: 기존 container를 제거하기 전 검증 가능한 교체·rollback 순서를 Phase 4에서 구현한다.
+6. 새 container가 기동하지 못함: backup으로 보존한 기존 container의 이름과 이전 실행 상태를 복구한다.

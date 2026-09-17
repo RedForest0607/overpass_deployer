@@ -71,23 +71,44 @@ func TestRunDockerRoutesPull(t *testing.T) {
 	}
 }
 
-func TestRunDockerReportsApplyBoundary(t *testing.T) {
-	stderr := &bytes.Buffer{}
-	exitCode := run([]string{"docker", "--config", "docker.yml"}, dependencies{
+func TestRunDockerRoutesFiltersAndParallelism(t *testing.T) {
+	var gotOptions dockerdeploy.Options
+	exitCode := run([]string{
+		"docker", "--config", "docker.yml", "--server-tag", "wave1, prod", "--container-tag", "api, worker", "--parallel", "3",
+	}, dependencies{
 		stdout: &bytes.Buffer{},
-		stderr: stderr,
+		stderr: &bytes.Buffer{},
 		loadConfig: func(string) (*config.Config, error) {
 			return &config.Config{}, nil
 		},
 		runDocker: func(_ *config.Config, options dockerdeploy.Options) error {
-			if options.DryRun || options.Preflight || options.Pull {
-				t.Fatal("apply path must not select a staged mode")
-			}
-			return dockerdeploy.ErrApplyNotImplemented
+			gotOptions = options
+			return nil
 		},
 	})
-	if exitCode != 1 || !strings.Contains(stderr.String(), "use --dry-run") {
-		t.Fatalf("exit=%d stderr=%q", exitCode, stderr.String())
+	if exitCode != 0 || gotOptions.ParallelServers != 3 {
+		t.Fatalf("exit=%d options=%#v", exitCode, gotOptions)
+	}
+	if strings.Join(gotOptions.ServerTags, ",") != "wave1,prod" || strings.Join(gotOptions.ContainerTags, ",") != "api,worker" {
+		t.Fatalf("options=%#v", gotOptions)
+	}
+}
+
+func TestRunDockerRoutesFullApply(t *testing.T) {
+	var gotOptions dockerdeploy.Options
+	exitCode := run([]string{"docker", "--config", "docker.yml"}, dependencies{
+		stdout: &bytes.Buffer{},
+		stderr: &bytes.Buffer{},
+		loadConfig: func(string) (*config.Config, error) {
+			return &config.Config{}, nil
+		},
+		runDocker: func(_ *config.Config, options dockerdeploy.Options) error {
+			gotOptions = options
+			return nil
+		},
+	})
+	if exitCode != 0 || gotOptions.DryRun || gotOptions.Preflight || gotOptions.Pull {
+		t.Fatalf("exit=%d options=%#v", exitCode, gotOptions)
 	}
 }
 

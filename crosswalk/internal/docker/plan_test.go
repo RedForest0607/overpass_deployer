@@ -2,7 +2,6 @@ package docker
 
 import (
 	"bytes"
-	"errors"
 	"strings"
 	"testing"
 
@@ -47,7 +46,7 @@ func TestBuildPlanIsDeterministicAndDoesNotExposeEnvironmentValues(t *testing.T)
 	}
 }
 
-func TestRunSupportsDryRunAndRefusesUnimplementedApply(t *testing.T) {
+func TestRunSupportsDryRunWithoutRegistryToken(t *testing.T) {
 	t.Setenv("HARBOR_TOKEN", "")
 	var output bytes.Buffer
 	restore := logger.SetOutput(&output)
@@ -57,9 +56,6 @@ func TestRunSupportsDryRunAndRefusesUnimplementedApply(t *testing.T) {
 	}
 	if !strings.Contains(output.String(), "DRY-RUN [pull-image]") || strings.Contains(output.String(), "top-secret") {
 		t.Fatalf("output=%q", output.String())
-	}
-	if err := Run(dockerConfig(), Options{}); !errors.Is(err, ErrApplyNotImplemented) {
-		t.Fatalf("error=%v", err)
 	}
 }
 

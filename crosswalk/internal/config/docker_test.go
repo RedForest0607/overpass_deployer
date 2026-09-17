@@ -42,6 +42,9 @@ func TestValidateDockerConfigAppliesSafeDefaults(t *testing.T) {
 	if container.Ports[0].Protocol != "tcp" {
 		t.Fatalf("protocol=%q", container.Ports[0].Protocol)
 	}
+	if container.HealthTimeoutSec != DefaultDockerHealthTimeoutSec {
+		t.Fatalf("health timeout=%d", container.HealthTimeoutSec)
+	}
 }
 
 func TestLoadSupportsDockerOnlyServers(t *testing.T) {
@@ -92,7 +95,8 @@ func TestValidateDockerConfigRejectsAmbiguousOrUnsafeInputs(t *testing.T) {
 			{Host: 8080, Container: 8081},
 			{Host: 8082, Container: 70000, Protocol: "sctp"},
 		},
-		Environment: map[string]string{"BAD-KEY": "value", "SECRET": "${MISSING_SECRET}"},
+		Environment:      map[string]string{"BAD-KEY": "value", "SECRET": "${MISSING_SECRET}\nnext"},
+		HealthTimeoutSec: -1,
 	})
 	err := ValidateAndApplyDefaults(&cfg)
 	if err == nil {
@@ -111,9 +115,20 @@ func TestValidateDockerConfigRejectsAmbiguousOrUnsafeInputs(t *testing.T) {
 		"protocol must be tcp or udp",
 		"environment key",
 		"contains unresolved environment variable",
+		"health_timeout_sec",
+		"must not contain newlines",
 	} {
 		if !strings.Contains(err.Error(), expected) {
 			t.Fatalf("missing %q in %v", expected, err)
 		}
+	}
+}
+
+func TestValidateDockerConfigRejectsReservedBackupName(t *testing.T) {
+	cfg := validDockerConfig(t)
+	cfg.Servers[0].Containers[0].Name = "commerce" + DockerBackupContainerSuffix
+	err := ValidateAndApplyDefaults(&cfg)
+	if err == nil || !strings.Contains(err.Error(), "reserved Crosswalk backup suffix") {
+		t.Fatalf("error=%v", err)
 	}
 }
