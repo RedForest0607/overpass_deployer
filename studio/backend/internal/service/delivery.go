@@ -516,7 +516,7 @@ func (s *Delivery) BuildGeneration(ctx context.Context, generation domain.Genera
 	for i, file := range bundle.Files {
 		files = append(files, domain.PackageFile{ID: fmt.Sprintf("file_%04d", i+1), Path: file.Path, BlobKey: "", MediaType: "application/octet-stream", SizeBytes: file.Artifact.Size, SHA256: file.Artifact.SHA256, Previewable: false})
 	}
-	return domain.Package{ID: packageID, ProjectID: generation.ProjectID, Environment: generation.Environment, Revision: generation.Revision, Output: generation.Output, Generator: crosswalkvm.ID, GeneratorVersion: crosswalkvm.Version, ChartFormat: "crosswalk/v1", ZIPBlobKey: zipKey, CreatedAt: now, Files: files}, nil
+	return domain.Package{ID: packageID, ProjectID: generation.ProjectID, Environment: generation.Environment, Revision: generation.Revision, Output: generation.Output, Generator: crosswalkvm.ID, GeneratorVersion: crosswalkvm.Version, ChartFormat: crosswalkvm.ChartFormat, ZIPBlobKey: zipKey, CreatedAt: now, Files: files}, nil
 }
 
 type artifactResolver struct {

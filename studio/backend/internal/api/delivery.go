@@ -92,21 +92,20 @@ func (h deliveryHandlers) getArtifactContent(w http.ResponseWriter, r *http.Requ
 
 func (h deliveryHandlers) createGeneration(w http.ResponseWriter, r *http.Request) {
 	key := strings.TrimSpace(r.Header.Get("Idempotency-Key"))
-	var request struct {
-		Environment string `json:"environment"`
-		Revision    int64  `json:"revision"`
-		Generator   string `json:"generator"`
-		Output      string `json:"output"`
-	}
+	var request CreateGeneration
 	if !decodeJSONRequest(w, r, &request) {
 		return
 	}
-	environment, err := domain.ParseEnvironment(request.Environment)
+	if request.Environment == nil || request.Revision == nil || request.Generator == nil || request.Output == nil {
+		writeRequestError(w, r, 400, "INVALID_REQUEST", "생성 요청 필드를 확인하세요.", nil)
+		return
+	}
+	environment, err := domain.ParseEnvironment(*request.Environment)
 	if err != nil {
 		writeRequestError(w, r, 400, "INVALID_REQUEST", "지원하지 않는 환경입니다.", nil)
 		return
 	}
-	value, err := h.service.Generate(r.Context(), r.PathValue("projectId"), service.GenerationInput{Environment: environment, Revision: request.Revision, Generator: request.Generator, Output: request.Output, IdempotencyKey: key})
+	value, err := h.service.Generate(r.Context(), r.PathValue("projectId"), service.GenerationInput{Environment: environment, Revision: *request.Revision, Generator: *request.Generator, Output: *request.Output, IdempotencyKey: key})
 	if err != nil {
 		writeDeliveryError(w, r, err, "GENERATION_FAILED")
 		return

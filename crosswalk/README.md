@@ -52,6 +52,7 @@ Deployer 프로젝트의 배포 실행 산출물입니다. 아래 개발 명령�
 
 ```bash
 go run ./cmd/deploy version
+go run ./cmd/deploy validate --config deploy.yml
 ```
 
 샘플 설정을 기준으로 실제 변경 없이 예정 작업만 확인합니다.
@@ -207,6 +208,7 @@ CLI 기준 현재 서브커맨드:
 
 - `vm`
 - `version`
+- `validate --config ...`: 서버 연결 없이 chart format과 실제 배포 입력 전체를 검증
 - `update`
 - `dashboard`
 - `docker` (미구현)

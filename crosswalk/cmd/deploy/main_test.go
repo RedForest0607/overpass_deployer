@@ -11,6 +11,7 @@ import (
 	"go-deployer/internal/config"
 	"go-deployer/internal/update"
 	"go-deployer/internal/vm"
+	"go-deployer/pkg/chart"
 )
 
 func TestRunVMRoutesDryRunOption(t *testing.T) {
@@ -157,6 +158,36 @@ func TestRunRejectsUnknownSubcommand(t *testing.T) {
 	}
 	if stderr.Len() == 0 {
 		t.Fatalf("expected usage output on stderr")
+	}
+}
+
+func TestRunValidateReportsNormalizedFormat(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	var gotPath string
+	exitCode := run([]string{"validate", "--config", "generated/deploy.yml"}, dependencies{
+		stdout: stdout,
+		stderr: &bytes.Buffer{},
+		validateConfig: func(path string) (chart.Metadata, error) {
+			gotPath = path
+			return chart.Metadata{Format: chart.FormatV1}, nil
+		},
+	})
+	if exitCode != 0 || gotPath != "generated/deploy.yml" || !strings.Contains(stdout.String(), chart.FormatV1) {
+		t.Fatalf("exit=%d path=%q stdout=%q", exitCode, gotPath, stdout.String())
+	}
+}
+
+func TestRunValidateReturnsFailureWithoutDeployment(t *testing.T) {
+	stderr := &bytes.Buffer{}
+	exitCode := run([]string{"validate"}, dependencies{
+		stdout: &bytes.Buffer{},
+		stderr: stderr,
+		validateConfig: func(string) (chart.Metadata, error) {
+			return chart.Metadata{}, errors.New("unsupported format")
+		},
+	})
+	if exitCode != 1 || !strings.Contains(stderr.String(), "Invalid configuration") {
+		t.Fatalf("exit=%d stderr=%q", exitCode, stderr.String())
 	}
 }
 

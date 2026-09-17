@@ -385,8 +385,8 @@ succeeded에만 packageId가 있고, failed에는 공통 오류의 error 객체�
   "revision": 1,
   "output": "draft",
   "generator": "crosswalk-vm",
-  "generatorVersion": "0.1.0",
-  "chartFormat": "crosswalk-deploy-legacy",
+  "generatorVersion": "1.0.0",
+  "chartFormat": "crosswalk/v1",
   "createdAt": "2026-09-10T00:00:00Z",
   "files": [
     {
@@ -400,7 +400,7 @@ succeeded에만 packageId가 있고, failed에는 공통 오류의 error 객체�
 }
 ```
 
-chartFormat의 legacy는 현 Crosswalk 입력을 가리키는 제안 식별자이지 기존 차트에 버전 필드가 있다는 뜻이 아니다.
+Studio가 생성하는 `deploy.yml`은 최상위 `format: crosswalk/v1`을 포함하며 package의 chartFormat도 같은 값이다. format이 없는 기존 수기 차트는 Crosswalk가 `crosswalk/legacy`로 읽지만 Studio는 legacy package를 새로 생성하지 않는다. 자세한 호환 정책은 `docs/CROSSWALK-CHART-CONTRACT.md`를 따른다.
 파일 목록의 path는 패키지 상대 표시 경로다. API에 임의 파일 경로를 전달하지 않고 fileId를 사용한다.
 서버는 ZIP 경로의 절대 경로·상위 경로 이동·symlink 탈출을 차단한다.
 
@@ -416,7 +416,7 @@ ZIP 응답은 application/zip + 안전하게 인코딩한 Content-Disposition at
 GET 응답 필드:
 
 - blueprintVersions: string[] — 지원 모델 버전.
-- generators: `{id, outputs: ("draft"|"package")[], supportedKinds: string[], supportedModes: string[]}[]`.
+- generators: `{id, outputs: ("draft"|"package")[], chartFormats: string[], supportedKinds: string[], supportedModes: string[]}[]`.
   배열은 후보 목록이며 세부 조합은 서버 의미 검증이 최종 판단한다.
 - limits: `{jarBytes, textArtifactBytes, previewBytes, topologyNodes, topologyConnections}`.
 

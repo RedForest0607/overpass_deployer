@@ -32,6 +32,7 @@ go -C backend run ./cmd/studio-api --data-dir ./.studio-data
 npx tsc --noEmit
 npm run test:e2e:browser
 npm run build
+npm run check:api-generated
 ```
 
 저장소 루트의 `make test-studio-local`은 백엔드·프런트 단위/계약 테스트, Studio→Crosswalk HTTP E2E와 실제 Chrome 브라우저 E2E를 함께 실행합니다.
@@ -76,6 +77,8 @@ API로 저장한 복수 포트·Compose 등 미지원 표현은 불러올 때 �
 - `backend/cmd/studio-admin`: data directory 검사, checksum 백업 검증과 비파괴 복구 CLI
 - `deploy`: SSO same-origin Nginx, trusted-header 환경과 API service/롤백 참조 자산
 - `schemas`: OpenAPI 3.1과 Blueprint v1 JSON Schema
+
+OpenAPI를 수정한 뒤에는 `npm run generate:api`로 Go request DTO와 TypeScript API 타입을 함께 갱신한다. `npm run check:api-generated`는 커밋된 산출물의 drift를 실패로 처리한다.
 
 ## 백엔드 경계
 

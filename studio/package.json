@@ -9,6 +9,8 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "start": "vinext start",
+    "generate:api": "node scripts/generate-api-contracts.mjs",
+    "check:api-generated": "node scripts/generate-api-contracts.mjs --check",
     "test:e2e:browser": "playwright test --config playwright.config.ts",
     "lint": "oxlint",
     "format": "oxfmt"

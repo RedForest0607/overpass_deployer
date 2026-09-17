@@ -1,6 +1,7 @@
 package crosswalkvm
 
 type chart struct {
+	Format            string                 `yaml:"format"`
 	SSH               chartSSH               `yaml:"ssh"`
 	Bastion           *chartBastion          `yaml:"bastion,omitempty"`
 	Bootstrap         *chartBootstrap        `yaml:"bootstrap,omitempty"`

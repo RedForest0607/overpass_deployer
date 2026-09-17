@@ -20,25 +20,8 @@ type projectHandlers struct {
 	delivery *service.Delivery
 }
 
-type createProjectRequest struct {
-	Name        *string `json:"name"`
-	Description *string `json:"description"`
-}
-
-type updateProjectRequest struct {
-	ExpectedRevision int64   `json:"expectedRevision"`
-	Name             *string `json:"name,omitempty"`
-	Description      *string `json:"description,omitempty"`
-}
-
-type saveTopologyRequest struct {
-	ExpectedRevision int64           `json:"expectedRevision"`
-	Blueprint        json.RawMessage `json:"blueprint"`
-	Layout           json.RawMessage `json:"layout"`
-}
-
 func (h projectHandlers) create(w http.ResponseWriter, r *http.Request) {
-	var request createProjectRequest
+	var request CreateProject
 	if !decodeJSONRequest(w, r, &request) {
 		return
 	}
@@ -83,15 +66,15 @@ func (h projectHandlers) get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h projectHandlers) update(w http.ResponseWriter, r *http.Request) {
-	var request updateProjectRequest
+	var request UpdateProject
 	if !decodeJSONRequest(w, r, &request) {
 		return
 	}
-	if request.ExpectedRevision < 1 {
+	if request.ExpectedRevision == nil || *request.ExpectedRevision < 1 {
 		writeRequestError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "expectedRevision은 1 이상이어야 합니다.", nil)
 		return
 	}
-	project, err := h.service.Update(r.Context(), r.PathValue("projectId"), request.ExpectedRevision, repository.ProjectChanges{Name: request.Name, Description: request.Description})
+	project, err := h.service.Update(r.Context(), r.PathValue("projectId"), *request.ExpectedRevision, repository.ProjectChanges{Name: request.Name, Description: request.Description})
 	if err != nil {
 		writeServiceError(w, r, err, "INVALID_REQUEST")
 		return
@@ -119,15 +102,15 @@ func (h projectHandlers) saveTopology(w http.ResponseWriter, r *http.Request) {
 		writeRequestError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "지원하지 않는 환경입니다.", nil)
 		return
 	}
-	var request saveTopologyRequest
+	var request SaveTopology
 	if !decodeJSONRequest(w, r, &request) {
 		return
 	}
-	if request.ExpectedRevision < 0 {
+	if request.ExpectedRevision == nil || request.Blueprint == nil || request.Layout == nil || *request.ExpectedRevision < 0 {
 		writeRequestError(w, r, http.StatusBadRequest, "INVALID_REQUEST", "expectedRevision은 0 이상이어야 합니다.", nil)
 		return
 	}
-	topology, err := h.service.SaveTopology(r.Context(), r.PathValue("projectId"), environment, request.ExpectedRevision, request.Blueprint, request.Layout)
+	topology, err := h.service.SaveTopology(r.Context(), r.PathValue("projectId"), environment, *request.ExpectedRevision, *request.Blueprint, *request.Layout)
 	if err != nil {
 		writeServiceError(w, r, err, "INVALID_REQUEST")
 		return

@@ -1,5 +1,7 @@
 # Progress
 
+- 2026-09-17 Studio Phase 0 및 M6 완료: OpenAPI 3.1을 단일 기준으로 TypeScript 전체 API DTO와 Go request DTO를 결정적으로 생성하는 스크립트, stale 생성물 검사와 기본 test gate를 추가하고 handler/client의 수기 DTO를 생성 타입으로 전환. Go 필수 request 필드는 pointer로, Blueprint/layout은 raw JSON으로 보존해 누락 필드가 zero value로 숨지 않게 회귀 테스트를 추가. Crosswalk 새 차트는 `format: crosswalk/v1`을 출력하고 무표기 기존 차트는 `crosswalk/legacy`로 호환하며 알 수 없는 포맷은 거부한다. 배포 없이 같은 loader/validator를 쓰는 `deploy validate`와 `pkg/chart.ValidateFile`, chart format capability·package metadata 계약과 문서를 추가. 프런트 47개 테스트·typecheck·production build, Studio backend 전체 race/vet, Crosswalk 전체 test/vet, Studio→ZIP→Crosswalk dry-run E2E를 통과. 다음은 M3 Docker 모드 또는 Studio 생성기 확장 중 우선순위를 정해 별도 마일스톤으로 진행.
+
 - 2026-09-17 Studio Phase 7-D 공유·배포 경계 구현: 기존 `local-user` 호환 `local` 모드와 SSO reverse proxy용 `trusted-header` 모드를 분리하고, proxy secret constant-time 검증·제한된 사용자 ID·공개 health check를 추가. 서비스의 고정 owner를 제거해 요청 context owner가 project/topology/artifact/generation/package 전체 query를 범위화하도록 변경했으며 worker는 queued project owner를 DB에서 재조회. Fetch Metadata와 Origin allowlist를 결합한 CSRF 방어, 사용자 A/B 간 목록·직접 ID 접근 격리 통합 테스트를 추가. release build target과 Vinext production start, loopback backend를 유지하는 Nginx auth_request, API/frontend systemd·환경 골격, 배포 전 백업·same-origin 검증·비파괴 롤백 runbook을 `studio/deploy/`에 추가. backend race/vet, frontend 46개 테스트·typecheck/build, release build·production frontend 응답과 Studio→Crosswalk HTTP E2E 통과. Chrome E2E 재실행은 동일 작업 폴더의 기존 Vinext 개발 서버가 있어 사용자 프로세스를 종료하지 않고 보류했으며 직전 Phase 7-B의 2개 시나리오 통과 기록은 유지. 다음은 M6 잔여 Phase 0 항목인 OpenAPI DTO 자동 생성과 Crosswalk chart version/공개 validation 경계 안정화.
 
 - 2026-09-16 Studio Phase 7-C 운영 복구·보안 구현: `studio-admin`에 data directory 권한/symlink 검사, 실행 중 SQLite committed WAL을 포함하는 online snapshot, artifact/package 이중 checksum manifest 백업, archive verify와 기존 경로를 덮어쓰지 않는 staging restore를 추가. 복구 시 path traversal·중복 entry·symlink를 거부하고 SQLite integrity 및 `0700/0600` 권한을 재검사하며, API 시작 시 DB/WAL/SHM도 `0600`으로 고정. generation worker의 panic stack·내부 경로/raw 오류 기록을 안전한 failure code로 교체하고 access log query/header/body 비노출, 64개 동시 read smoke, race/vet 회귀를 추가. 실제 `.cache/studio-local` 49개 entry를 `/private/tmp` archive로 백업·검증·새 경로 복구한 뒤 별도 API에서 health, 프로젝트, generation 이력과 기존 package ZIP 전체 entry 무결성을 확인. 다음은 Phase 7-D 인증·CSRF·project 권한 middleware와 same-origin 배포/롤백 패키징.
@@ -246,7 +248,7 @@
 - Studio UI 수동 확인: 작은 viewport와 대용량·단일 행 JSON 붙여넣기에서 가져오기 버튼이 계속 노출되고 편집기 내부 스크롤이 동작하는지 확인.
 - Studio Backend 후속: JSON Pointer 단위 package 오류 세분화, worker 관측 지표와 재시도 보존·만료 정책.
 - Studio 프론트 후속: 실제 파일 fixture를 사용하는 브라우저 업로드→artifact 선택→설계 저장→package 생성→ZIP 내용 검증 E2E와 설정·일반 파일용 구조화 편집기.
-- Studio 계약 후속: OpenAPI DTO 자동 생성, Crosswalk chart version 안정화, 공유 환경 인증·Secret 참조 정책 확정.
+- Studio 계약 후속: 조직 단위 권한 모델, 외부 Secret 참조 방식, generator별 schema evolution 정책 확정.
 - 생성기 후속: 환경별 overlay와 Docker Compose·Helm·GitLab CI·Argo CD 생성기를 capability 기반으로 추가하고 Terraform은 이후 단계로 분리.
 - 실행 계층 후속: Redis/Elasticsearch 설치·실행 생성기, 포트 매핑 및 서비스별 복수 포트 모델, 실제 브라우저 조작 QA 추가.
 - 리뷰 후속: POSIX rename 미지원 서버의 안전한 교체 전략과 bootstrap ensure 명령의 실제 변경 여부 반환 규약을 확장 검토.

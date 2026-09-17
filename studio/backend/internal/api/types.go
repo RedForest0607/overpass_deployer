@@ -11,6 +11,7 @@ type Limits struct {
 type GeneratorCapability struct {
 	ID             string   `json:"id"`
 	Outputs        []string `json:"outputs"`
+	ChartFormats   []string `json:"chartFormats"`
 	SupportedKinds []string `json:"supportedKinds"`
 	SupportedModes []string `json:"supportedModes"`
 }

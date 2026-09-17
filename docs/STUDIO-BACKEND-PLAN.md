@@ -2,13 +2,13 @@
 
 작성일: 2026-09-10
 
-상태: 진행 중
+상태: 완료 (2026-09-17)
 
 관련 계약: `docs/studio-api.md`
 
 ## 구현 현황
 
-- [~] Phase 0: OpenAPI 3.1과 Blueprint v1 JSON Schema 추가. Crosswalk 차트 version/validation 경계와 타입 생성은 미완료.
+- [x] Phase 0: OpenAPI 3.1·Blueprint v1 JSON Schema, 재현 가능한 TypeScript/Go DTO 생성, `crosswalk/v1` 포맷·generator version 정책과 공개 validator 경계 확정.
 - [x] Phase 1: Go 서버 골격, SQLite migration, 공통 오류/middleware, health/capabilities, loopback 제한 구현.
 - [x] Phase 2: 프로젝트 CRUD, cursor 목록, 환경별 topology revision CAS 저장, React Flow API adapter 구현.
 - [x] Phase 3: 서버 design/package 검증, HTTP API·프론트 오류 연결, Crosswalk 배포 상세 구조 및 artifact/generator issue 구현.
@@ -173,10 +173,14 @@ worker panic과 프로세스 종료가 API 프로세스를 종료시키지 않�
 - `docs/studio-api.md`를 OpenAPI 3.1로 옮기고 예제와 오류 코드를 계약 테스트 대상으로 만든다.
 - Blueprint v1 JSON Schema와 환경, node spec, placement, connection 제약을 확정한다.
 - Crosswalk 차트 포맷 식별자와 generator version 정책을 확정한다.
-- 로컬 MVP의 인증 주체를 `local-user`로 고정하되 모든 schema/query에 owner 범위를 둔다.
+- 로컬은 `local-user`, 공유 환경은 trusted-header 인증으로 구분하고 모든 schema/query에 request owner 범위를 둔다.
 - 업로드 제한 기본값과 data directory 설정을 확정한다.
 
 완료 기준: OpenAPI/JSON Schema validation 통과, 프론트/백엔드 타입 생성 재현 가능, 미확정 필드 없음.
+
+완료 결과: `studio/scripts/generate-api-contracts.mjs`가 OpenAPI에서 TypeScript DTO와 Go request DTO를 생성하며,
+`--check`와 계약 테스트가 생성 결과 drift를 차단한다. Crosswalk는 `crosswalk/v1`을 정식 포맷으로 사용하고
+기존 무표기 문서는 `crosswalk/legacy`로 읽으며, `deploy validate`와 `pkg/chart.ValidateFile`을 공개 검증 경계로 제공한다.
 
 ### Phase 1 — 서버 골격과 저장 기반
 
@@ -311,17 +315,18 @@ Studio→Crosswalk 호환성 test로 구성한다. 네트워크나 실제 SSH는
 계획 단계 검토 결과 위 방지 로직은 각 구현 Phase의 완료 기준과 테스트 항목에 포함되어 있다.
 구현 시에는 각 항목의 실패 주입 테스트가 통과하기 전 해당 Phase를 완료로 표시하지 않는다.
 
-## 10. 결정이 필요한 항목
+## 10. 확정 사항과 후속 운영 결정
 
-Phase 0에서 다음 항목을 확정해야 한다.
+Phase 0에서 다음 항목을 확정했다.
 
-1. Crosswalk 차트 포맷의 정식 version과 공개 validation 경계.
-2. JAR 256 MiB, 텍스트 1 MiB, preview 1 MiB 초기 제한의 운영 적합성.
-3. 로컬 MVP 이후 인증 공급자와 사용자/조직/project 권한 모델.
-4. 설정 템플릿의 허용 문법과 Secret 오탐 처리 UX.
-5. SQLite 단일 인스턴스를 유지할 범위와 PostgreSQL/object storage 전환 조건.
+1. 새 차트의 정식 포맷은 `crosswalk/v1`, 무표기 기존 차트는 `crosswalk/legacy`, 알 수 없는 명시적 포맷은 거부한다.
+2. 공개 검증 경계는 CLI `deploy validate --config ...`와 Go `pkg/chart.ValidateFile`이다.
+3. Studio `crosswalk-vm` generator version은 semantic version으로 관리하고 현재 `1.0.0`으로 고정한다.
+4. OpenAPI는 TypeScript/Go DTO의 단일 기준이며 생성 결과 drift는 기본 test gate에서 실패한다.
+5. 로컬 인증과 trusted-header 공유 인증을 분리하고 project 이하 모든 데이터는 request owner로 격리한다.
 
-기본 제안은 위 기술 선택대로 구현하되, 1번은 패키지 생성 Phase 전에 반드시 확정한다.
+JAR·텍스트·preview 용량의 운영 조정, 조직 권한 모델, Secret 오탐 UX, PostgreSQL/object storage 전환 시점은
+현재 계약을 깨지 않는 운영 확장 항목으로 남긴다.
 
 ## 11. 권장 첫 번째 구현 단위
 

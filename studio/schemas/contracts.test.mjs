@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { parse } from 'yaml';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
@@ -62,4 +63,13 @@ test('Blueprint schema has a stable version and valid local references', () => {
     assert.ok(reference.startsWith('#/'), `unexpected external reference ${reference}`);
     assert.notEqual(resolvePointer(blueprint, reference), undefined, reference);
   }
+});
+
+test('generated API contracts match OpenAPI', () => {
+  const result = spawnSync(
+    process.execPath,
+    [path.join(directory, '../scripts/generate-api-contracts.mjs'), '--check'],
+    { encoding: 'utf8' },
+  );
+  assert.equal(result.status, 0, result.stderr || result.stdout);
 });

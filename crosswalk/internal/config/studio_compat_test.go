@@ -24,6 +24,9 @@ func TestStudioGeneratedChartCompatibility(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Studio chart must load with the actual Crosswalk loader: %v", err)
 	}
+	if cfg.Format != ChartFormatV1 {
+		t.Fatalf("format=%q", cfg.Format)
+	}
 	if len(cfg.Servers) != 1 || len(cfg.Servers[0].Utils) != 2 || len(cfg.Servers[0].Apps) != 1 {
 		t.Fatalf("unexpected normalized chart: %#v", cfg.Servers)
 	}

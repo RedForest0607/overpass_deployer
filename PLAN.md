@@ -25,7 +25,7 @@
 | M3 | Docker 모드 | [ ] | `docs/M3-PLAN.md` |
 | M4 | UX, Reliability & Dashboard | [~] | `docs/M4-PLAN.md` |
 | M5 | AWS Extension | [ ] | `docs/M5-PLAN.md` |
-| M6 | Studio Backend | [~] | `docs/STUDIO-BACKEND-PLAN.md` |
+| M6 | Studio Backend | [x] | `docs/STUDIO-BACKEND-PLAN.md` |
 
 ---
 
@@ -136,7 +136,7 @@
 
 **완료 기준:** `docs/STUDIO-BACKEND-PLAN.md`의 Phase 0~7 완료 기준 통과
 **선행 조건:** Studio API 계약 확정, Crosswalk 차트 포맷/version 및 validation 경계 확정
-**현재 상태:** [~] Phase 1~7 완료. persistent worker/recovery, 이력·snapshot 재시도, Chrome E2E, checksum backup/비파괴 restore, 데이터 권한·symlink 검사, trusted-header 인증·CSRF·owner 격리, same-origin 배포/롤백 계약까지 구현. M6 완료를 위해 남은 항목은 Phase 0의 DTO 자동 생성과 Crosswalk chart version/공개 validation 경계 안정화
+**현재 상태:** [x] Phase 0~7 완료. OpenAPI 기반 TypeScript/Go DTO 생성·drift gate, `crosswalk/v1`/legacy 호환 정책과 공개 validator를 포함해 persistent worker/recovery, 이력·snapshot 재시도, Chrome E2E, checksum backup/비파괴 restore, trusted-header 인증·CSRF·owner 격리, same-origin 배포/롤백 계약까지 구현
 
 ---
 

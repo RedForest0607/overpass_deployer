@@ -241,6 +241,60 @@ func TestTopologyRejectsUIOnlyFields(t *testing.T) {
 	}
 }
 
+func TestGeneratedRequestDTOsPreserveRequiredFieldPresence(t *testing.T) {
+	handler := testHandler(t, nil)
+
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		body   string
+	}{
+		{
+			name:   "create project without description",
+			method: http.MethodPost,
+			path:   "/api/v1/projects",
+			body:   `{"name":"project"}`,
+		},
+		{
+			name:   "save topology without layout",
+			method: http.MethodPut,
+			path:   "/api/v1/projects/missing/topologies/dev",
+			body:   `{"expectedRevision":0,"blueprint":{"apiVersion":"studio.deployer/v1","nodes":[],"placements":[],"connections":[]}}`,
+		},
+		{
+			name:   "create generation without output",
+			method: http.MethodPost,
+			path:   "/api/v1/projects/missing/generations",
+			body:   `{"environment":"dev","revision":1,"generator":"crosswalk-vm"}`,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, jsonRequest(test.method, test.path, test.body))
+			if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), `"code":"INVALID_REQUEST"`) {
+				t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+			}
+		})
+	}
+}
+
+func TestGeneratedLayoutDTOKeepsNestedMissingFieldsVisible(t *testing.T) {
+	handler := testHandler(t, nil)
+	created := httptest.NewRecorder()
+	handler.ServeHTTP(created, jsonRequest(http.MethodPost, "/api/v1/projects", `{"name":"project","description":""}`))
+	projectID := strings.TrimPrefix(created.Header().Get("Location"), "/api/v1/projects/")
+	body := `{"expectedRevision":0,"blueprint":{"apiVersion":"studio.deployer/v1","nodes":[],"placements":[],"connections":[]},"layout":{"nodes":[],"viewport":{"x":0,"y":0}}}`
+
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, jsonRequest(http.MethodPut, "/api/v1/projects/"+projectID+"/topologies/dev", body))
+	if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), `"code":"INVALID_REQUEST"`) {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestHealthAndCapabilities(t *testing.T) {
 	handler := testHandler(t, func(context.Context) error { return nil })
 
@@ -249,7 +303,7 @@ func TestHealthAndCapabilities(t *testing.T) {
 		want string
 	}{
 		{path: "/healthz", want: `"status":"ok"`},
-		{path: "/api/v1/capabilities", want: `"supportedKinds":["vm","java","redis","elasticsearch"]`},
+		{path: "/api/v1/capabilities", want: `"chartFormats":["crosswalk/v1"]`},
 	} {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodGet, "http://localhost"+test.path, nil)

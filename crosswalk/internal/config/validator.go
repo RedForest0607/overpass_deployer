@@ -12,6 +12,8 @@ import (
 )
 
 const (
+	ChartFormatLegacy     = "crosswalk/legacy"
+	ChartFormatV1         = "crosswalk/v1"
 	DefaultSSHTimeout     = 30
 	DefaultJvmMin         = "256m"
 	DefaultJvmMax         = "1g"
@@ -73,6 +75,7 @@ func validateHostKeyCheckingMode(mode string, errs *[]string) string {
 func ValidateAndApplyDefaults(cfg *Config) error {
 	var errs []string
 	aliasNames := make(map[string]int, len(cfg.Servers))
+	validateChartFormat(cfg, &errs)
 
 	checkUnresolvedEnv := func(val string, fieldName string) {
 		if strings.Contains(val, "${") && strings.Contains(val, "}") {
@@ -190,6 +193,7 @@ func ValidateAndApplyDefaults(cfg *Config) error {
 // 이 검증 경로에서는 JAR와 설정 파일 같은 배포 원본의 로컬 존재 여부를 요구하지 않는다.
 func ValidateForMonitoring(cfg *Config) error {
 	var errs []string
+	validateChartFormat(cfg, &errs)
 	checkUnresolvedEnv := func(value, fieldName string) {
 		if strings.Contains(value, "${") && strings.Contains(value, "}") {
 			errs = append(errs, fmt.Sprintf("%s contains unresolved environment variable: %s", fieldName, value))
@@ -273,6 +277,17 @@ func ValidateForMonitoring(cfg *Config) error {
 		return fmt.Errorf("configuration errors:\n- %s", strings.Join(errs, "\n- "))
 	}
 	return nil
+}
+
+func validateChartFormat(cfg *Config, errs *[]string) {
+	cfg.Format = strings.ToLower(strings.TrimSpace(cfg.Format))
+	if cfg.Format == "" {
+		cfg.Format = ChartFormatLegacy
+		return
+	}
+	if cfg.Format != ChartFormatV1 && cfg.Format != ChartFormatLegacy {
+		*errs = append(*errs, fmt.Sprintf("format must be %q or %q", ChartFormatV1, ChartFormatLegacy))
+	}
 }
 
 func validateMonitoringApp(app *AppConfig, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {

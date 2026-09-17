@@ -1,9 +1,15 @@
-.PHONY: test-crosswalk test-studio test-studio-backend test-studio-backend-race test-studio-operational test-studio-e2e test-studio-browser-e2e test-studio-local build-crosswalk build-studio build-studio-backend build-studio-admin build-studio-release dev-studio-local smoke-studio-local
+.PHONY: generate-studio-api check-studio-api-generated test-crosswalk test-studio test-studio-backend test-studio-backend-race test-studio-operational test-studio-e2e test-studio-browser-e2e test-studio-local build-crosswalk build-studio build-studio-backend build-studio-admin build-studio-release dev-studio-local smoke-studio-local
+
+generate-studio-api:
+	cd studio && npm run generate:api
+
+check-studio-api-generated:
+	cd studio && npm run check:api-generated
 
 test-crosswalk:
 	cd crosswalk && go test ./...
 
-test-studio:
+test-studio: check-studio-api-generated
 	cd studio && ./node_modules/.bin/tsc --noEmit
 	cd studio && node --test features/topology/model.test.mjs
 	cd studio && node --test features/topology/api-adapter.test.mjs

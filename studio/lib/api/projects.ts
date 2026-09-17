@@ -1,35 +1,15 @@
 import { request } from './client.ts';
 import type { Blueprint, Layout, Environment } from './contracts.ts';
+import type {
+  Issue,
+  Project,
+  Topology,
+  ValidationResult,
+} from './generated.ts';
 
-export type Project = {
-  id: string;
-  name: string;
-  description: string;
-  revision: number;
-  createdAt: string;
-  updatedAt: string;
-};
-export type Topology = {
-  projectId: string;
-  environment: Environment;
-  revision: number;
-  blueprint: Blueprint;
-  layout: Layout;
-};
-export type ServerIssue = {
-  code: string;
-  severity: 'error' | 'warning';
-  stage: string;
-  nodeIds: string[];
-  connectionIds: string[];
-  path: string;
-  message: string;
-};
-export type Validation = {
-  clientRequestId: string;
-  valid: boolean;
-  issues: ServerIssue[];
-};
+export type { Project, Topology };
+export type ServerIssue = Issue;
+export type Validation = ValidationResult;
 const projectPath = (id: string) => '/projects/' + encodeURIComponent(id);
 
 export const projectsAPI = {

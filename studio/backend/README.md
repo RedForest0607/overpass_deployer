@@ -29,10 +29,16 @@ proxy는 `X-Studio-Authenticated-User`와 `X-Studio-Proxy-Secret`을 외부 요�
 ## 검증
 
 ```sh
+cd ..
+npm run check:api-generated
+cd backend
 go test ./...
 go test -race ./...
 go vet ./...
 ```
+
+request DTO는 `../schemas/openapi-v1.yaml`에서 `../scripts/generate-api-contracts.mjs`로 생성된다.
+계약을 변경한 뒤 `npm run generate:api`를 실행하며, 생성물을 직접 편집하지 않는다.
 
 ## 운영 백업과 복구
 

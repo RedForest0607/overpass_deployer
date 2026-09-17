@@ -1,3 +1,4 @@
+format: crosswalk/v1
 ssh:
   user: deploy
   key_path: ~/.ssh/id_rsa

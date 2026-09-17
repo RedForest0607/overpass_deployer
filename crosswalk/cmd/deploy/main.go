@@ -13,6 +13,7 @@ import (
 	"go-deployer/internal/dashboard"
 	"go-deployer/internal/update"
 	"go-deployer/internal/vm"
+	"go-deployer/pkg/chart"
 )
 
 // main은 실제 OS 입출력과 구현체 의존성을 연결한 뒤 CLI 실행 결과를 종료 코드로 반환한다.
@@ -26,6 +27,7 @@ func main() {
 		runUpdate:         update.Execute,
 		runDashboard:      dashboard.Run,
 		buildInfo:         buildinfo.Current,
+		validateConfig:    chart.ValidateFile,
 	}))
 }
 
@@ -38,6 +40,7 @@ type dependencies struct {
 	runUpdate         func(ctx context.Context, cfg update.Config, opts update.Options) (*update.Result, error)
 	runDashboard      func(cfg *config.Config) error
 	buildInfo         func() buildinfo.Info
+	validateConfig    func(path string) (chart.Metadata, error)
 }
 
 // run은 최상위 서브커맨드를 해석하고 각 실행 경로로 라우팅한다.
@@ -56,6 +59,8 @@ func run(args []string, deps dependencies) int {
 		return runUpdate(args[1:], deps)
 	case "dashboard":
 		return runDashboard(args[1:], deps)
+	case "validate":
+		return runValidate(args[1:], deps)
 	case "docker":
 		fmt.Fprintln(deps.stderr, "docker mode is not implemented yet (M3)")
 		return 1
@@ -64,6 +69,22 @@ func run(args []string, deps dependencies) int {
 		printUsage(deps.stderr)
 		return 1
 	}
+}
+
+func runValidate(args []string, deps dependencies) int {
+	validateCmd := flag.NewFlagSet("validate", flag.ContinueOnError)
+	validateCmd.SetOutput(deps.stderr)
+	configPath := validateCmd.String("config", "deploy.yml", "Path to deploy.yml configuration file")
+	if err := validateCmd.Parse(args); err != nil {
+		return 1
+	}
+	metadata, err := deps.validateConfig(*configPath)
+	if err != nil {
+		fmt.Fprintf(deps.stderr, "Invalid configuration: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(deps.stdout, "Valid Crosswalk chart (%s): %s\n", metadata.Format, *configPath)
+	return 0
 }
 
 // runDashboard는 설정을 읽어 대화형 상태/로그/배포 대시보드를 시작한다.
@@ -191,6 +212,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintf(w, "  version Print build metadata\n")
 	fmt.Fprintf(w, "  update  Check for or install a newer release\n")
 	fmt.Fprintf(w, "  dashboard  Open the interactive deployment dashboard\n")
+	fmt.Fprintf(w, "  validate   Validate a chart without connecting to servers\n")
 	fmt.Fprintf(w, "  docker  Not implemented yet (M3)\n\n")
 	fmt.Fprintf(w, "Flags for 'vm':\n")
 	fmt.Fprintf(w, "  --config string   Path to configuration file (default: deploy.yml)\n")

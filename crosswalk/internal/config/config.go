@@ -3,6 +3,7 @@ package config
 import "path/filepath"
 
 type Config struct {
+	Format            string                  `yaml:"format"`
 	SSH               SSHConfig               `yaml:"ssh"`
 	Bastion           BastionConfig           `yaml:"bastion"`
 	Bootstrap         BootstrapConfig         `yaml:"bootstrap"`

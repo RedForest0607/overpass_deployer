@@ -66,7 +66,7 @@ func TestGenerateCoversCrosswalkDeliveryFeatures(t *testing.T) {
 		t.Fatal(err)
 	}
 	yamlText := string(bundle.DeployYAML)
-	for _, expected := range []string{"bootstrap:", "nmap-ncat", "utils:", "name: search-node", "tags:", "- commerce", "config_files:", "extra_files:", "chmod: \"0755\"", "extract:", "java_opts:", "extra_opts:", "values_file:", "bastion:", "./assets/commerce/commerce.jar"} {
+	for _, expected := range []string{"format: crosswalk/v1", "bootstrap:", "nmap-ncat", "utils:", "name: search-node", "tags:", "- commerce", "config_files:", "extra_files:", "chmod: \"0755\"", "extract:", "java_opts:", "extra_opts:", "values_file:", "bastion:", "./assets/commerce/commerce.jar"} {
 		if !strings.Contains(yamlText, expected) {
 			t.Errorf("deploy.yml does not contain %q:\n%s", expected, yamlText)
 		}

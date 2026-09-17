@@ -65,12 +65,12 @@ func TestArtifactToCrosswalkPackageLifecycle(t *testing.T) {
 	packageURL := "/api/v1/projects/" + projectID + "/packages/" + *generation.PackageID
 	metadata := httptest.NewRecorder()
 	handler.ServeHTTP(metadata, httptest.NewRequest("GET", "http://localhost"+packageURL, nil))
-	if metadata.Code != 200 || !strings.Contains(metadata.Body.String(), `"path":"deploy.yml"`) {
+	if metadata.Code != 200 || !strings.Contains(metadata.Body.String(), `"path":"deploy.yml"`) || !strings.Contains(metadata.Body.String(), `"chartFormat":"crosswalk/v1"`) {
 		t.Fatalf("package=%d %s", metadata.Code, metadata.Body.String())
 	}
 	preview := httptest.NewRecorder()
 	handler.ServeHTTP(preview, httptest.NewRequest("GET", "http://localhost"+packageURL+"/files/file_deploy", nil))
-	if preview.Code != 200 || !strings.Contains(preview.Body.String(), "config_files:") {
+	if preview.Code != 200 || !strings.Contains(preview.Body.String(), "config_files:") || !strings.Contains(preview.Body.String(), "format: crosswalk/v1") {
 		t.Fatalf("preview=%d %s", preview.Code, preview.Body.String())
 	}
 	download := httptest.NewRecorder()

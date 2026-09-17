@@ -505,10 +505,17 @@ components:
         retryOfGenerationId: { type: [string, 'null'] }
         error:
           oneOf:
-            - { $ref: '#/components/schemas/ErrorBody' }
+            - { $ref: '#/components/schemas/GenerationFailure' }
             - { type: 'null' }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    GenerationFailure:
+      type: object
+      additionalProperties: false
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
     PackageFile:
       type: object
       required: [id, path, mediaType, sizeBytes, sha256, previewable]
@@ -530,7 +537,7 @@ components:
         output: { $ref: '#/components/schemas/Output' }
         generator: { type: string }
         generatorVersion: { type: string }
-        chartFormat: { type: string }
+        chartFormat: { type: string, const: crosswalk/v1 }
         createdAt: { type: string, format: date-time }
         files: { type: array, items: { $ref: '#/components/schemas/PackageFile' } }
     FilePreview:
@@ -543,10 +550,11 @@ components:
         truncated: { type: boolean }
     GeneratorCapability:
       type: object
-      required: [id, outputs, supportedKinds, supportedModes]
+      required: [id, outputs, chartFormats, supportedKinds, supportedModes]
       properties:
         id: { type: string }
         outputs: { type: array, items: { $ref: '#/components/schemas/Output' } }
+        chartFormats: { type: array, items: { type: string, const: crosswalk/v1 } }
         supportedKinds: { type: array, items: { type: string } }
         supportedModes: { type: array, items: { type: string } }
     Limits:

@@ -1,86 +1,26 @@
 import { request, requestBlob } from './client.ts';
 import type { Blueprint, Environment } from './contracts.ts';
+import type {
+  Artifact,
+  ArtifactContent,
+  ArtifactKind,
+  Capabilities,
+  Generation,
+  GeneratorCapability,
+  Package as GeneratedPackage,
+  PackageFile,
+} from './generated.ts';
 import type { Validation } from './projects.ts';
 
-export type ArtifactKind =
-  | 'jar'
-  | 'config-template'
-  | 'env-example'
-  | 'file'
-  | 'archive'
-  | 'script-values';
-
-export type Artifact = {
-  id: string;
-  projectId: string;
-  kind: ArtifactKind;
-  originalName: string;
-  sizeBytes: number;
-  sha256: string;
-  createdAt: string;
-};
-
-export type ArtifactContent = {
-  id: string;
-  content: string;
-  encoding: 'utf-8';
-};
-
-export type GeneratorCapability = {
-  id: string;
-  outputs: ('draft' | 'package')[];
-  supportedKinds: string[];
-  supportedModes: string[];
-};
-
-export type Capabilities = {
-  blueprintVersions: string[];
-  generators: GeneratorCapability[];
-  limits: {
-    jarBytes: number;
-    textArtifactBytes: number;
-    previewBytes: number;
-    topologyNodes: number;
-    topologyConnections: number;
-  };
-};
-
-export type Generation = {
-  id: string;
-  projectId: string;
-  environment: Environment;
-  revision: number;
-  status: 'queued' | 'running' | 'succeeded' | 'failed';
-  generator: string;
-  output: 'draft' | 'package';
-  attempts: number;
-  packageId: string | null;
-  retryOfGenerationId: string | null;
-  error: { code: string; message: string } | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type PackageFile = {
-  id: string;
-  path: string;
-  mediaType: string;
-  sizeBytes: number;
-  sha256: string;
-  previewable: boolean;
-};
-
-export type GeneratedPackage = {
-  id: string;
-  projectId: string;
-  environment: Environment;
-  revision: number;
-  output: 'draft' | 'package';
-  generator: string;
-  generatorVersion: string;
-  chartFormat: string;
-  createdAt: string;
-  files: PackageFile[];
+export type {
+  Artifact,
+  ArtifactContent,
+  ArtifactKind,
+  Capabilities,
+  Generation,
+  GeneratorCapability,
+  GeneratedPackage,
+  PackageFile,
 };
 
 const projectPath = (id: string) => '/projects/' + encodeURIComponent(id);

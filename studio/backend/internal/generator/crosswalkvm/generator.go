@@ -20,6 +20,7 @@ import (
 
 const ID = "crosswalk-vm"
 const Version = "1.0.0"
+const ChartFormat = "crosswalk/v1"
 
 type Artifact struct {
 	ID           string
@@ -98,7 +99,7 @@ func Generate(ctx context.Context, raw json.RawMessage, environment string, reso
 	}
 
 	b := &builder{ctx: ctx, resolver: resolver, files: map[string]Artifact{}}
-	c := chart{SSH: toSSH(profile.SSH), Bastion: toBastion(profile.Bastion), Bootstrap: toBootstrap(profile.Bootstrap)}
+	c := chart{Format: ChartFormat, SSH: toSSH(profile.SSH), Bastion: toBastion(profile.Bastion), Bootstrap: toBootstrap(profile.Bootstrap)}
 	for _, rule := range profile.DirectoryDefaults {
 		c.DirectoryDefaults.Rules = append(c.DirectoryDefaults.Rules, chartDirectoryRule{Prefix: rule.Prefix, Owner: rule.Owner, Group: rule.Group})
 	}
