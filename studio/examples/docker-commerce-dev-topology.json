@@ -1,0 +1,186 @@
+{
+  "environment": "dev",
+  "blueprint": {
+    "apiVersion": "studio.deployer/v1",
+    "deployment": {
+      "ssh": {
+        "user": "deploy",
+        "keyPath": "${DEPLOY_SSH_KEY_PATH}",
+        "knownHostsPath": "${DEPLOY_KNOWN_HOSTS}",
+        "hostKeyChecking": "strict",
+        "port": 22,
+        "timeoutSeconds": 30
+      }
+    },
+    "nodes": [
+      {
+        "id": "docker-host",
+        "kind": "vm",
+        "name": "docker-dev-01",
+        "spec": {
+          "provider": "on-prem",
+          "host": "192.0.2.20",
+          "deployment": {
+            "tags": ["dev", "docker"],
+            "sshPort": 22
+          }
+        }
+      },
+      {
+        "id": "commerce-api",
+        "kind": "container",
+        "name": "commerce-api",
+        "spec": {
+          "image": "demo/commerce-api",
+          "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "ports": [
+            {
+              "name": "main",
+              "servicePort": 18080,
+              "containerPort": 8080,
+              "protocol": "TCP"
+            }
+          ],
+          "deployment": {
+            "tags": ["api"],
+            "environment": {
+              "SPRING_PROFILES_ACTIVE": "dev",
+              "DATABASE_HOST": "postgres.dev.internal"
+            },
+            "restartPolicy": "unless-stopped",
+            "healthTimeoutSeconds": 60
+          }
+        }
+      },
+      {
+        "id": "commerce-web",
+        "kind": "container",
+        "name": "commerce-web",
+        "spec": {
+          "image": "demo/commerce-web",
+          "digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "ports": [
+            {
+              "name": "main",
+              "servicePort": 18081,
+              "containerPort": 3000,
+              "protocol": "TCP"
+            }
+          ],
+          "deployment": {
+            "tags": ["web"],
+            "environment": {
+              "API_BASE_URL": "http://192.0.2.20:18080"
+            },
+            "restartPolicy": "unless-stopped",
+            "healthTimeoutSeconds": 45
+          }
+        }
+      },
+      {
+        "id": "harbor",
+        "kind": "registry",
+        "name": "demo-harbor",
+        "spec": {
+          "endpoint": "harbor.example.com",
+          "username": "robot-studio-demo",
+          "tokenEnv": "HARBOR_TOKEN"
+        }
+      },
+      {
+        "id": "postgres",
+        "kind": "database",
+        "name": "commerce-db",
+        "spec": {
+          "engine": "postgresql",
+          "endpoint": "postgres.dev.internal",
+          "ports": [
+            {
+              "name": "main",
+              "servicePort": 5432,
+              "protocol": "TCP"
+            }
+          ],
+          "secretRef": "commerce-db-dev"
+        }
+      }
+    ],
+    "placements": [
+      {
+        "workloadRef": "commerce-api",
+        "targetRef": "docker-host",
+        "mode": "container"
+      },
+      {
+        "workloadRef": "commerce-web",
+        "targetRef": "docker-host",
+        "mode": "container"
+      }
+    ],
+    "connections": [
+      {
+        "id": "web-to-api",
+        "kind": "connects_to",
+        "sourceRef": "commerce-web",
+        "targetRef": "commerce-api",
+        "targetPortName": "main"
+      },
+      {
+        "id": "api-to-db",
+        "kind": "connects_to",
+        "sourceRef": "commerce-api",
+        "targetRef": "postgres",
+        "targetPortName": "main"
+      },
+      {
+        "id": "api-to-harbor",
+        "kind": "publishes_to",
+        "sourceRef": "commerce-api",
+        "targetRef": "harbor"
+      },
+      {
+        "id": "web-to-harbor",
+        "kind": "publishes_to",
+        "sourceRef": "commerce-web",
+        "targetRef": "harbor"
+      }
+    ]
+  },
+  "layout": {
+    "nodes": [
+      {
+        "nodeId": "docker-host",
+        "position": { "x": 80, "y": 80 }
+      },
+      {
+        "nodeId": "commerce-api",
+        "position": { "x": 50, "y": 100 }
+      },
+      {
+        "nodeId": "commerce-web",
+        "position": { "x": 50, "y": 290 }
+      },
+      {
+        "nodeId": "harbor",
+        "position": { "x": 560, "y": 80 }
+      },
+      {
+        "nodeId": "postgres",
+        "position": { "x": 560, "y": 330 }
+      }
+    ],
+    "connections": [
+      {
+        "connectionId": "web-to-api",
+        "bendOffset": { "x": 50, "y": 0 },
+        "labelPosition": 0.5
+      },
+      {
+        "connectionId": "api-to-db",
+        "bendOffset": { "x": 80, "y": 0 },
+        "labelPosition": 0.58
+      }
+    ],
+    "viewport": { "x": 0, "y": 0, "zoom": 0.85 }
+  }
+}

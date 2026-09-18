@@ -129,7 +129,7 @@ func ValidateTopologyStructure(blueprint, layout json.RawMessage, maxNodes, maxC
 	if len(document.Nodes) > maxNodes || len(document.Connections) > maxConnections {
 		return errors.New("invalid blueprint: topology limit exceeded")
 	}
-	allowedKinds := map[string]bool{"vm": true, "java": true, "redis": true, "elasticsearch": true, "database": true, "kubernetes": true, "registry": true, "ingress": true}
+	allowedKinds := map[string]bool{"vm": true, "java": true, "container": true, "redis": true, "elasticsearch": true, "database": true, "kubernetes": true, "registry": true, "ingress": true}
 	for _, node := range document.Nodes {
 		if node.ID == "" || !allowedKinds[node.Kind] || node.Name == nil || len(*node.Name) > 128 || !rawObject(node.Spec) {
 			return errors.New("invalid blueprint: node fields are malformed")
@@ -142,7 +142,7 @@ func ValidateTopologyStructure(blueprint, layout json.RawMessage, maxNodes, maxC
 		return fmt.Errorf("invalid blueprint: %w", err)
 	}
 	for _, placement := range document.Placements {
-		if placement.WorkloadRef == "" || placement.TargetRef == "" || (placement.Mode != "process" && placement.Mode != "compose" && placement.Mode != "kubernetes") {
+		if placement.WorkloadRef == "" || placement.TargetRef == "" || (placement.Mode != "process" && placement.Mode != "compose" && placement.Mode != "container" && placement.Mode != "kubernetes") {
 			return errors.New("invalid blueprint: placement fields are malformed")
 		}
 	}
@@ -249,6 +249,20 @@ func validateNodeSpec(kind string, raw json.RawMessage) error {
 			return errors.New("artifactRef, javaVersion, maxHeap or ports has an invalid type")
 		}
 		return validatePorts(spec.Ports)
+	case "container":
+		var spec struct {
+			Image      *string              `json:"image"`
+			Digest     *string              `json:"digest"`
+			Ports      []containerPortValue `json:"ports"`
+			Deployment *ContainerDeployment `json:"deployment,omitempty"`
+		}
+		if err := decodeSpec(raw, &spec, "image", "digest", "ports"); err != nil {
+			return err
+		}
+		if spec.Image == nil || spec.Digest == nil || spec.Ports == nil {
+			return errors.New("image, digest or ports has an invalid type")
+		}
+		return validateContainerPorts(spec.Ports)
 	case "redis", "elasticsearch":
 		var spec struct {
 			Location   *string            `json:"location"`
@@ -288,6 +302,8 @@ func validateNodeSpec(kind string, raw json.RawMessage) error {
 	case "registry":
 		var spec struct {
 			Endpoint  *string `json:"endpoint"`
+			Username  *string `json:"username,omitempty"`
+			TokenEnv  *string `json:"tokenEnv,omitempty"`
 			SecretRef *string `json:"secretRef,omitempty"`
 		}
 		if err := decodeSpec(raw, &spec, "endpoint"); err != nil || spec.Endpoint == nil {
@@ -299,6 +315,22 @@ func validateNodeSpec(kind string, raw json.RawMessage) error {
 		}
 		if err := decodeSpec(raw, &spec, "host"); err != nil || spec.Host == nil {
 			return errors.New("host is required and must be a string")
+		}
+	}
+	return nil
+}
+
+type containerPortValue struct {
+	Name          *string `json:"name"`
+	ServicePort   *int    `json:"servicePort"`
+	ContainerPort *int    `json:"containerPort"`
+	Protocol      *string `json:"protocol"`
+}
+
+func validateContainerPorts(ports []containerPortValue) error {
+	for _, port := range ports {
+		if port.Name == nil || port.ServicePort == nil || *port.ServicePort < 1 || *port.ServicePort > 65535 || port.ContainerPort == nil || *port.ContainerPort < 1 || *port.ContainerPort > 65535 || port.Protocol == nil || (*port.Protocol != "TCP" && *port.Protocol != "UDP") {
+			return errors.New("container port fields have an invalid type or value")
 		}
 	}
 	return nil

@@ -8,12 +8,33 @@ import (
 	"testing"
 
 	"go-deployer/internal/buildinfo"
+	composedeploy "go-deployer/internal/compose"
 	"go-deployer/internal/config"
 	dockerdeploy "go-deployer/internal/docker"
 	"go-deployer/internal/update"
 	"go-deployer/internal/vm"
 	"go-deployer/pkg/chart"
 )
+
+func TestRunComposeRoutesDryRunWithoutRemoteMutation(t *testing.T) {
+	var gotPath string
+	var gotOptions composedeploy.Options
+	exitCode := run([]string{"compose", "--config", "compose-deploy.yml", "--dry-run"}, dependencies{
+		stdout: &bytes.Buffer{},
+		stderr: &bytes.Buffer{},
+		loadConfig: func(path string) (*config.Config, error) {
+			gotPath = path
+			return &config.Config{}, nil
+		},
+		runCompose: func(_ *config.Config, options composedeploy.Options) error {
+			gotOptions = options
+			return nil
+		},
+	})
+	if exitCode != 0 || gotPath != "compose-deploy.yml" || !gotOptions.DryRun {
+		t.Fatalf("exit=%d path=%q options=%#v", exitCode, gotPath, gotOptions)
+	}
+}
 
 func TestRunDockerRoutesDryRunWithoutRemoteMutation(t *testing.T) {
 	var gotPath string

@@ -7,6 +7,8 @@ import (
 	"net/http"
 
 	"studio-backend/internal/config"
+	"studio-backend/internal/generator/crosswalkcompose"
+	"studio-backend/internal/generator/crosswalkdocker"
 	"studio-backend/internal/generator/crosswalkvm"
 	"studio-backend/internal/httpx"
 	"studio-backend/internal/middleware"
@@ -97,7 +99,11 @@ func capabilitiesHandler(cfg config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, _ *http.Request) {
 		httpx.WriteJSON(w, http.StatusOK, Capabilities{
 			BlueprintVersions: []string{"studio.deployer/v1"},
-			Generators:        []GeneratorCapability{{ID: crosswalkvm.ID, Outputs: []string{"draft", "package"}, ChartFormats: []string{crosswalkvm.ChartFormat}, SupportedKinds: []string{"vm", "java", "redis", "elasticsearch"}, SupportedModes: []string{"process"}}},
+			Generators: []GeneratorCapability{
+				{ID: crosswalkvm.ID, Outputs: []string{"draft", "package"}, ChartFormats: []string{crosswalkvm.ChartFormat}, SupportedKinds: []string{"vm", "java", "redis", "elasticsearch"}, SupportedModes: []string{"process"}},
+				{ID: crosswalkdocker.ID, Outputs: []string{"draft", "package"}, ChartFormats: []string{crosswalkdocker.ChartFormat}, SupportedKinds: []string{"vm", "container", "registry"}, SupportedModes: []string{"container"}},
+				{ID: crosswalkcompose.ID, Outputs: []string{"draft", "package"}, ChartFormats: []string{crosswalkcompose.ChartFormat}, SupportedKinds: []string{"vm", "container", "registry"}, SupportedModes: []string{"container"}},
+			},
 			Limits: Limits{
 				JARBytes:            cfg.JARBytes,
 				TextArtifactBytes:   cfg.TextArtifactBytes,

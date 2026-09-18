@@ -10,7 +10,15 @@ import {
   Package,
   Play,
 } from 'lucide-react';
-import type { Blueprint, Environment } from '../../lib/api/contracts';
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from '../../components/ui/native-select';
+import type {
+  Blueprint,
+  Environment,
+  GeneratorID,
+} from '../../lib/api/contracts';
 import {
   deliveryAPI,
   type Capabilities,
@@ -27,6 +35,7 @@ import {
 import GenerationHistory from './GenerationHistory';
 import {
   evaluatePackageCapability,
+  DEFAULT_GENERATOR,
   packageContractError,
   REQUIRED_CHART_FORMAT,
 } from './package-contract';
@@ -79,10 +88,26 @@ export default function ServerPackage({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [capabilityError, setCapabilityError] = useState('');
+  const [generatorID, setGeneratorID] = useState<GeneratorID>(() =>
+    blueprint.nodes.some((node) => node.kind === 'container')
+      ? 'crosswalk-docker'
+      : DEFAULT_GENERATOR,
+  );
   const operation = useRef<AbortController | null>(null);
   const retry = useRef<IdempotencyAttempt | null>(null);
-  const signature = projectId + ':' + environment + ':' + revision + ':package';
-  const packageCapability = evaluatePackageCapability(capabilities);
+  const signature =
+    projectId +
+    ':' +
+    environment +
+    ':' +
+    revision +
+    ':' +
+    generatorID +
+    ':package';
+  const packageCapability = evaluatePackageCapability(
+    capabilities,
+    generatorID,
+  );
   const capabilityBlockedReason = capabilityError
     ? capabilityError
     : capabilities
@@ -154,6 +179,7 @@ export default function ServerPackage({
     project: string,
     value: Generation,
     signal: AbortSignal,
+    expectedGenerator?: GeneratorID,
   ) {
     let current = value;
     let pollAttempt = 1;
@@ -174,7 +200,7 @@ export default function ServerPackage({
       current.packageId,
       signal,
     );
-    const contractError = packageContractError(result);
+    const contractError = packageContractError(result, expectedGenerator);
     if (contractError) throw new Error(contractError);
     setGeneratedPackage(result);
     const deploy = result.files.find(
@@ -206,6 +232,7 @@ export default function ServerPackage({
         environment,
         blueprint,
         crypto.randomUUID(),
+        generatorID,
       );
       if (controller.signal.aborted) return;
       setValidation(checked);
@@ -224,10 +251,11 @@ export default function ServerPackage({
         revision,
         'package',
         attempt.key,
+        generatorID,
       );
       if (controller.signal.aborted) return;
       setGeneration(created);
-      await loadPackage(projectId, created, controller.signal);
+      await loadPackage(projectId, created, controller.signal, generatorID);
     } catch (cause) {
       if (!(cause instanceof DOMException && cause.name === 'AbortError')) {
         setMessage(
@@ -258,7 +286,13 @@ export default function ServerPackage({
         : '선택한 생성 작업을 불러오고 있습니다…',
     );
     try {
-      await loadPackage(projectId, value, controller.signal);
+      const historyGenerator =
+        value.generator === 'crosswalk-docker' ||
+        value.generator === 'crosswalk-compose'
+          ? value.generator
+          : 'crosswalk-vm';
+      setGeneratorID(historyGenerator);
+      await loadPackage(projectId, value, controller.signal, historyGenerator);
     } finally {
       if (operation.current === controller) {
         operation.current = null;
@@ -306,10 +340,33 @@ export default function ServerPackage({
         <div>
           <span className="eyebrow">IMMUTABLE DELIVERY PACKAGE</span>
           <h2>
-            <Package /> Crosswalk VM 배포 패키지
+            <Package /> Crosswalk 배포 패키지
           </h2>
         </div>
         <div className="actions">
+          <NativeSelect
+            aria-label="패키지 생성기"
+            value={generatorID}
+            disabled={busy}
+            onChange={(event) => {
+              setGeneratorID(event.target.value as GeneratorID);
+              setGeneratedPackage(null);
+              setGeneration(null);
+              setValidation(null);
+              setMessage('');
+              retry.current = null;
+            }}
+          >
+            <NativeSelectOption value="crosswalk-vm">
+              Crosswalk VM
+            </NativeSelectOption>
+            <NativeSelectOption value="crosswalk-docker">
+              Crosswalk Docker
+            </NativeSelectOption>
+            <NativeSelectOption value="crosswalk-compose">
+              Crosswalk Compose
+            </NativeSelectOption>
+          </NativeSelect>
           <button onClick={onBack}>편집기로 돌아가기</button>
           <button
             className="primary"
@@ -333,7 +390,8 @@ export default function ServerPackage({
       </div>
       <div className={blockedReason ? 'draft-notice' : 'package-status'}>
         {blockedReason ||
-          'crosswalk-vm · ' +
+          generatorID +
+            ' · ' +
             REQUIRED_CHART_FORMAT +
             ' · ' +
             environment +
@@ -442,7 +500,7 @@ export default function ServerPackage({
       <output className="feedback">
         {validation?.valid ? <Check size={15} /> : <AlertTriangle size={15} />}
         {message ||
-          '생성 요청 전 프로젝트 artifact 참조와 Crosswalk VM capability를 확인합니다.'}
+          '생성 요청 전 Blueprint와 선택한 Crosswalk 생성기 capability를 확인합니다.'}
       </output>
       {projectId && (
         <GenerationHistory

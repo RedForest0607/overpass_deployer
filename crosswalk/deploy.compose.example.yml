@@ -1,0 +1,21 @@
+format: crosswalk/v1
+
+ssh:
+  user: ec2-user
+  key_path: ~/.ssh/id_rsa
+  host_key_checking: accept-new
+
+docker:
+  registry:
+    host: harbor.example.com
+    username: robot$deployer
+    token_env: HARBOR_TOKEN
+
+servers:
+  - name: compose-dev-01
+    host: 10.0.0.10
+    tags: [dev, compose]
+    compose_projects:
+      - name: commerce
+        local_path: ./compose.example.yml
+        remote_dir: /app/overpass/compose/commerce

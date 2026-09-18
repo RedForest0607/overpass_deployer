@@ -8,7 +8,7 @@ import {
 } from '@/components/ui/sheet';
 import { Input } from '@/components/ui/input';
 import { Trash2 } from 'lucide-react';
-import { isWorkload, isTarget } from './placement';
+import { canPlaceOn, isWorkload, isTarget } from './placement';
 import Choice from './Choice';
 import { type TopologyNode, type TopologyEdge, type NodeData } from './model';
 import DeploymentEditor from './DeploymentEditor';
@@ -43,6 +43,11 @@ export default function Inspector({
         heap: '/maxHeap',
         java: '/javaVersion',
         namespace: '/namespace',
+        image: '/image',
+        digest: '/digest',
+        registryUsername: '/username',
+        tokenEnv: '/tokenEnv',
+        containerPort: '/containerPort',
       } as Record<string, string>
     )[key];
     return suffix
@@ -108,10 +113,13 @@ export default function Inspector({
                       {
                         value: 'unassigned',
                         label:
-                          node.data.kind === 'java' ? '미배치' : '외부 서비스',
+                          node.data.kind === 'java' ||
+                          node.data.kind === 'container'
+                            ? '미배치'
+                            : '외부 서비스',
                       },
                       ...nodes
-                        .filter(isTarget)
+                        .filter((candidate) => canPlaceOn(node, candidate))
                         .map((n) => ({ value: n.id, label: n.data.label })),
                     ]}
                     onChange={(value) =>
@@ -144,6 +152,14 @@ export default function Inspector({
               {['java', 'database', 'redis', 'elasticsearch'].includes(
                 node.data.kind,
               ) && field('서비스 포트', 'port', 'number')}
+              {node.data.kind === 'container' && (
+                <>
+                  {field('호스트 포트', 'port', 'number')}
+                  {field('컨테이너 포트', 'containerPort', 'number')}
+                  {field('이미지 repository · tag 제외', 'image')}
+                  {field('이미지 digest · sha256', 'digest')}
+                </>
+              )}
               {node.data.kind === 'java' && (
                 <>
                   <div className="field">
@@ -199,18 +215,29 @@ export default function Inspector({
                   </div>
                 </>
               )}
-              {['database', 'redis', 'elasticsearch', 'registry'].includes(
+              {['database', 'redis', 'elasticsearch'].includes(
                 node.data.kind,
               ) && field('Secret 참조 이름 · 비밀 값 입력 금지', 'secretRef')}
+              {node.data.kind === 'registry' && (
+                <>
+                  {field('Registry 사용자 이름', 'registryUsername')}
+                  {field('Token 환경변수 이름 · 비밀 값 입력 금지', 'tokenEnv')}
+                </>
+              )}
               {node.data.kind === 'kubernetes' &&
                 field('Namespace', 'namespace')}
-              {['vm', 'java', 'redis', 'elasticsearch'].includes(
+              {['vm', 'java', 'container', 'redis', 'elasticsearch'].includes(
                 node.data.kind,
               ) && (
                 <DeploymentEditor
                   key={node.id}
                   kind={
-                    node.data.kind as 'vm' | 'java' | 'redis' | 'elasticsearch'
+                    node.data.kind as
+                      | 'vm'
+                      | 'java'
+                      | 'container'
+                      | 'redis'
+                      | 'elasticsearch'
                   }
                   value={node.data.deployment}
                   onChange={(deployment) => updateNode({ deployment })}

@@ -114,3 +114,38 @@ test('rejects inconsistent visual parent and deployment relationship', () => {
   nodes.find((n) => n.id === 'app').parentId = 'missing';
   assert.ok(validate(nodes, edges).some((i) => i.id === 'appplacement'));
 });
+
+test('Docker container requires a VM placement, pinned image, and registry token environment', () => {
+  let { nodes, edges } = sample();
+  const container = createNode('container', 'container', 0, 0);
+  container.data.label = 'sample-container';
+  container.data.port = 8082;
+  container.data.containerPort = 8080;
+  container.data.image = 'overpass/sample-api';
+  container.data.digest = 'sha256:' + 'a'.repeat(64);
+  const registry = createNode('registry', 'registry', 600, 300);
+  registry.data.label = 'harbor';
+  registry.data.host = 'harbor.example.com';
+  registry.data.registryUsername = 'robot-studio';
+  registry.data.tokenEnv = 'HARBOR_TOKEN';
+  nodes.push(container, registry);
+  ({ nodes, edges } = placeWorkload(nodes, edges, 'container', 'vm'));
+  assert.deepEqual(validate(nodes, edges), []);
+  assert.equal(connectionType('container', 'registry'), 'publishes_to');
+
+  nodes.find((node) => node.id === 'container').data.digest = 'latest';
+  nodes.find((node) => node.id === 'registry').data.tokenEnv = 'secret-value!';
+  const issues = validate(nodes, edges);
+  assert.ok(issues.some((issue) => issue.id === 'containerdigest'));
+  assert.ok(issues.some((issue) => issue.id === 'registrytoken-env'));
+});
+
+test('legacy registry secret references remain editable for VM blueprints', () => {
+  const { nodes, edges } = sample();
+  const registry = createNode('registry', 'registry', 600, 300);
+  registry.data.label = 'legacy-registry';
+  registry.data.host = 'harbor.example.com';
+  registry.data.secretRef = 'legacy-harbor-secret';
+  nodes.push(registry);
+  assert.deepEqual(validate(nodes, edges), []);
+});

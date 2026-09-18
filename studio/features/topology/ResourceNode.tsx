@@ -14,6 +14,7 @@ import {
 import { catalog, type TopologyNode, type Kind } from './model';
 export const icons = {
   java: Coffee,
+  container: Container,
   vm: Server,
   database: Database,
   redis: Layers,
@@ -58,9 +59,11 @@ export default function ResourceNode({
       <p>
         {data.kind === 'java'
           ? 'Java ' + data.java + ' · Spring Boot'
-          : parentId
-            ? '내부 실행 서비스'
-            : data.host || item.subtitle}
+          : data.kind === 'container'
+            ? data.image || 'OCI image'
+            : parentId
+              ? '내부 실행 서비스'
+              : data.host || item.subtitle}
       </p>
       <div className="resource-bottom">
         <span className="tiny-dot" />

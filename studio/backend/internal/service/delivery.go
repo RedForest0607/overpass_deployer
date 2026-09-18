@@ -24,6 +24,8 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"studio-backend/internal/domain"
+	"studio-backend/internal/generator/crosswalkcompose"
+	"studio-backend/internal/generator/crosswalkdocker"
 	"studio-backend/internal/generator/crosswalkvm"
 	"studio-backend/internal/localstore"
 	"studio-backend/internal/repository"
@@ -318,21 +320,32 @@ func (s *Delivery) ReadArtifactText(ctx context.Context, projectID, artifactID s
 	return string(body), nil
 }
 
-func (s *Delivery) ValidatePackage(ctx context.Context, projectID string, blueprint json.RawMessage, environment string, result domain.Validation) domain.Validation {
+func (s *Delivery) ValidatePackage(ctx context.Context, projectID string, blueprint json.RawMessage, environment, generatorID string, result domain.Validation) domain.Validation {
 	ownerID, err := requestOwner(ctx)
 	if err != nil {
 		result.Valid = false
 		result.Issues = append(result.Issues, domain.Issue{Code: "AUTHENTICATION_REQUIRED", Severity: "error", Stage: "request", NodeIDs: []string{}, ConnectionIDs: []string{}, Path: "/", Message: "authenticated owner is missing"})
 		return result
 	}
-	resolver := artifactResolver{repo: s.repo, store: s.artifacts, ownerID: ownerID, projectID: projectID}
-	if _, err := crosswalkvm.Generate(ctx, blueprint, environment, resolver); err != nil {
+	var generationErr error
+	switch generatorID {
+	case crosswalkvm.ID:
+		resolver := artifactResolver{repo: s.repo, store: s.artifacts, ownerID: ownerID, projectID: projectID}
+		_, generationErr = crosswalkvm.Generate(ctx, blueprint, environment, resolver)
+	case crosswalkdocker.ID:
+		_, generationErr = crosswalkdocker.Generate(blueprint, environment)
+	case crosswalkcompose.ID:
+		_, generationErr = crosswalkcompose.Generate(blueprint, environment)
+	default:
+		generationErr = fmt.Errorf("unsupported generator %q", generatorID)
+	}
+	if generationErr != nil {
 		stage, code := "generator", "GENERATOR_INVALID"
-		if strings.Contains(err.Error(), "artifact") || errors.Is(err, repository.ErrNotFound) {
+		if strings.Contains(generationErr.Error(), "artifact") || errors.Is(generationErr, repository.ErrNotFound) {
 			stage, code = "artifact", "ARTIFACT_INVALID"
 		}
 		result.Valid = false
-		result.Issues = append(result.Issues, domain.Issue{Code: code, Severity: "error", Stage: stage, NodeIDs: []string{}, ConnectionIDs: []string{}, Path: "/", Message: err.Error()})
+		result.Issues = append(result.Issues, domain.Issue{Code: code, Severity: "error", Stage: stage, NodeIDs: []string{}, ConnectionIDs: []string{}, Path: "/", Message: generationErr.Error()})
 	}
 	return result
 }
@@ -354,7 +367,7 @@ func (s *Delivery) Generate(ctx context.Context, projectID string, input Generat
 	if err != nil {
 		return domain.Generation{}, err
 	}
-	if input.Revision < 1 || input.Generator != crosswalkvm.ID || (input.Output != "draft" && input.Output != "package") || input.IdempotencyKey == "" || len(input.IdempotencyKey) > 128 {
+	if input.Revision < 1 || !supportedGenerator(input.Generator) || (input.Output != "draft" && input.Output != "package") || input.IdempotencyKey == "" || len(input.IdempotencyKey) > 128 {
 		return domain.Generation{}, &InvalidInput{Err: errors.New("generation request is invalid")}
 	}
 	hash := sha256.Sum256([]byte(fmt.Sprintf("%s\n%d\n%s\n%s", input.Environment, input.Revision, input.Generator, input.Output)))
@@ -475,19 +488,46 @@ func (s *Delivery) BuildGeneration(ctx context.Context, generation domain.Genera
 	if err := json.Unmarshal(generation.Snapshot, &snapshot); err != nil {
 		return domain.Package{}, fmt.Errorf("decode generation snapshot: %w", err)
 	}
-	if snapshot.Environment != generation.Environment || snapshot.Revision != generation.Revision || snapshot.Generator != generation.Generator || snapshot.Output != generation.Output || snapshot.Generator != crosswalkvm.ID {
+	if snapshot.Environment != generation.Environment || snapshot.Revision != generation.Revision || snapshot.Generator != generation.Generator || snapshot.Output != generation.Output || !supportedGenerator(snapshot.Generator) {
 		return domain.Package{}, errors.New("generation snapshot metadata does not match the queued job")
 	}
 	ownerID, err := s.repo.ProjectOwner(ctx, generation.ProjectID)
 	if err != nil {
 		return domain.Package{}, fmt.Errorf("load generation project owner: %w", err)
 	}
-	resolver := artifactResolver{repo: s.repo, store: s.artifacts, ownerID: ownerID, projectID: generation.ProjectID}
-	bundle, err := crosswalkvm.Generate(ctx, snapshot.Blueprint, string(snapshot.Environment), resolver)
-	if err != nil {
-		return domain.Package{}, &InvalidArtifact{Err: err}
+	var deployYAML []byte
+	var packageFiles []crosswalkvm.PackageFile
+	var inlineFiles []crosswalkcompose.File
+	var writeZIP func(io.Writer) error
+	var generatorVersion, chartFormat string
+	switch snapshot.Generator {
+	case crosswalkvm.ID:
+		resolver := artifactResolver{repo: s.repo, store: s.artifacts, ownerID: ownerID, projectID: generation.ProjectID}
+		bundle, buildErr := crosswalkvm.Generate(ctx, snapshot.Blueprint, string(snapshot.Environment), resolver)
+		if buildErr != nil {
+			return domain.Package{}, &InvalidArtifact{Err: buildErr}
+		}
+		deployYAML, packageFiles = bundle.DeployYAML, bundle.Files
+		writeZIP = func(w io.Writer) error { return crosswalkvm.WriteZIP(w, bundle) }
+		generatorVersion, chartFormat = crosswalkvm.Version, crosswalkvm.ChartFormat
+	case crosswalkdocker.ID:
+		bundle, buildErr := crosswalkdocker.Generate(snapshot.Blueprint, string(snapshot.Environment))
+		if buildErr != nil {
+			return domain.Package{}, &InvalidArtifact{Err: buildErr}
+		}
+		deployYAML = bundle.DeployYAML
+		writeZIP = func(w io.Writer) error { return crosswalkdocker.WriteZIP(w, bundle) }
+		generatorVersion, chartFormat = crosswalkdocker.Version, crosswalkdocker.ChartFormat
+	case crosswalkcompose.ID:
+		bundle, buildErr := crosswalkcompose.Generate(snapshot.Blueprint, string(snapshot.Environment))
+		if buildErr != nil {
+			return domain.Package{}, &InvalidArtifact{Err: buildErr}
+		}
+		deployYAML, inlineFiles = bundle.DeployYAML, bundle.Files
+		writeZIP = func(w io.Writer) error { return crosswalkcompose.WriteZIP(w, bundle) }
+		generatorVersion, chartFormat = crosswalkcompose.Version, crosswalkcompose.ChartFormat
 	}
-	deployStage, err := s.packages.Stage(bytes.NewReader(bundle.DeployYAML), s.textLimit)
+	deployStage, err := s.packages.Stage(bytes.NewReader(deployYAML), s.textLimit)
 	if err != nil {
 		return domain.Package{}, err
 	}
@@ -498,12 +538,17 @@ func (s *Delivery) BuildGeneration(ctx context.Context, generation domain.Genera
 	}
 	deployStage.Path = ""
 	maxZIP := int64(16 << 20)
-	for _, file := range bundle.Files {
+	for _, file := range packageFiles {
 		if file.Artifact.Size > 0 && maxZIP <= 1<<40-file.Artifact.Size {
 			maxZIP += file.Artifact.Size
 		}
 	}
-	_, zipKey, err := s.packages.PutGenerated(func(w io.Writer) error { return crosswalkvm.WriteZIP(w, bundle) }, maxZIP)
+	for _, file := range inlineFiles {
+		if int64(len(file.Body)) > 0 && maxZIP <= 1<<40-int64(len(file.Body)) {
+			maxZIP += int64(len(file.Body))
+		}
+	}
+	_, zipKey, err := s.packages.PutGenerated(writeZIP, maxZIP)
 	if err != nil {
 		return domain.Package{}, err
 	}
@@ -513,10 +558,27 @@ func (s *Delivery) BuildGeneration(ctx context.Context, generation domain.Genera
 	}
 	now := s.now().UTC()
 	files := []domain.PackageFile{{ID: "file_deploy", Path: "deploy.yml", BlobKey: deployKey, MediaType: "application/yaml", SizeBytes: deployStage.Size, SHA256: deployStage.SHA256, Previewable: true}}
-	for i, file := range bundle.Files {
+	for i, file := range packageFiles {
 		files = append(files, domain.PackageFile{ID: fmt.Sprintf("file_%04d", i+1), Path: file.Path, BlobKey: "", MediaType: "application/octet-stream", SizeBytes: file.Artifact.Size, SHA256: file.Artifact.SHA256, Previewable: false})
 	}
-	return domain.Package{ID: packageID, ProjectID: generation.ProjectID, Environment: generation.Environment, Revision: generation.Revision, Output: generation.Output, Generator: crosswalkvm.ID, GeneratorVersion: crosswalkvm.Version, ChartFormat: crosswalkvm.ChartFormat, ZIPBlobKey: zipKey, CreatedAt: now, Files: files}, nil
+	for i, file := range inlineFiles {
+		stage, stageErr := s.packages.Stage(bytes.NewReader(file.Body), s.textLimit)
+		if stageErr != nil {
+			return domain.Package{}, stageErr
+		}
+		defer s.packages.Abort(stage)
+		key, commitErr := s.packages.Commit(stage)
+		if commitErr != nil {
+			return domain.Package{}, commitErr
+		}
+		stage.Path = ""
+		files = append(files, domain.PackageFile{ID: fmt.Sprintf("file_%04d", len(packageFiles)+i+1), Path: file.Path, BlobKey: key, MediaType: "application/yaml", SizeBytes: stage.Size, SHA256: stage.SHA256, Previewable: true})
+	}
+	return domain.Package{ID: packageID, ProjectID: generation.ProjectID, Environment: generation.Environment, Revision: generation.Revision, Output: generation.Output, Generator: snapshot.Generator, GeneratorVersion: generatorVersion, ChartFormat: chartFormat, ZIPBlobKey: zipKey, CreatedAt: now, Files: files}, nil
+}
+
+func supportedGenerator(value string) bool {
+	return value == crosswalkvm.ID || value == crosswalkdocker.ID || value == crosswalkcompose.ID
 }
 
 type artifactResolver struct {

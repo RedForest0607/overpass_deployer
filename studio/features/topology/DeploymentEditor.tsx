@@ -2,14 +2,19 @@
 
 import { useState } from 'react';
 import type {
+  ContainerDeployment,
   JavaDeployment,
   UtilityDeployment,
   VMDeployment,
 } from '../../lib/api/contracts';
 import JsonEditorTextarea from './JsonEditorTextarea';
 
-type Deployment = JavaDeployment | VMDeployment | UtilityDeployment;
-type DeploymentKind = 'java' | 'vm' | 'redis' | 'elasticsearch';
+type Deployment =
+  | JavaDeployment
+  | ContainerDeployment
+  | VMDeployment
+  | UtilityDeployment;
+type DeploymentKind = 'java' | 'container' | 'vm' | 'redis' | 'elasticsearch';
 
 export default function DeploymentEditor({
   kind,
@@ -76,6 +81,14 @@ function defaults(kind: DeploymentKind): Deployment {
       directories: [kind === 'redis' ? '/app/redis' : '/app/elasticsearch'],
       files: [],
       services: [],
+    };
+  }
+  if (kind === 'container') {
+    return {
+      tags: [],
+      environment: {},
+      restartPolicy: 'unless-stopped',
+      healthTimeoutSeconds: 60,
     };
   }
   return {

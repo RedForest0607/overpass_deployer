@@ -1,5 +1,6 @@
 import type { Edge, Node } from '@xyflow/react';
 import type {
+  ContainerDeployment,
   JavaDeployment,
   UtilityDeployment,
   VMDeployment,
@@ -7,6 +8,7 @@ import type {
 
 export type Kind =
   | 'java'
+  | 'container'
   | 'vm'
   | 'database'
   | 'redis'
@@ -18,7 +20,12 @@ export type NodeData = {
   label: string;
   kind: Kind;
   port: number;
+  containerPort: number;
   host: string;
+  image: string;
+  digest: string;
+  registryUsername: string;
+  tokenEnv: string;
   java: string;
   heap: string;
   artifact: string;
@@ -26,7 +33,11 @@ export type NodeData = {
   secretRef: string;
   namespace: string;
   platform: string;
-  deployment?: VMDeployment | JavaDeployment | UtilityDeployment;
+  deployment?:
+    | VMDeployment
+    | JavaDeployment
+    | ContainerDeployment
+    | UtilityDeployment;
 };
 export type TopologyNode = Node<NodeData, 'resource' | 'targetGroup'>;
 export type EdgePoint = { x: number; y: number };
@@ -66,6 +77,13 @@ export const catalog: {
     subtitle: 'JAR · Spring Boot',
     group: 'WORKLOADS',
     color: '#b77b33',
+  },
+  {
+    kind: 'container',
+    title: 'Container',
+    subtitle: 'Docker · OCI image',
+    group: 'WORKLOADS',
+    color: '#4e87b8',
   },
   {
     kind: 'vm',
@@ -140,7 +158,7 @@ export function createNode(
       kind,
       label: kind + '-' + id.slice(-4),
       port:
-        kind === 'java'
+        kind === 'java' || kind === 'container'
           ? 8080
           : kind === 'database'
             ? 5432
@@ -149,7 +167,12 @@ export function createNode(
               : kind === 'elasticsearch'
                 ? 9200
                 : 0,
+      containerPort: kind === 'container' ? 8080 : 0,
       host: '',
+      image: '',
+      digest: '',
+      registryUsername: '',
+      tokenEnv: '',
       java: '21',
       heap: '1g',
       artifact: '',
@@ -230,17 +253,21 @@ export function sample(project = 'bo-pcweb'): {
 }
 export function connectionType(source: Kind, target: Kind): string | null {
   if (
-    ['java', 'redis', 'elasticsearch'].includes(source) &&
-    ['vm', 'kubernetes'].includes(target)
+    ['java', 'container', 'redis', 'elasticsearch'].includes(source) &&
+    (source === 'container'
+      ? target === 'vm'
+      : ['vm', 'kubernetes'].includes(target))
   )
     return 'deploys_to';
   if (
-    source === 'java' &&
-    ['database', 'redis', 'elasticsearch', 'java'].includes(target)
+    ['java', 'container'].includes(source) &&
+    ['database', 'redis', 'elasticsearch', 'java', 'container'].includes(target)
   )
     return 'connects_to';
-  if (source === 'java' && target === 'registry') return 'publishes_to';
-  if (source === 'ingress' && target === 'java') return 'routes_to';
+  if (['java', 'container'].includes(source) && target === 'registry')
+    return 'publishes_to';
+  if (source === 'ingress' && ['java', 'container'].includes(target))
+    return 'routes_to';
   return null;
 }
 export function validate(
@@ -260,7 +287,9 @@ export function validate(
       error(n.id + 'duplicate', '중복된 노드 이름입니다.', n.id);
     names.add(n.data.label);
     if (
-      ['java', 'database', 'redis', 'elasticsearch'].includes(n.data.kind) &&
+      ['java', 'container', 'database', 'redis', 'elasticsearch'].includes(
+        n.data.kind,
+      ) &&
       (!Number.isInteger(n.data.port) || n.data.port < 1 || n.data.port > 65535)
     )
       error(n.id + 'port', '포트는 1–65535 사이의 정수여야 합니다.', n.id);
@@ -270,16 +299,63 @@ export function validate(
       !n.data.host.trim()
     )
       error(n.id + 'host', '호스트 주소를 입력하세요.', n.id);
-    if (['java', 'redis', 'elasticsearch'].includes(n.data.kind)) {
+    if (n.data.kind === 'container') {
+      if (
+        !Number.isInteger(n.data.containerPort) ||
+        n.data.containerPort < 1 ||
+        n.data.containerPort > 65535
+      )
+        error(
+          n.id + 'container-port',
+          '컨테이너 포트는 1–65535 사이의 정수여야 합니다.',
+          n.id,
+        );
+      if (
+        !/^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)+$/.test(
+          n.data.image,
+        )
+      )
+        error(
+          n.id + 'image',
+          '이미지는 tag 없는 소문자 repository 경로여야 합니다.',
+          n.id,
+        );
+      if (!/^sha256:[a-f0-9]{64}$/.test(n.data.digest))
+        error(n.id + 'digest', 'sha256 이미지 digest를 입력하세요.', n.id);
+    }
+    if (n.data.kind === 'registry') {
+      if (!n.data.host.trim())
+        error(n.id + 'host', 'Registry host를 입력하세요.', n.id);
+      const hasDockerCredentials =
+        !!n.data.registryUsername.trim() || !!n.data.tokenEnv.trim();
+      if (hasDockerCredentials) {
+        if (!n.data.registryUsername.trim())
+          error(n.id + 'username', 'Registry 사용자 이름을 입력하세요.', n.id);
+        if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(n.data.tokenEnv))
+          error(
+            n.id + 'token-env',
+            '비밀값 대신 token 환경변수 이름을 입력하세요.',
+            n.id,
+          );
+      } else if (!n.data.secretRef.trim()) {
+        error(
+          n.id + 'credential-ref',
+          'Docker 인증 정보 또는 기존 Secret 참조를 입력하세요.',
+          n.id,
+        );
+      }
+    }
+    if (['java', 'container', 'redis', 'elasticsearch'].includes(n.data.kind)) {
       const targets = edges.filter(
         (e) =>
           e.source === n.id &&
-          ['vm', 'kubernetes'].includes(
-            nodes.find((t) => t.id === e.target)?.data.kind ?? '',
-          ),
+          (n.data.kind === 'container'
+            ? ['vm']
+            : ['vm', 'kubernetes']
+          ).includes(nodes.find((t) => t.id === e.target)?.data.kind ?? ''),
       );
       if (
-        (n.data.kind === 'java' && targets.length !== 1) ||
+        (['java', 'container'].includes(n.data.kind) && targets.length !== 1) ||
         targets.length > 1
       )
         error(
@@ -292,7 +368,10 @@ export function validate(
         (n.parentId &&
           !nodes.some(
             (t) =>
-              t.id === n.parentId && ['vm', 'kubernetes'].includes(t.data.kind),
+              t.id === n.parentId &&
+              (n.data.kind === 'container'
+                ? t.data.kind === 'vm'
+                : ['vm', 'kubernetes'].includes(t.data.kind)),
           ))
       )
         error(
@@ -300,8 +379,7 @@ export function validate(
           '화면의 실행 대상과 배치 관계가 일치하지 않습니다.',
           n.id,
         );
-      if (n.data.kind !== 'java') continue;
-      if (!n.data.artifactRef)
+      if (n.data.kind === 'java' && !n.data.artifactRef)
         issues.push({
           id: n.id + 'artifact',
           nodeId: n.id,
@@ -336,7 +414,10 @@ export function validate(
     const ports = new Set<number>();
     for (const e of edges.filter((e) => e.target === target.id)) {
       const app = nodes.find((n) => n.id === e.source);
-      if (!app || !['java', 'redis', 'elasticsearch'].includes(app.data.kind))
+      if (
+        !app ||
+        !['java', 'container', 'redis', 'elasticsearch'].includes(app.data.kind)
+      )
         continue;
       if (ports.has(app.data.port))
         error(

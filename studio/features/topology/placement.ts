@@ -5,7 +5,11 @@ export const SLOT_HEIGHT = 190;
 export const isTarget = (node: TopologyNode) =>
   ['vm', 'kubernetes'].includes(node.data.kind);
 export const isWorkload = (node: TopologyNode) =>
-  ['java', 'redis', 'elasticsearch'].includes(node.data.kind);
+  ['java', 'container', 'redis', 'elasticsearch'].includes(node.data.kind);
+
+export const canPlaceOn = (node: TopologyNode, target: TopologyNode) =>
+  isTarget(target) &&
+  (node.data.kind !== 'container' || target.data.kind === 'vm');
 
 /** Parents precede children. Each service gets a separate slot inside its host. */
 export function layoutPlacement(nodes: TopologyNode[]): TopologyNode[] {
@@ -51,7 +55,7 @@ export function placeWorkload(
   if (
     !node ||
     !isWorkload(node) ||
-    (targetId && (!target || !isTarget(target)))
+    (targetId && (!target || !canPlaceOn(node, target)))
   )
     return { nodes, edges };
   const previous = nodes.find((n) => n.id === node.parentId);

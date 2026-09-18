@@ -83,3 +83,18 @@ func TestDesignRules(t *testing.T) {
 		})
 	}
 }
+
+func TestLegacyRegistrySecretReferenceRemainsValid(t *testing.T) {
+	doc := designFixture()
+	doc["nodes"] = append(doc["nodes"].([]any), map[string]any{
+		"id": "registry", "kind": "registry", "name": "registry",
+		"spec": map[string]any{"endpoint": "harbor.example.com", "secretRef": "legacy-harbor-secret"},
+	})
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := ValidateDesign(raw, "legacy-registry"); !result.Valid {
+		t.Fatalf("legacy Registry reference should remain valid: %+v", result.Issues)
+	}
+}

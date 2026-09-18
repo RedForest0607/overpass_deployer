@@ -4,6 +4,8 @@ import (
 	"errors"
 	"net/http"
 	"studio-backend/internal/domain"
+	"studio-backend/internal/generator/crosswalkcompose"
+	"studio-backend/internal/generator/crosswalkdocker"
 	"studio-backend/internal/generator/crosswalkvm"
 	"studio-backend/internal/httpx"
 	"studio-backend/internal/repository"
@@ -34,12 +36,16 @@ func (h projectHandlers) validate(w http.ResponseWriter, r *http.Request) {
 		writeServiceError(w, r, err, "INVALID_REQUEST")
 		return
 	}
-	if request.Generator != nil && *request.Generator != "" && *request.Generator != crosswalkvm.ID {
+	generatorID := crosswalkvm.ID
+	if request.Generator != nil && *request.Generator != "" {
+		generatorID = *request.Generator
+	}
+	if generatorID != crosswalkvm.ID && generatorID != crosswalkdocker.ID && generatorID != crosswalkcompose.ID {
 		writeRequestError(w, r, 422, "UNSUPPORTED_GENERATOR", "지원하지 않는 generator입니다.", nil)
 		return
 	}
 	if purpose == "package" {
-		result = h.delivery.ValidatePackage(r.Context(), r.PathValue("projectId"), *request.Blueprint, environment, result)
+		result = h.delivery.ValidatePackage(r.Context(), r.PathValue("projectId"), *request.Blueprint, environment, generatorID, result)
 	}
 	httpx.WriteJSON(w, 200, result)
 }

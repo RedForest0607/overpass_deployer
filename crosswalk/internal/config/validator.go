@@ -153,12 +153,13 @@ func ValidateAndApplyDefaults(cfg *Config) error {
 		validateExtraFiles(&cfg.Servers[i].ExtraFiles, prefix+".extra_files", &errs, checkUnresolvedEnv, prodLikeServer)
 		validateUtilityConfigs(cfg.Servers[i].Utils, prefix+".utils", &errs, checkUnresolvedEnv, prodLikeServer)
 		validateContainerConfigs(cfg.Servers[i].Containers, prefix+".containers", &errs, checkUnresolvedEnv)
+		validateComposeProjects(cfg.Servers[i].ComposeProjects, prefix+".compose_projects", &errs, checkUnresolvedEnv)
 
 		if s.UsesLegacyApp() && len(s.Apps) > 0 {
 			errs = append(errs, prefix+" cannot define both app and apps")
 		}
-		if !s.UsesLegacyApp() && len(s.Apps) == 0 && len(cfg.Servers[i].Containers) == 0 && len(cfg.Servers[i].Directories) == 0 && len(cfg.Servers[i].ExtraFiles) == 0 && len(cfg.Servers[i].Utils) == 0 && !hasBootstrapSettings(cfg.Servers[i].Bootstrap) {
-			errs = append(errs, prefix+" must define app, apps, containers, directories, extra_files, utils, or bootstrap settings")
+		if !s.UsesLegacyApp() && len(s.Apps) == 0 && len(cfg.Servers[i].Containers) == 0 && len(cfg.Servers[i].ComposeProjects) == 0 && len(cfg.Servers[i].Directories) == 0 && len(cfg.Servers[i].ExtraFiles) == 0 && len(cfg.Servers[i].Utils) == 0 && !hasBootstrapSettings(cfg.Servers[i].Bootstrap) {
+			errs = append(errs, prefix+" must define app, apps, containers, compose_projects, directories, extra_files, utils, or bootstrap settings")
 		}
 
 		if s.UsesLegacyApp() {
@@ -295,14 +296,14 @@ func validateChartFormat(cfg *Config, errs *[]string) {
 }
 
 func validateDockerDeploymentConfig(cfg *Config, errs *[]string, checkUnresolvedEnv func(string, string)) {
-	hasContainers := false
+	hasDockerWorkloads := false
 	for _, server := range cfg.Servers {
-		if len(server.Containers) > 0 {
-			hasContainers = true
+		if len(server.Containers) > 0 || len(server.ComposeProjects) > 0 {
+			hasDockerWorkloads = true
 			break
 		}
 	}
-	if !hasContainers {
+	if !hasDockerWorkloads {
 		return
 	}
 
@@ -324,6 +325,36 @@ func validateDockerDeploymentConfig(cfg *Config, errs *[]string, checkUnresolved
 	}
 	if !environmentNamePattern.MatchString(registry.TokenEnv) {
 		*errs = append(*errs, "docker.registry.token_env must be an environment variable name")
+	}
+}
+
+func validateComposeProjects(projects []ComposeProjectConfig, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
+	names := make(map[string]struct{}, len(projects))
+	for index := range projects {
+		project := &projects[index]
+		fieldPrefix := fmt.Sprintf("%s[%d]", prefix, index)
+		project.Name = strings.ToLower(strings.TrimSpace(project.Name))
+		project.LocalPath = strings.TrimSpace(project.LocalPath)
+		project.RemoteDir = strings.TrimSpace(project.RemoteDir)
+		checkUnresolvedEnv(project.Name, fieldPrefix+".name")
+		checkUnresolvedEnv(project.LocalPath, fieldPrefix+".local_path")
+		checkUnresolvedEnv(project.RemoteDir, fieldPrefix+".remote_dir")
+
+		if !composeProjectNamePattern.MatchString(project.Name) {
+			*errs = append(*errs, fieldPrefix+".name must start with a lowercase letter or number and contain only lowercase letters, numbers, hyphens, or underscores")
+		} else if _, exists := names[project.Name]; exists {
+			*errs = append(*errs, fmt.Sprintf("%s.name %q must be unique on the server", fieldPrefix, project.Name))
+		}
+		names[project.Name] = struct{}{}
+
+		if project.LocalPath == "" {
+			*errs = append(*errs, fieldPrefix+".local_path is required")
+		} else {
+			validateExistingFile(project.LocalPath, fieldPrefix+".local_path", errs)
+		}
+		if project.RemoteDir == "" || !filepath.IsAbs(project.RemoteDir) {
+			*errs = append(*errs, fieldPrefix+".remote_dir must be an absolute path")
+		}
 	}
 }
 
@@ -1131,6 +1162,7 @@ var bastionAliasPattern = regexp.MustCompile(`^[A-Za-z0-9._-]+$`)
 var fileModePattern = regexp.MustCompile(`^[0-7]{3,4}$`)
 var sysctlNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
 var containerNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
+var composeProjectNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
 var dockerRegistryHostPattern = regexp.MustCompile(`^[a-z0-9.-]+$`)
 var dockerRegistryUsernamePattern = regexp.MustCompile(`^[A-Za-z0-9_.@+$-]+$`)
 var dockerRepositoryPattern = regexp.MustCompile(`^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*$`)

@@ -39,19 +39,28 @@ type BastionConfig struct {
 }
 
 type ServerConfig struct {
-	Host           string            `yaml:"host"`
-	Name           string            `yaml:"name"`
-	Tags           []string          `yaml:"tags"`
-	SSHPort        int               `yaml:"ssh_port"`
-	BastionHost    string            `yaml:"bastion_host"`
-	BastionSSHPort int               `yaml:"bastion_ssh_port"`
-	Bootstrap      BootstrapConfig   `yaml:"bootstrap"`
-	Directories    []string          `yaml:"directories"`
-	ExtraFiles     []ExtraFile       `yaml:"extra_files"`
-	Utils          []UtilityConfig   `yaml:"utils"`
-	Containers     []ContainerConfig `yaml:"containers"`
-	App            AppConfig         `yaml:"app"`
-	Apps           []AppConfig       `yaml:"apps"`
+	Host            string                 `yaml:"host"`
+	Name            string                 `yaml:"name"`
+	Tags            []string               `yaml:"tags"`
+	SSHPort         int                    `yaml:"ssh_port"`
+	BastionHost     string                 `yaml:"bastion_host"`
+	BastionSSHPort  int                    `yaml:"bastion_ssh_port"`
+	Bootstrap       BootstrapConfig        `yaml:"bootstrap"`
+	Directories     []string               `yaml:"directories"`
+	ExtraFiles      []ExtraFile            `yaml:"extra_files"`
+	Utils           []UtilityConfig        `yaml:"utils"`
+	Containers      []ContainerConfig      `yaml:"containers"`
+	ComposeProjects []ComposeProjectConfig `yaml:"compose_projects"`
+	App             AppConfig              `yaml:"app"`
+	Apps            []AppConfig            `yaml:"apps"`
+}
+
+// ComposeProjectConfig points at one generated Compose document for a target
+// server. Phase 1 validates and plans the file; remote apply is added later.
+type ComposeProjectConfig struct {
+	Name      string `yaml:"name"`
+	LocalPath string `yaml:"local_path"`
+	RemoteDir string `yaml:"remote_dir"`
 }
 
 // DockerDeploymentConfig는 Docker 모드가 공통으로 사용할 registry 설정을 선언한다.

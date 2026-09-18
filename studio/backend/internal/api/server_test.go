@@ -315,6 +315,14 @@ func TestHealthAndCapabilities(t *testing.T) {
 			t.Fatalf("%s has no request ID", test.path)
 		}
 	}
+
+	capabilities := httptest.NewRecorder()
+	handler.ServeHTTP(capabilities, httptest.NewRequest(http.MethodGet, "http://localhost/api/v1/capabilities", nil))
+	for _, generator := range []string{`"id":"crosswalk-vm"`, `"id":"crosswalk-docker"`, `"id":"crosswalk-compose"`} {
+		if !strings.Contains(capabilities.Body.String(), generator) {
+			t.Fatalf("capabilities missing %s: %s", generator, capabilities.Body.String())
+		}
+	}
 }
 
 func TestHealthReportsStorageFailure(t *testing.T) {

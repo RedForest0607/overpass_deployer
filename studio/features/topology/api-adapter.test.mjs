@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { sample } from './model.ts';
+import { createNode, sample } from './model.ts';
 import { fromAPI, toAPI } from './api-adapter.ts';
+import { placeWorkload } from './placement.ts';
 
 test('iSTOCKMALL DEV example is editable without dropping topology data', () => {
   const sample = JSON.parse(
@@ -197,5 +198,59 @@ test('Crosswalk deployment profiles survive an API round trip', () => {
   assert.deepEqual(
     restored.nodes.find((node) => node.id === 'redis').data.deployment,
     redis.data.deployment,
+  );
+});
+
+test('Docker container and registry round-trip without storing token values', () => {
+  let { nodes, edges } = sample();
+  const container = createNode('container', 'container', 0, 0);
+  container.data.label = 'sample-container';
+  container.data.image = 'overpass/sample-api';
+  container.data.digest = 'sha256:' + 'a'.repeat(64);
+  container.data.port = 18080;
+  container.data.containerPort = 8080;
+  container.data.deployment = {
+    environment: { SPRING_PROFILES_ACTIVE: 'dev' },
+    restartPolicy: 'unless-stopped',
+    healthTimeoutSeconds: 60,
+  };
+  const registry = createNode('registry', 'registry', 600, 200);
+  registry.data.label = 'harbor';
+  registry.data.host = 'harbor.example.com';
+  registry.data.registryUsername = 'robot-studio';
+  registry.data.tokenEnv = 'HARBOR_TOKEN';
+  nodes.push(container, registry);
+  ({ nodes, edges } = placeWorkload(nodes, edges, 'container', 'vm'));
+
+  const encoded = toAPI(nodes, edges, { x: 0, y: 0, zoom: 1 });
+  assert.ok(
+    encoded.blueprint.placements.some(
+      (placement) =>
+        placement.workloadRef === 'container' && placement.mode === 'container',
+    ),
+  );
+  const containerSpec = encoded.blueprint.nodes.find(
+    (node) => node.id === 'container',
+  ).spec;
+  assert.equal(containerSpec.ports[0].servicePort, 18080);
+  assert.equal(containerSpec.ports[0].containerPort, 8080);
+  const registrySpec = encoded.blueprint.nodes.find(
+    (node) => node.id === 'registry',
+  ).spec;
+  assert.equal(registrySpec.tokenEnv, 'HARBOR_TOKEN');
+  assert.equal('token' in registrySpec, false);
+
+  const restored = fromAPI(encoded.blueprint, encoded.layout);
+  assert.equal(
+    restored.nodes.find((node) => node.id === 'container').parentId,
+    'vm',
+  );
+  assert.equal(
+    restored.nodes.find((node) => node.id === 'container').data.containerPort,
+    8080,
+  );
+  assert.equal(
+    restored.nodes.find((node) => node.id === 'registry').data.registryUsername,
+    'robot-studio',
   );
 });

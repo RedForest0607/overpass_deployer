@@ -14,6 +14,7 @@ import type {
   ValidationRequest,
 } from './generated.ts';
 import type { Validation } from './projects.ts';
+import type { GeneratorID } from './contracts.ts';
 
 export type {
   Artifact,
@@ -81,13 +82,14 @@ export const deliveryAPI = {
     environment: Environment,
     blueprint: Blueprint,
     clientRequestId: string,
+    generator: GeneratorID = 'crosswalk-vm',
   ) {
     const body: ValidationRequest = {
       environment,
       blueprint,
       clientRequestId,
       purpose: 'package',
-      generator: 'crosswalk-vm',
+      generator,
     };
     return request<Validation>(projectPath(projectId) + '/validations', {
       method: 'POST',
@@ -100,11 +102,12 @@ export const deliveryAPI = {
     revision: number,
     output: 'draft' | 'package',
     idempotencyKey: string,
+    generator: GeneratorID = 'crosswalk-vm',
   ) {
     const body: CreateGeneration = {
       environment,
       revision,
-      generator: 'crosswalk-vm',
+      generator,
       output,
     };
     return request<Generation>(projectPath(projectId) + '/generations', {

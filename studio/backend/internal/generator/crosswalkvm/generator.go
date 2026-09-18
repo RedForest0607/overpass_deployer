@@ -135,6 +135,11 @@ func Generate(ctx context.Context, raw json.RawMessage, environment string, reso
 	}
 
 	for _, p := range doc.Placements {
+		// Container placements are owned by the independent crosswalk-docker
+		// generator so one Blueprint can produce either package type.
+		if p.Mode == "container" {
+			continue
+		}
 		if p.Mode != "process" {
 			return Bundle{}, fmt.Errorf("placement %s -> %s uses unsupported Crosswalk mode %q", p.WorkloadRef, p.TargetRef, p.Mode)
 		}

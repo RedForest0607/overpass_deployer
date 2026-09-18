@@ -108,6 +108,110 @@ func TestArtifactToCrosswalkPackageLifecycle(t *testing.T) {
 	}
 }
 
+func TestDockerPackageLifecycle(t *testing.T) {
+	handler := testHandler(t, nil)
+	projectID := createTestProject(t, handler, "docker-delivery")
+	digest := "sha256:" + strings.Repeat("a", 64)
+	blueprint := `{"apiVersion":"studio.deployer/v1","deployment":{"ssh":{"user":"deploy","keyPath":"${DEPLOY_SSH_KEY_PATH}","knownHostsPath":"${DEPLOY_KNOWN_HOSTS}","hostKeyChecking":"strict"}},"nodes":[{"id":"registry","kind":"registry","name":"harbor","spec":{"endpoint":"harbor.example.com","username":"robot-studio","tokenEnv":"HARBOR_TOKEN"}},{"id":"vm","kind":"vm","name":"docker-host","spec":{"provider":"on-prem","host":"10.0.0.20"}},{"id":"api","kind":"container","name":"sample-api","spec":{"image":"overpass/sample-api","digest":"` + digest + `","ports":[{"name":"main","servicePort":8080,"containerPort":8080,"protocol":"TCP"}],"deployment":{"restartPolicy":"unless-stopped","healthTimeoutSeconds":60}}}],"placements":[{"workloadRef":"api","targetRef":"vm","mode":"container"}],"connections":[]}`
+
+	save := httptest.NewRecorder()
+	handler.ServeHTTP(save, jsonRequest(http.MethodPut, "/api/v1/projects/"+projectID+"/topologies/dev", `{"expectedRevision":0,"blueprint":`+blueprint+`,"layout":{"nodes":[],"viewport":{"x":0,"y":0,"zoom":1}}}`))
+	if save.Code != http.StatusOK {
+		t.Fatalf("save Docker topology=%d %s", save.Code, save.Body.String())
+	}
+	validated := httptest.NewRecorder()
+	handler.ServeHTTP(validated, jsonRequest(http.MethodPost, "/api/v1/projects/"+projectID+"/validations", `{"environment":"dev","clientRequestId":"docker-check","purpose":"package","generator":"crosswalk-docker","blueprint":`+blueprint+`}`))
+	if validated.Code != http.StatusOK || !strings.Contains(validated.Body.String(), `"valid":true`) {
+		t.Fatalf("validate Docker package=%d %s", validated.Code, validated.Body.String())
+	}
+
+	request := jsonRequest(http.MethodPost, "/api/v1/projects/"+projectID+"/generations", `{"environment":"dev","revision":1,"generator":"crosswalk-docker","output":"package"}`)
+	request.Header.Set("Idempotency-Key", "docker-package-1")
+	queued := httptest.NewRecorder()
+	handler.ServeHTTP(queued, request)
+	if queued.Code != http.StatusAccepted {
+		t.Fatalf("queue Docker package=%d %s", queued.Code, queued.Body.String())
+	}
+	var generation domain.Generation
+	if err := json.Unmarshal(queued.Body.Bytes(), &generation); err != nil {
+		t.Fatal(err)
+	}
+	generation = awaitGeneration(t, handler, projectID, generation.ID)
+	if generation.Status != "succeeded" || generation.PackageID == nil {
+		t.Fatalf("Docker generation=%+v", generation)
+	}
+
+	packageURL := "/api/v1/projects/" + projectID + "/packages/" + *generation.PackageID
+	metadata := httptest.NewRecorder()
+	handler.ServeHTTP(metadata, httptest.NewRequest(http.MethodGet, "http://localhost"+packageURL, nil))
+	if metadata.Code != http.StatusOK || !strings.Contains(metadata.Body.String(), `"generator":"crosswalk-docker"`) {
+		t.Fatalf("Docker package metadata=%d %s", metadata.Code, metadata.Body.String())
+	}
+	preview := httptest.NewRecorder()
+	handler.ServeHTTP(preview, httptest.NewRequest(http.MethodGet, "http://localhost"+packageURL+"/files/file_deploy", nil))
+	if preview.Code != http.StatusOK || !strings.Contains(preview.Body.String(), "token_env: HARBOR_TOKEN") || !strings.Contains(preview.Body.String(), "containers:") {
+		t.Fatalf("Docker package preview=%d %s", preview.Code, preview.Body.String())
+	}
+	download := httptest.NewRecorder()
+	handler.ServeHTTP(download, httptest.NewRequest(http.MethodGet, "http://localhost"+packageURL+"/download", nil))
+	zr, err := zip.NewReader(bytes.NewReader(download.Body.Bytes()), int64(download.Body.Len()))
+	if err != nil || len(zr.File) != 1 || zr.File[0].Name != "deploy.yml" {
+		t.Fatalf("Docker package ZIP files=%v err=%v", zr.File, err)
+	}
+}
+
+func TestComposePackageLifecycle(t *testing.T) {
+	handler := testHandler(t, nil)
+	projectID := createTestProject(t, handler, "compose-delivery")
+	digest := "sha256:" + strings.Repeat("c", 64)
+	blueprint := `{"apiVersion":"studio.deployer/v1","deployment":{"ssh":{"user":"deploy","keyPath":"${DEPLOY_SSH_KEY_PATH}","knownHostsPath":"","hostKeyChecking":"insecure"}},"nodes":[{"id":"registry","kind":"registry","name":"harbor","spec":{"endpoint":"harbor.example.com","username":"robot-studio","tokenEnv":"HARBOR_TOKEN"}},{"id":"vm","kind":"vm","name":"compose-dev-01","spec":{"provider":"on-prem","host":"10.0.0.30"}},{"id":"api","kind":"container","name":"commerce-api","spec":{"image":"demo/commerce-api","digest":"` + digest + `","ports":[{"name":"main","servicePort":18080,"containerPort":8080,"protocol":"TCP"}],"deployment":{"environment":{"SPRING_PROFILES_ACTIVE":"dev"},"restartPolicy":"unless-stopped"}}}],"placements":[{"workloadRef":"api","targetRef":"vm","mode":"container"}],"connections":[]}`
+
+	save := httptest.NewRecorder()
+	handler.ServeHTTP(save, jsonRequest(http.MethodPut, "/api/v1/projects/"+projectID+"/topologies/dev", `{"expectedRevision":0,"blueprint":`+blueprint+`,"layout":{"nodes":[],"viewport":{"x":0,"y":0,"zoom":1}}}`))
+	if save.Code != http.StatusOK {
+		t.Fatalf("save Compose topology=%d %s", save.Code, save.Body.String())
+	}
+	validated := httptest.NewRecorder()
+	handler.ServeHTTP(validated, jsonRequest(http.MethodPost, "/api/v1/projects/"+projectID+"/validations", `{"environment":"dev","clientRequestId":"compose-check","purpose":"package","generator":"crosswalk-compose","blueprint":`+blueprint+`}`))
+	if validated.Code != http.StatusOK || !strings.Contains(validated.Body.String(), `"valid":true`) {
+		t.Fatalf("validate Compose package=%d %s", validated.Code, validated.Body.String())
+	}
+
+	request := jsonRequest(http.MethodPost, "/api/v1/projects/"+projectID+"/generations", `{"environment":"dev","revision":1,"generator":"crosswalk-compose","output":"package"}`)
+	request.Header.Set("Idempotency-Key", "compose-package-1")
+	queued := httptest.NewRecorder()
+	handler.ServeHTTP(queued, request)
+	if queued.Code != http.StatusAccepted {
+		t.Fatalf("queue Compose package=%d %s", queued.Code, queued.Body.String())
+	}
+	var generation domain.Generation
+	if err := json.Unmarshal(queued.Body.Bytes(), &generation); err != nil {
+		t.Fatal(err)
+	}
+	generation = awaitGeneration(t, handler, projectID, generation.ID)
+	if generation.Status != "succeeded" || generation.PackageID == nil {
+		t.Fatalf("Compose generation=%+v", generation)
+	}
+
+	packageURL := "/api/v1/projects/" + projectID + "/packages/" + *generation.PackageID
+	metadata := httptest.NewRecorder()
+	handler.ServeHTTP(metadata, httptest.NewRequest(http.MethodGet, "http://localhost"+packageURL, nil))
+	if metadata.Code != http.StatusOK || !strings.Contains(metadata.Body.String(), `"generator":"crosswalk-compose"`) || !strings.Contains(metadata.Body.String(), `"path":"compose/compose-dev-01/compose.yml"`) {
+		t.Fatalf("Compose package metadata=%d %s", metadata.Code, metadata.Body.String())
+	}
+	composePreview := httptest.NewRecorder()
+	handler.ServeHTTP(composePreview, httptest.NewRequest(http.MethodGet, "http://localhost"+packageURL+"/files/file_0001", nil))
+	if composePreview.Code != http.StatusOK || !strings.Contains(composePreview.Body.String(), "services:") || !strings.Contains(composePreview.Body.String(), "@"+digest) {
+		t.Fatalf("Compose preview=%d %s", composePreview.Code, composePreview.Body.String())
+	}
+	download := httptest.NewRecorder()
+	handler.ServeHTTP(download, httptest.NewRequest(http.MethodGet, "http://localhost"+packageURL+"/download", nil))
+	zr, err := zip.NewReader(bytes.NewReader(download.Body.Bytes()), int64(download.Body.Len()))
+	if err != nil || len(zr.File) != 2 || zr.File[0].Name != "deploy.yml" || zr.File[1].Name != "compose/compose-dev-01/compose.yml" {
+		t.Fatalf("Compose package ZIP files=%v err=%v", zr.File, err)
+	}
+}
+
 func TestArtifactValidationAndProjectScope(t *testing.T) {
 	handler := testHandler(t, nil)
 	first := createTestProject(t, handler, "first")

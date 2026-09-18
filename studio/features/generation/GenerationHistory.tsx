@@ -173,7 +173,8 @@ export default function GenerationHistory({
                 {item.retryOfGenerationId && <small>재시도 작업</small>}
               </div>
               <p>
-                {formatDate(item.createdAt)} · {item.attempts}차 시도
+                {item.generator} · {formatDate(item.createdAt)} ·{' '}
+                {item.attempts}차 시도
                 {item.error ? ` · ${item.error.message}` : ''}
               </p>
               {item.status === 'failed' ? (

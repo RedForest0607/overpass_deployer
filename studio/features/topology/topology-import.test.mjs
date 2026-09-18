@@ -5,6 +5,7 @@ import {
   MAX_TOPOLOGY_IMPORT_BYTES,
   parseTopologyImport,
 } from './topology-import.ts';
+import { validate } from './model.ts';
 
 test('imports the exported iSTOCKMALL topology envelope', () => {
   const value = parseTopologyImport(
@@ -14,6 +15,23 @@ test('imports the exported iSTOCKMALL topology envelope', () => {
   assert.equal(value.graph.nodes.length, 15);
   assert.equal(value.graph.edges.length, 19);
   assert.equal(value.graph.deployment.ssh.user, 'ec2-user');
+});
+
+test('imports the Docker commerce example without losing deployment fields', () => {
+  const value = parseTopologyImport(
+    readFileSync('examples/docker-commerce-dev-topology.json', 'utf8'),
+  );
+  assert.equal(value.environment, 'dev');
+  assert.equal(value.graph.nodes.length, 5);
+  assert.equal(value.graph.edges.length, 6);
+  const api = value.graph.nodes.find((node) => node.id === 'commerce-api');
+  assert.equal(api.parentId, 'docker-host');
+  assert.equal(api.data.image, 'demo/commerce-api');
+  assert.equal(api.data.containerPort, 8080);
+  const registry = value.graph.nodes.find((node) => node.id === 'harbor');
+  assert.equal(registry.data.tokenEnv, 'HARBOR_TOKEN');
+  assert.equal(registry.data.secretRef, '');
+  assert.deepEqual(validate(value.graph.nodes, value.graph.edges), []);
 });
 
 test('imports a raw Blueprint and creates an editable default layout', () => {

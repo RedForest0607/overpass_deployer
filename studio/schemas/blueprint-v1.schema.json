@@ -37,6 +37,17 @@
         "protocol": { "enum": ["TCP", "UDP"] }
       }
     },
+    "containerPort": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "servicePort", "containerPort", "protocol"],
+      "properties": {
+        "name": { "type": "string", "maxLength": 63 },
+        "servicePort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "containerPort": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "protocol": { "enum": ["TCP", "UDP"] }
+      }
+    },
     "deploymentProfile": {
       "type": "object",
       "additionalProperties": false,
@@ -293,6 +304,26 @@
         "script": { "$ref": "#/$defs/scriptProfile" }
       }
     },
+    "containerDeployment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "environment": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+          "additionalProperties": { "type": "string" }
+        },
+        "restartPolicy": {
+          "enum": ["no", "always", "on-failure", "unless-stopped"]
+        },
+        "healthTimeoutSeconds": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 3600
+        }
+      }
+    },
     "vmSpec": {
       "type": "object",
       "additionalProperties": false,
@@ -315,6 +346,20 @@
         "maxHeap": { "type": "string", "maxLength": 32 },
         "ports": { "type": "array", "items": { "$ref": "#/$defs/port" } },
         "deployment": { "$ref": "#/$defs/javaDeployment" }
+      }
+    },
+    "containerSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["image", "digest", "ports"],
+      "properties": {
+        "image": { "type": "string", "maxLength": 255 },
+        "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "ports": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/containerPort" }
+        },
+        "deployment": { "$ref": "#/$defs/containerDeployment" }
       }
     },
     "hostedServiceSpec": {
@@ -352,7 +397,9 @@
       "required": ["endpoint"],
       "properties": {
         "endpoint": { "type": "string", "maxLength": 2048 },
-        "secretRef": { "type": "string", "maxLength": 128 }
+        "username": { "type": "string", "maxLength": 128 },
+        "tokenEnv": { "type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" },
+        "secretRef": { "type": "string", "maxLength": 128, "deprecated": true }
       }
     },
     "ingressSpec": {
@@ -365,6 +412,7 @@
       "oneOf": [
         { "$ref": "#/$defs/vmNode" },
         { "$ref": "#/$defs/javaNode" },
+        { "$ref": "#/$defs/containerNode" },
         { "$ref": "#/$defs/redisNode" },
         { "$ref": "#/$defs/elasticsearchNode" },
         { "$ref": "#/$defs/databaseNode" },
@@ -403,6 +451,21 @@
             "kind": { "const": "java" },
             "name": { "$ref": "#/$defs/name" },
             "spec": { "$ref": "#/$defs/javaSpec" }
+          }
+        }
+      ]
+    },
+    "containerNode": {
+      "allOf": [
+        { "$ref": "#/$defs/nodeBase" },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "id": { "$ref": "#/$defs/id" },
+            "kind": { "const": "container" },
+            "name": { "$ref": "#/$defs/name" },
+            "spec": { "$ref": "#/$defs/containerSpec" }
           }
         }
       ]
@@ -504,7 +567,7 @@
       "properties": {
         "workloadRef": { "$ref": "#/$defs/id" },
         "targetRef": { "$ref": "#/$defs/id" },
-        "mode": { "enum": ["process", "compose", "kubernetes"] }
+        "mode": { "enum": ["process", "compose", "container", "kubernetes"] }
       }
     },
     "connection": {

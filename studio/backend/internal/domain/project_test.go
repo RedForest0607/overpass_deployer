@@ -40,6 +40,18 @@ func TestValidateTopologyStructureAcceptsCrosswalkDeploymentModel(t *testing.T) 
 	}
 }
 
+func TestValidateTopologyStructureAcceptsDockerDeploymentModel(t *testing.T) {
+	digest := "sha256:" + strings.Repeat("a", 64)
+	blueprint := json.RawMessage(`{"apiVersion":"studio.deployer/v1","deployment":{"ssh":{"user":"deploy","keyPath":"${KEY}","knownHostsPath":"${HOSTS}","hostKeyChecking":"strict"}},"nodes":[{"id":"registry","kind":"registry","name":"harbor","spec":{"endpoint":"harbor.example.com","username":"robot-studio","tokenEnv":"HARBOR_TOKEN"}},{"id":"vm","kind":"vm","name":"docker-host","spec":{"provider":"on-prem","host":"10.0.0.10"}},{"id":"api","kind":"container","name":"sample-api","spec":{"image":"overpass/sample-api","digest":"` + digest + `","ports":[{"name":"main","servicePort":8080,"containerPort":8080,"protocol":"TCP"}],"deployment":{"environment":{"SPRING_PROFILES_ACTIVE":"dev"},"restartPolicy":"unless-stopped","healthTimeoutSeconds":60}}}],"placements":[{"workloadRef":"api","targetRef":"vm","mode":"container"}],"connections":[]}`)
+	layout := json.RawMessage(`{"nodes":[{"nodeId":"registry","position":{"x":0,"y":0}},{"nodeId":"vm","position":{"x":200,"y":0}},{"nodeId":"api","position":{"x":50,"y":100}}],"viewport":{"x":0,"y":0,"zoom":1}}`)
+	if err := ValidateTopologyStructure(blueprint, layout, 10, 10); err != nil {
+		t.Fatalf("Docker deployment model should be accepted: %v", err)
+	}
+	if result := ValidateDesign(blueprint, "docker"); !result.Valid {
+		t.Fatalf("Docker design should be valid: %#v", result.Issues)
+	}
+}
+
 func TestValidateTopologyStructureRejectsConfigOnlyDeliveryOptions(t *testing.T) {
 	blueprint := json.RawMessage(`{"apiVersion":"studio.deployer/v1","nodes":[{"id":"app","kind":"java","name":"app","spec":{"artifactRef":"jar-1","javaVersion":"21","maxHeap":"1g","ports":[],"deployment":{"configFiles":[{"artifactRef":"config-1","remotePath":"/app/application.yml","chmod":"0600"}]}}}],"placements":[],"connections":[]}`)
 	layout := json.RawMessage(`{"nodes":[],"viewport":{"x":0,"y":0,"zoom":1}}`)

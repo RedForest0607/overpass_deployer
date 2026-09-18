@@ -24,13 +24,13 @@ export type SaveTopology = { "expectedRevision": number; "blueprint": Blueprint;
 
 export type Topology = { "projectId": string; "environment": Environment; "revision": number; "updatedAt": string; "blueprint": Blueprint; "layout": Layout; };
 
-export type ValidationRequest = { "environment": Environment; "clientRequestId": string; "blueprint": Blueprint; "generator"?: string; "purpose": "design" | "package"; };
+export type ValidationRequest = { "environment": Environment; "clientRequestId": string; "blueprint": Blueprint; "generator"?: "crosswalk-vm" | "crosswalk-docker" | "crosswalk-compose"; "purpose": "design" | "package"; };
 
 export type Issue = { "code": string; "severity": "warning" | "error"; "stage": "model" | "deployment" | "artifact" | "generator"; "nodeIds": Array<string>; "connectionIds": Array<string>; "path": string; "message": string; "suggestion"?: string; };
 
 export type ValidationResult = { "clientRequestId": string; "valid": boolean; "issues": Array<Issue>; };
 
-export type CreateGeneration = { "environment": Environment; "revision": number; "generator": "crosswalk-vm"; "output": Output; };
+export type CreateGeneration = { "environment": Environment; "revision": number; "generator": "crosswalk-vm" | "crosswalk-docker" | "crosswalk-compose"; "output": Output; };
 
 export type Generation = { "id": string; "projectId": string; "environment": Environment; "revision": number; "generator": string; "output": Output; "status": "queued" | "running" | "succeeded" | "failed"; "attempts": number; "packageId": string | null; "retryOfGenerationId": string | null; "error": GenerationFailure | null; "createdAt": string; "updatedAt": string; };
 

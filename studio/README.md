@@ -35,7 +35,7 @@ npm run build
 npm run check:api-generated
 ```
 
-저장소 루트의 `make test-studio-local`은 백엔드·프런트 단위/계약 테스트, Studio→Crosswalk HTTP E2E와 실제 Chrome 브라우저 E2E를 함께 실행합니다.
+저장소 루트의 `make test-studio-local`은 백엔드·프런트 단위/계약 테스트, Studio→Crosswalk VM/Docker/Compose HTTP E2E와 실제 Chrome 브라우저 E2E를 함께 실행합니다.
 macOS에서는 시스템 Chrome을 자동 사용합니다. 다른 환경에서는 Playwright Chromium을 설치하거나 `PLAYWRIGHT_CHROME_PATH`에 Chrome/Chromium 실행 파일 경로를 지정하세요.
 브라우저 실패 시 trace·스크린샷·video와 HTML report는 저장소의 `.cache/studio-browser-e2e` 아래에 보존됩니다.
 
@@ -43,7 +43,8 @@ macOS에서는 시스템 Chrome을 자동 사용합니다. 다른 환경에서�
 
 - 실제 프로젝트 생성·목록·수정과 환경별 독립 설계 (DEV / QA / PROD)
 - React Flow 노드 추가, 드래그, 줌, 미니맵, typed connection
-- VM/EC2 내부에 여러 Java·Redis·Elasticsearch 배치, 호스트 이동 시 함께 이동
+- VM/EC2 내부에 여러 Java·Redis·Elasticsearch·Container 배치, 호스트 이동 시 함께 이동
+- Registry 사용자와 token 환경변수 이름, digest 고정 Container image·port·환경·restart·health timeout 편집
 - 라이브러리에서 호스트 영역으로 드롭하거나 서비스 설정의 실행 대상 선택으로 배치 변경
 - Redis/Elasticsearch는 외부 endpoint로도 사용 가능; 호스트 삭제 시 내부 서비스 보존
 - 노드 더블클릭 / 연결 클릭으로 설정 편집
@@ -52,6 +53,8 @@ macOS에서는 시스템 Chrome을 자동 사용합니다. 다른 환경에서�
 - 토폴로지 JSON 다운로드, VM YAML 초안 및 ZIP 미리보기
 - 모바일 노드 팔레트와 접근 가능한 설정 Sheet
 
+Docker 예제는 `examples/docker-commerce-dev-topology.json`에 있습니다. Studio에서 `Docker Commerce Demo` 프로젝트를 만든 뒤 토폴로지 가져오기로 이 파일을 선택하면 Registry, VM, API/Web Container와 외부 PostgreSQL 구성이 열립니다. 같은 토폴로지에서 `Crosswalk Docker`는 컨테이너 직접 관리 패키지를, `Crosswalk Compose`는 VM별 `compose.yml` 패키지를 생성합니다. 예제 주소와 digest는 문서용이므로 실제 환경 값으로 교체해야 합니다.
+
 설계 저장 버튼으로 SQLite에 저장합니다. 새로고침 시 URL의 프로젝트·환경을 복원하며 미저장 편집은 복원하지 않습니다.
 프로젝트/환경 전환은 미저장 변경이 있으면 차단합니다. 저장 충돌(409) 시 편집 내용은 유지하고 자동 덮어쓰기를 금지합니다.
 JSON으로 편집 내용을 보관한 뒤 확인 대화상자를 통해 서버 버전을 다시 불러올 수 있습니다.
@@ -59,7 +62,7 @@ JSON으로 편집 내용을 보관한 뒤 확인 대화상자를 통해 서버 �
 
 서버 검증은 모델·배치·포트 충돌·Java 버전/Heap을 검사하며 실제 SSH/네트워크 점검이 아닙니다.
 검증 이후 설계가 변경되면 결과를 무효화합니다. 오류를 클릭하면 노드 설정과 관련 필드 오류를 표시합니다.
-현재 편집기는 서비스당 main TCP 포트 하나와 VM process/Kubernetes 배치를 지원합니다.
+현재 편집기는 서비스당 main TCP 포트 하나와 VM process/container 및 Kubernetes 배치를 지원합니다.
 API로 저장한 복수 포트·Compose 등 미지원 표현은 불러올 때 거부하며 원본을 변경하지 않습니다.
 프로젝트 artifact를 등록해 Java JAR·설정·추가 파일·script values와 hosted utility 파일에 매핑할 수 있습니다.
 
@@ -79,12 +82,13 @@ API로 저장한 복수 포트·Compose 등 미지원 표현은 불러올 때 �
 - `schemas`: OpenAPI 3.1과 Blueprint v1 JSON Schema
 
 OpenAPI를 수정한 뒤에는 `npm run generate:api`로 Go request DTO와 TypeScript API 타입을 함께 갱신한다. `npm run check:api-generated`는 커밋된 산출물의 drift를 실패로 처리한다.
-프론트는 서버 capability의 `crosswalk-vm` package output과 `crosswalk/v1` 지원을 모두 확인하고, 생성된 package의 차트 포맷을 다시 검사한 뒤 generator version과 topology snapshot 정보를 표시한다.
+프론트는 선택한 `crosswalk-vm`, `crosswalk-docker` 또는 `crosswalk-compose`의 package output과 `crosswalk/v1` 지원을 모두 확인하고, 생성된 package의 차트 포맷과 generator ID를 다시 검사한 뒤 generator version과 topology snapshot 정보를 표시한다.
 
 ## 백엔드 경계
 
-서버 package 생성은 실제 artifact가 포함된 Crosswalk VM ZIP을 만들고 Crosswalk CLI dry-run 호환성 E2E를 통과합니다.
+서버 package 생성은 실제 artifact가 포함된 Crosswalk VM ZIP, `deploy.yml` 전용 Docker ZIP 또는 `deploy.yml`과 VM별 `compose.yml`이 포함된 Compose ZIP을 만듭니다.
 실제 Secret 값 저장과 원격 배포 실행은 연결하지 않으며 Crosswalk가 SSH 실행 책임을 유지합니다.
+Docker Registry는 token 값이 아니라 Crosswalk 실행 시 조회할 환경변수 이름만 저장합니다.
 VM 패키지는 DB 방화벽이나 클라우드 네트워크를 생성하지 않습니다.
 Hosted Redis/Elasticsearch는 Crosswalk utility 설정으로 변환하지만 운영 artifact와 service 절차는 사용자가 명시해야 합니다.
 AWS EC2는 VM 호스트 유형 표시이며 AWS 프로비저닝을 수행하지 않습니다.

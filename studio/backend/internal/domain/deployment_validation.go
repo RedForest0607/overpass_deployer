@@ -164,6 +164,28 @@ func validateDeploymentStructure(document blueprintDocument) error {
 					return fmt.Errorf("%s.script template and valuesArtifactRef cannot be used for local-file mode", prefix)
 				}
 			}
+		case "container":
+			var spec struct {
+				Deployment *ContainerDeployment `json:"deployment,omitempty"`
+			}
+			if err := json.Unmarshal(node.Spec, &spec); err != nil || spec.Deployment == nil {
+				continue
+			}
+			prefix := fmt.Sprintf("nodes[%d].spec.deployment", nodeIndex)
+			if spec.Deployment.RestartPolicy != "" && spec.Deployment.RestartPolicy != "no" && spec.Deployment.RestartPolicy != "always" && spec.Deployment.RestartPolicy != "on-failure" && spec.Deployment.RestartPolicy != "unless-stopped" {
+				return fmt.Errorf("%s.restartPolicy is invalid", prefix)
+			}
+			if spec.Deployment.HealthTimeoutSeconds < 0 || spec.Deployment.HealthTimeoutSeconds > 3600 {
+				return fmt.Errorf("%s.healthTimeoutSeconds must be between 0 and 3600", prefix)
+			}
+			for name, value := range spec.Deployment.Environment {
+				if !environmentName.MatchString(name) {
+					return fmt.Errorf("%s.environment key %q is invalid", prefix, name)
+				}
+				if strings.ContainsAny(value, "\r\n\x00") {
+					return fmt.Errorf("%s.environment.%s must not contain newlines or NUL bytes", prefix, name)
+				}
+			}
 		}
 	}
 	return nil

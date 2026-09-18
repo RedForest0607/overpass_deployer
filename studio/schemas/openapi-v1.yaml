@@ -35,7 +35,11 @@ paths:
                 type: object
                 required: [items, nextCursor]
                 properties:
-                  items: { type: array, items: { $ref: '#/components/schemas/Project' } }
+                  items:
+                    {
+                      type: array,
+                      items: { $ref: '#/components/schemas/Project' },
+                    }
                   nextCursor: { type: [string, 'null'] }
         default: { $ref: '#/components/responses/Error' }
     post:
@@ -95,7 +99,11 @@ paths:
                 type: object
                 required: [items, nextCursor]
                 properties:
-                  items: { type: array, items: { $ref: '#/components/schemas/Artifact' } }
+                  items:
+                    {
+                      type: array,
+                      items: { $ref: '#/components/schemas/Artifact' },
+                    }
                   nextCursor: { type: [string, 'null'] }
         default: { $ref: '#/components/responses/Error' }
     post:
@@ -196,7 +204,11 @@ paths:
                 type: object
                 required: [items, nextCursor]
                 properties:
-                  items: { type: array, items: { $ref: '#/components/schemas/Generation' } }
+                  items:
+                    {
+                      type: array,
+                      items: { $ref: '#/components/schemas/Generation' },
+                    }
                   nextCursor: { type: [string, 'null'] }
         default: { $ref: '#/components/responses/Error' }
     post:
@@ -338,7 +350,11 @@ components:
           schema: { $ref: '#/components/schemas/ErrorEnvelope' }
   schemas:
     Environment: { type: string, enum: [dev, qa, prod] }
-    ArtifactKind: { type: string, enum: [jar, config-template, env-example, file, archive, script-values] }
+    ArtifactKind:
+      {
+        type: string,
+        enum: [jar, config-template, env-example, file, archive, script-values],
+      }
     Output: { type: string, enum: [draft, package] }
     Project:
       type: object
@@ -367,7 +383,8 @@ components:
         description: { type: string, maxLength: 2000 }
     Artifact:
       type: object
-      required: [id, projectId, kind, originalName, sizeBytes, sha256, createdAt]
+      required:
+        [id, projectId, kind, originalName, sizeBytes, sha256, createdAt]
       properties:
         id: { type: string }
         projectId: { type: string }
@@ -459,7 +476,7 @@ components:
         environment: { $ref: '#/components/schemas/Environment' }
         clientRequestId: { type: string, maxLength: 128 }
         blueprint: { $ref: '#/components/schemas/Blueprint' }
-        generator: { type: string }
+        generator: { type: string, enum: [crosswalk-vm, crosswalk-docker, crosswalk-compose] }
         purpose: { type: string, enum: [design, package] }
     Issue:
       type: object
@@ -487,11 +504,26 @@ components:
       properties:
         environment: { $ref: '#/components/schemas/Environment' }
         revision: { type: integer, minimum: 1 }
-        generator: { type: string, enum: [crosswalk-vm] }
+        generator: { type: string, enum: [crosswalk-vm, crosswalk-docker, crosswalk-compose] }
         output: { $ref: '#/components/schemas/Output' }
     Generation:
       type: object
-      required: [id, projectId, environment, revision, generator, output, status, attempts, packageId, retryOfGenerationId, error, createdAt, updatedAt]
+      required:
+        [
+          id,
+          projectId,
+          environment,
+          revision,
+          generator,
+          output,
+          status,
+          attempts,
+          packageId,
+          retryOfGenerationId,
+          error,
+          createdAt,
+          updatedAt,
+        ]
       properties:
         id: { type: string }
         projectId: { type: string }
@@ -528,7 +560,19 @@ components:
         previewable: { type: boolean }
     Package:
       type: object
-      required: [id, projectId, environment, revision, output, generator, generatorVersion, chartFormat, createdAt, files]
+      required:
+        [
+          id,
+          projectId,
+          environment,
+          revision,
+          output,
+          generator,
+          generatorVersion,
+          chartFormat,
+          createdAt,
+          files,
+        ]
       properties:
         id: { type: string }
         projectId: { type: string }
@@ -539,7 +583,8 @@ components:
         generatorVersion: { type: string }
         chartFormat: { type: string, const: crosswalk/v1 }
         createdAt: { type: string, format: date-time }
-        files: { type: array, items: { $ref: '#/components/schemas/PackageFile' } }
+        files:
+          { type: array, items: { $ref: '#/components/schemas/PackageFile' } }
     FilePreview:
       type: object
       required: [id, content, encoding, truncated]
@@ -554,12 +599,20 @@ components:
       properties:
         id: { type: string }
         outputs: { type: array, items: { $ref: '#/components/schemas/Output' } }
-        chartFormats: { type: array, items: { type: string, const: crosswalk/v1 } }
+        chartFormats:
+          { type: array, items: { type: string, const: crosswalk/v1 } }
         supportedKinds: { type: array, items: { type: string } }
         supportedModes: { type: array, items: { type: string } }
     Limits:
       type: object
-      required: [jarBytes, textArtifactBytes, previewBytes, topologyNodes, topologyConnections]
+      required:
+        [
+          jarBytes,
+          textArtifactBytes,
+          previewBytes,
+          topologyNodes,
+          topologyConnections,
+        ]
       properties:
         jarBytes: { type: integer }
         textArtifactBytes: { type: integer }
@@ -571,7 +624,11 @@ components:
       required: [blueprintVersions, generators, limits]
       properties:
         blueprintVersions: { type: array, items: { type: string } }
-        generators: { type: array, items: { $ref: '#/components/schemas/GeneratorCapability' } }
+        generators:
+          {
+            type: array,
+            items: { $ref: '#/components/schemas/GeneratorCapability' },
+          }
         limits: { $ref: '#/components/schemas/Limits' }
     ErrorBody:
       type: object

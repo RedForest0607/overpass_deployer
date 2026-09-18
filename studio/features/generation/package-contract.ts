@@ -1,6 +1,8 @@
 import type { Capabilities, Package } from '../../lib/api/generated.ts';
+import type { GeneratorID } from '../../lib/api/contracts.ts';
 
 export const REQUIRED_CHART_FORMAT = 'crosswalk/v1' as const;
+export const DEFAULT_GENERATOR: GeneratorID = 'crosswalk-vm';
 
 export type PackageCapability = {
   supported: boolean;
@@ -9,16 +11,17 @@ export type PackageCapability = {
 
 export function evaluatePackageCapability(
   capabilities: Capabilities | null,
+  generatorID: GeneratorID = DEFAULT_GENERATOR,
 ): PackageCapability {
   if (!capabilities) return { supported: false, reason: null };
 
   const generator = capabilities.generators.find(
-    (candidate) => candidate.id === 'crosswalk-vm',
+    (candidate) => candidate.id === generatorID,
   );
   if (!generator || !generator.outputs?.includes('package')) {
     return {
       supported: false,
-      reason: '서버에서 crosswalk-vm package 생성을 지원하지 않습니다.',
+      reason: `서버에서 ${generatorID} package 생성을 지원하지 않습니다.`,
     };
   }
   if (
@@ -42,6 +45,7 @@ export function packageContractError(
         generator?: unknown;
         generatorVersion?: unknown;
       },
+  expectedGenerator?: GeneratorID,
 ): string | null {
   if (value.chartFormat !== REQUIRED_CHART_FORMAT) {
     const received =
@@ -50,8 +54,15 @@ export function packageContractError(
         : '표시 없음';
     return `지원하지 않는 차트 포맷을 반환했습니다: ${received}. 필요한 포맷은 ${REQUIRED_CHART_FORMAT}입니다.`;
   }
-  if (value.generator !== 'crosswalk-vm') {
-    return '패키지 생성기 정보가 crosswalk-vm 계약과 일치하지 않습니다.';
+  if (
+    value.generator !== 'crosswalk-vm' &&
+    value.generator !== 'crosswalk-docker' &&
+    value.generator !== 'crosswalk-compose'
+  ) {
+    return '패키지 생성기 정보가 지원 계약과 일치하지 않습니다.';
+  }
+  if (expectedGenerator && value.generator !== expectedGenerator) {
+    return `패키지 생성기 정보가 ${expectedGenerator} 계약과 일치하지 않습니다.`;
   }
   if (
     typeof value.generatorVersion !== 'string' ||

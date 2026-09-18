@@ -19,7 +19,7 @@ export default function TargetNode({
         <code>{data.host || data.namespace}</code>
       </div>
       <div className="target-hint">
-        실행 서비스 · Java / Redis / Elasticsearch
+        실행 서비스 · Java / Container / Redis / Elasticsearch
         <br />
         라이브러리에서 이 영역으로 드래그하세요
       </div>

@@ -45,7 +45,12 @@ export function toAPI(
       {
         workloadRef: node.id,
         targetRef: target.id,
-        mode: target.data.kind === 'kubernetes' ? 'kubernetes' : 'process',
+        mode:
+          node.data.kind === 'container'
+            ? 'container'
+            : target.data.kind === 'kubernetes'
+              ? 'kubernetes'
+              : 'process',
       },
     ];
   });
@@ -119,6 +124,23 @@ function toBlueprintNode(node: TopologyNode): BlueprintNode {
           ...(node.data.deployment ? { deployment: node.data.deployment } : {}),
         },
       };
+    case 'container':
+      return {
+        ...common,
+        spec: {
+          image: node.data.image,
+          digest: node.data.digest,
+          ports: [
+            {
+              name: 'main',
+              servicePort: node.data.port,
+              containerPort: node.data.containerPort,
+              protocol: 'TCP',
+            },
+          ],
+          ...(node.data.deployment ? { deployment: node.data.deployment } : {}),
+        },
+      };
     case 'redis':
     case 'elasticsearch':
       return {
@@ -148,6 +170,8 @@ function toBlueprintNode(node: TopologyNode): BlueprintNode {
         ...common,
         spec: compact({
           endpoint: node.data.host,
+          username: node.data.registryUsername || undefined,
+          tokenEnv: node.data.tokenEnv || undefined,
           secretRef: node.data.secretRef || undefined,
         }),
       };
@@ -275,11 +299,19 @@ function assertEditable(blueprint: Blueprint) {
     );
     if (
       !workload ||
-      !['java', 'redis', 'elasticsearch'].includes(workload.kind) ||
+      !['java', 'container', 'redis', 'elasticsearch'].includes(
+        workload.kind,
+      ) ||
       !target ||
       !['vm', 'kubernetes'].includes(target.kind) ||
       placed.has(placement.workloadRef) ||
-      placement.mode !== (target.kind === 'vm' ? 'process' : 'kubernetes')
+      placement.mode !==
+        (workload.kind === 'container'
+          ? 'container'
+          : target.kind === 'vm'
+            ? 'process'
+            : 'kubernetes') ||
+      (workload.kind === 'container' && target.kind !== 'vm')
     ) {
       throw new Error(
         '지원하지 않거나 잘못된 배치가 있습니다. 원본 설계는 변경하지 않았습니다.',
@@ -320,7 +352,15 @@ function fromSpec(node: BlueprintNode) {
   return {
     label: node.name,
     port,
+    containerPort:
+      typeof firstPort?.containerPort === 'number'
+        ? firstPort.containerPort
+        : port,
     host: stringValue(spec.host, stringValue(spec.endpoint)),
+    image: stringValue(spec.image),
+    digest: stringValue(spec.digest),
+    registryUsername: stringValue(spec.username),
+    tokenEnv: stringValue(spec.tokenEnv),
     java: stringValue(spec.javaVersion, '21'),
     heap: stringValue(spec.maxHeap, '1g'),
     artifact: '',
@@ -328,7 +368,9 @@ function fromSpec(node: BlueprintNode) {
     secretRef: stringValue(spec.secretRef),
     namespace: stringValue(spec.namespace, 'commerce-dev'),
     platform: spec.provider === 'aws-ec2' ? 'AWS EC2' : 'On-prem VM',
-    deployment: ['vm', 'java', 'redis', 'elasticsearch'].includes(node.kind)
+    deployment: ['vm', 'java', 'container', 'redis', 'elasticsearch'].includes(
+      node.kind,
+    )
       ? typeof spec.deployment === 'object' && spec.deployment !== null
         ? (spec.deployment as TopologyNode['data']['deployment'])
         : undefined

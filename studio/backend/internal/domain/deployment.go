@@ -178,3 +178,12 @@ type JavaDeployment struct {
 	ExtraFiles     []ArtifactDelivery       `json:"extraFiles,omitempty"`
 	Script         *ScriptProfile           `json:"script,omitempty"`
 }
+
+// ContainerDeployment contains Crosswalk container options that are not part
+// of the image identity or published port contract.
+type ContainerDeployment struct {
+	Tags                 []string          `json:"tags,omitempty"`
+	Environment          map[string]string `json:"environment,omitempty"`
+	RestartPolicy        string            `json:"restartPolicy,omitempty"`
+	HealthTimeoutSeconds int               `json:"healthTimeoutSeconds,omitempty"`
+}

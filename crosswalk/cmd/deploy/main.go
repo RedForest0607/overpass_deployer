@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"go-deployer/internal/buildinfo"
+	composedeploy "go-deployer/internal/compose"
 	"go-deployer/internal/config"
 	"go-deployer/internal/dashboard"
 	dockerdeploy "go-deployer/internal/docker"
@@ -28,6 +29,7 @@ func main() {
 		runUpdate:         update.Execute,
 		runDashboard:      dashboard.Run,
 		runDocker:         dockerdeploy.Run,
+		runCompose:        composedeploy.Run,
 		buildInfo:         buildinfo.Current,
 		validateConfig:    chart.ValidateFile,
 	}))
@@ -42,6 +44,7 @@ type dependencies struct {
 	runUpdate         func(ctx context.Context, cfg update.Config, opts update.Options) (*update.Result, error)
 	runDashboard      func(cfg *config.Config) error
 	runDocker         func(cfg *config.Config, opts dockerdeploy.Options) error
+	runCompose        func(cfg *config.Config, opts composedeploy.Options) error
 	buildInfo         func() buildinfo.Info
 	validateConfig    func(path string) (chart.Metadata, error)
 }
@@ -66,11 +69,35 @@ func run(args []string, deps dependencies) int {
 		return runValidate(args[1:], deps)
 	case "docker":
 		return runDocker(args[1:], deps)
+	case "compose":
+		return runCompose(args[1:], deps)
 	default:
 		fmt.Fprintf(deps.stderr, "Unknown subcommand: %s\n", args[0])
 		printUsage(deps.stderr)
 		return 1
 	}
+}
+
+// runCompose routes the Phase 1 non-mutating Compose plan. Apply remains
+// explicitly unavailable until remote transfer and rollback are implemented.
+func runCompose(args []string, deps dependencies) int {
+	composeCmd := flag.NewFlagSet("compose", flag.ContinueOnError)
+	composeCmd.SetOutput(deps.stderr)
+	configPath := composeCmd.String("config", "deploy.yml", "Path to deploy.yml configuration file")
+	dryRun := composeCmd.Bool("dry-run", false, "Print the Compose deployment plan without remote changes")
+	if err := composeCmd.Parse(args); err != nil {
+		return 1
+	}
+	cfg, err := deps.loadConfig(*configPath)
+	if err != nil {
+		fmt.Fprintf(deps.stderr, "Failed to load configuration: %v\n", err)
+		return 1
+	}
+	if err := deps.runCompose(cfg, composedeploy.Options{DryRun: *dryRun}); err != nil {
+		fmt.Fprintf(deps.stderr, "Compose deployment failed: %v\n", err)
+		return 1
+	}
+	return 0
 }
 
 // runDocker는 Docker 모드의 설정과 dry-run/preflight/pull 경계를 파싱한다.
@@ -249,6 +276,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintf(w, "  dashboard  Open the interactive deployment dashboard\n")
 	fmt.Fprintf(w, "  validate   Validate a chart without connecting to servers\n")
 	fmt.Fprintf(w, "  docker  Deploy digest-pinned Docker containers (M3 Phase 4)\n\n")
+	fmt.Fprintf(w, "  compose Plan digest-pinned Docker Compose projects (Phase 1)\n\n")
 	fmt.Fprintf(w, "Flags for 'vm':\n")
 	fmt.Fprintf(w, "  --config string   Path to configuration file (default: deploy.yml)\n")
 	fmt.Fprintf(w, "  --dry-run         Print planned actions without remote changes\n")
@@ -264,6 +292,9 @@ func printUsage(w io.Writer) {
 	fmt.Fprintf(w, "  --server-tag      Select Docker servers by tag (comma-separated)\n")
 	fmt.Fprintf(w, "  --container-tag   Select containers by tag (comma-separated)\n")
 	fmt.Fprintf(w, "  --parallel int    Maximum concurrent Docker servers (default: 1)\n")
+	fmt.Fprintf(w, "\nFlags for 'compose':\n")
+	fmt.Fprintf(w, "  --config string   Path to deploy.yml configuration file (default: deploy.yml)\n")
+	fmt.Fprintf(w, "  --dry-run         Print the Compose deployment plan without remote changes\n")
 	fmt.Fprintf(w, "\nFlags for 'update':\n")
 	fmt.Fprintf(w, "  --check           Check for updates without replacing the current binary\n")
 	fmt.Fprintf(w, "  --version string  Install a specific release tag\n")

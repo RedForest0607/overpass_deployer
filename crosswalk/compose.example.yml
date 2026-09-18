@@ -1,0 +1,10 @@
+name: commerce
+
+services:
+  commerce-api:
+    image: harbor.example.com/demo/commerce-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+    ports:
+      - "18080:8080/tcp"
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+    restart: unless-stopped

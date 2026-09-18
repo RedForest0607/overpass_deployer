@@ -44,6 +44,66 @@ test('generation sends an idempotency key with immutable revision', async (t) =>
   });
 });
 
+test('Docker validation and generation send the selected generator', async (t) => {
+  const bodies = [];
+  t.mock.method(globalThis, 'fetch', async (_url, options) => {
+    bodies.push(JSON.parse(options.body));
+    return new Response(JSON.stringify({ id: 'result', valid: true }));
+  });
+  await deliveryAPI.validatePackage(
+    'project-1',
+    'dev',
+    {
+      apiVersion: 'studio.deployer/v1',
+      nodes: [],
+      placements: [],
+      connections: [],
+    },
+    'request-1',
+    'crosswalk-docker',
+  );
+  await deliveryAPI.createGeneration(
+    'project-1',
+    'dev',
+    2,
+    'package',
+    'docker-key',
+    'crosswalk-docker',
+  );
+  assert.equal(bodies[0].generator, 'crosswalk-docker');
+  assert.equal(bodies[1].generator, 'crosswalk-docker');
+});
+
+test('Compose validation and generation send the selected generator', async (t) => {
+  const bodies = [];
+  t.mock.method(globalThis, 'fetch', async (_url, options) => {
+    bodies.push(JSON.parse(options.body));
+    return new Response(JSON.stringify({ id: 'result', valid: true }));
+  });
+  await deliveryAPI.validatePackage(
+    'project-1',
+    'dev',
+    {
+      apiVersion: 'studio.deployer/v1',
+      nodes: [],
+      placements: [],
+      connections: [],
+    },
+    'request-compose',
+    'crosswalk-compose',
+  );
+  await deliveryAPI.createGeneration(
+    'project-1',
+    'dev',
+    3,
+    'package',
+    'compose-key',
+    'crosswalk-compose',
+  );
+  assert.equal(bodies[0].generator, 'crosswalk-compose');
+  assert.equal(bodies[1].generator, 'crosswalk-compose');
+});
+
 test('generation history and retry keep project and snapshot source scoped', async (t) => {
   const calls = [];
   t.mock.method(globalThis, 'fetch', async (url, options = {}) => {

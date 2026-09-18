@@ -49,6 +49,49 @@ test('package generation requires the crosswalk-vm package output and v1 chart f
   );
 });
 
+test('Docker package generation uses an independent capability', () => {
+  assert.match(
+    evaluatePackageCapability(capabilities(null), 'crosswalk-docker').reason,
+    /crosswalk-docker/,
+  );
+  assert.deepEqual(
+    evaluatePackageCapability(
+      capabilities({
+        id: 'crosswalk-docker',
+        outputs: ['package'],
+        chartFormats: [REQUIRED_CHART_FORMAT],
+      }),
+      'crosswalk-docker',
+    ),
+    { supported: true, reason: null },
+  );
+});
+
+test('Compose package generation uses an independent capability', () => {
+  assert.deepEqual(
+    evaluatePackageCapability(
+      capabilities({
+        id: 'crosswalk-compose',
+        outputs: ['package'],
+        chartFormats: [REQUIRED_CHART_FORMAT],
+      }),
+      'crosswalk-compose',
+    ),
+    { supported: true, reason: null },
+  );
+  assert.equal(
+    packageContractError(
+      {
+        chartFormat: REQUIRED_CHART_FORMAT,
+        generator: 'crosswalk-compose',
+        generatorVersion: '1.0.0',
+      },
+      'crosswalk-compose',
+    ),
+    null,
+  );
+});
+
 test('package responses with missing or incompatible chart formats are rejected', () => {
   assert.equal(
     packageContractError({
@@ -69,7 +112,29 @@ test('package responses with missing or incompatible chart formats are rejected'
       generator: 'other',
       generatorVersion: '1.0.0',
     }),
-    /crosswalk-vm/,
+    /지원 계약/,
+  );
+  assert.equal(
+    packageContractError(
+      {
+        chartFormat: REQUIRED_CHART_FORMAT,
+        generator: 'crosswalk-docker',
+        generatorVersion: '1.0.0',
+      },
+      'crosswalk-docker',
+    ),
+    null,
+  );
+  assert.match(
+    packageContractError(
+      {
+        chartFormat: REQUIRED_CHART_FORMAT,
+        generator: 'crosswalk-vm',
+        generatorVersion: '1.0.0',
+      },
+      'crosswalk-docker',
+    ),
+    /crosswalk-docker/,
   );
   assert.match(
     packageContractError({

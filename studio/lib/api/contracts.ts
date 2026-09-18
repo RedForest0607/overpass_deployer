@@ -1,7 +1,12 @@
 export type Environment = 'dev' | 'qa' | 'prod';
+export type GeneratorID =
+  | 'crosswalk-vm'
+  | 'crosswalk-docker'
+  | 'crosswalk-compose';
 export type NodeKind =
   | 'vm'
   | 'java'
+  | 'container'
   | 'redis'
   | 'elasticsearch'
   | 'database'
@@ -12,6 +17,7 @@ export type NodeKind =
 export type Port = {
   name: string;
   servicePort: number;
+  containerPort?: number;
   protocol: 'TCP' | 'UDP';
 };
 
@@ -105,6 +111,12 @@ export type UtilityDeployment = {
   files?: ArtifactDelivery[];
   services?: ServiceSetting[];
 };
+export type ContainerDeployment = {
+  tags?: string[];
+  environment?: Record<string, string>;
+  restartPolicy?: 'no' | 'always' | 'on-failure' | 'unless-stopped';
+  healthTimeoutSeconds?: number;
+};
 export type DeploymentProfile = {
   ssh: {
     user: string;
@@ -129,7 +141,7 @@ export type BlueprintNode = {
 export type Placement = {
   workloadRef: string;
   targetRef: string;
-  mode: 'process' | 'compose' | 'kubernetes';
+  mode: 'process' | 'compose' | 'container' | 'kubernetes';
 };
 
 export type BlueprintConnection = {
