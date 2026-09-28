@@ -1,5 +1,25 @@
 # Progress
 
+- 2026-09-28 복잡성 리뷰 후 1차 정리: Studio에서 화면에 사용하지 않는 VM 초안 생성 호출을 제거하고 JSON 미리보기·다운로드의 직렬화를 하나로 통일했다. Compose 실제 smoke target의 bash 진입점을 수정하고, Podman connection을 선택 머신의 rootless SSH endpoint와 검증한 뒤 Registry/image/정리 및 하위 smoke에 일관되게 적용했다. VM 내부 provider 준비를 별도 스크립트로 분리하고 arm64/amd64를 감지하며 정리 실패를 보고하고 배포 실패·보존 요청 시 진단 환경을 유지하도록 보강했다. 예상 오류 3가지(다른 머신 조작, engine 접속 실패를 자산 미존재로 오인, 정리 실패에도 성공 보고)를 회귀 테스트로 검토했다. shell mock 5개, 프론트 61개 테스트·typecheck·API drift, 변경 파일 lint·Studio build·shell syntax·diff 검사를 통과했으며 실제 VM 다운로드/배포 smoke는 실행하지 않았다. 다음은 Studio 편집·탐색 및 패키지 비동기 훅 분리, delivery service 책임 분리와 외부 Docker/Registry 인수다.
+
+- 2026-09-23 M6.2 Studio Docker 생성기 완료: 격리 임시 Studio API/SQLite를 기동해 Registry·VM·Container topology 저장, package validation, 비동기 `crosswalk-docker` generation, metadata·ZIP 다운로드와 실제 `deploy docker --dry-run`까지 E2E를 실행했다. 동일 harness에서 기존 VM과 신규 Compose package도 각각 실제 Crosswalk dry-run으로 검증했고, Docker package가 `deploy.yml`만 포함하며 token 원문 없이 `token_env`, digest, port, environment 계약을 유지함을 확인했다. 테스트 종료 후 자체 API 프로세스와 `overpass-studio-e2e-*` 임시 디렉터리를 정리했으며 M6.2를 완료 처리했다. 실제 원격 Docker/Harbor smoke는 M3 Phase 5에 유지한다.
+
+- 2026-09-23 M7 Docker Compose Phase 6 실제 Linux engine smoke: 로컬 Podman Linux arm64 VM에 checksum 검증한 공식 Docker Compose v2.29.7 provider와 실제 Registry v2를 임시 구성하고, `scratch` health image를 포트 포함 Registry에 push했다. 신규 적용, 동일 revision skip, v2 교체, unhealthy revision 실패 후 v2 symlink·container 복구가 모두 통과했다. 과정에서 포트 포함 Registry를 거부하던 image 정규식, Podman OCI 기본 포맷의 HEALTHCHECK 유실, push digest 출력 차이, OpenSSH/Go SSH known_hosts 분리, provider 배너의 구조화 출력 오염을 발견해 자동화와 명령 경계를 보강했다. 확인 후 smoke container/network/revision과 임시 provider/config/Registry를 정리하고 VM을 정지했다. 다음은 외부 Docker Engine VM과 조직 Registry에서 같은 자동화를 실행하는 최종 인수다.
+
+- 2026-09-23 M7 Docker Compose Phase 5 실제 smoke 자동화: 외부 base image 없이 빌드되는 `scratch` 정적 health fixture와 전용 Registry push·manifest digest 추출, Crosswalk dry-run/preflight/신규 적용/동일 revision skip/정상 업그레이드/unhealthy rollback을 순차 검증하는 `make smoke-compose-real`을 추가했다. 필수 `SMOKE_*` 대상 검증, 기존 remote directory 재사용 거부, 임시 Docker credential 격리·정리와 원격 revision 보존 경계를 포함했다. 로컬 Docker daemon과 기존 Podman machine이 가용하지 않아 실제 image push·원격 workload 실행은 수행하지 않았으며, 다음은 승인된 격리 Linux VM/Registry 정보를 지정해 자동화를 실행하고 결과를 기록하는 단계다.
+
+- 2026-09-23 M7 Docker Compose Phase 4 격리 통합 검증: 실제 loopback SSH session과 SFTP 전송 위에서 Docker/Compose/Registry만 상태 기반 fake CLI로 대체하는 fixture를 분리 구현했다. 신규 revision 적용, 동일 revision 재실행 skip, 정상 업그레이드, unhealthy 적용 실패 후 이전 revision symlink·service 복구를 하나의 수명주기로 검증하고 `make test-compose-fixture`를 추가했다. 외부 네트워크나 실제 VM/Registry는 사용하지 않았으며, 실제 daemon pull·network/container 동작을 확인할 운영 smoke runbook을 추가했다. 다음은 승인된 격리 Linux VM/전용 Registry에서 runbook을 실행해 M7 인수를 완료하는 단계다.
+
+- 2026-09-22 M7 Docker Compose Phase 3 로컬 구현: `deploy compose --apply` 명시적 실행 경계, 서버 태그/project 필터와 제한 병렬, 생성기 Compose subset 검증, registry digest image 사전 pull/사후 검증, checksum revision 저장과 active 링크 전환, 모든 서비스 running/health 확인 및 이전 revision 복구를 추가. 첫 배포에서 미관리 Compose 컨테이너가 있으면 중단하고, 실패 시 첫 stack을 내리거나 이전 revision을 재적용한다. mock SSH 기반 성공·실패·rollback·이미지 검증 및 Crosswalk 전체 test/vet로 확인하고 실제 VM/Registry smoke는 대기. 다음은 격리 VM에서 신규/업그레이드/롤백/재실행 smoke와 운영 runbook 보강.
+
+- 2026-09-22 Studio UI 가시성·계층 개선: 토폴로지는 미저장 시 저장을, 패키지 생성 후에는 다운로드를 주요 행동으로 강조하고 프로젝트 카드의 열기/수정 비중을 분리했다. 프로젝트·환경 옆에 저장 상태를 단계별 색상과 텍스트로 표시하고, 밝은/어두운 테마의 보조 글씨 대비·버튼 크기·미저장 팝업·모바일 배치를 조정했다. Studio 전체 테스트·타입 검사·변경 파일 lint·빌드 통과. 다음은 실제 화면에서 데스크톱/모바일 줄바꿈과 대비 확인.
+
+- 2026-09-21 Studio 미저장 토폴로지 전환 보호: 프로젝트 또는 환경을 바꿀 때 현재 설계가 수정되었으면 `저장하고 이동`·`저장하지 않고 이동`·`취소` 팝업을 표시하고, 실제 로드 성공 전에는 화면을 전환하지 않도록 수정했다. 저장 실패·충돌 및 저장 요청 중 추가 편집이 발생하면 이동을 중단해 변경 유실을 방지하며 같은 프로젝트/환경으로 돌아갈 때는 현재 편집을 그대로 유지한다. 다음은 브라우저 상호작용 검증 및 M7 Phase 3.
+
+- 2026-09-18 Studio 메뉴 계층·다크 모드: 프로젝트/파일을 공통 메뉴로 유지하고 현재 프로젝트 아래 토폴로지·배포 패키지를 묶었다. 현재 프로젝트 이름 클릭으로 열린 설계로 돌아가며 미선택 시 하위 메뉴는 비활성화한다. 테마 훅과 스타일을 분리해 시스템 테마 초기값, 수동 전환·localStorage 유지·탭 간 동기화와 모바일 메뉴를 추가했다. 저장소 접근 실패, 프로젝트 미선택, 모바일 하위 메뉴 접근을 검토했고 기존 프론트 57개 테스트·타입 검사·API drift를 통과했다. 파일 데이터는 기존 프로젝트별 API 범위를 유지한다. 다음은 브라우저에서 메뉴·테마 시각 검증 및 M7 Phase 3.
+
+- 2026-09-18 M7 Docker Compose Phase 2 로컬 구현 완료: `deploy compose --preflight`가 SSH 연결 후 Docker daemon, Compose v2 plugin, Registry `password-stdin` 인증을 순서대로 확인하며 token 미설정 시 SSH 전에 중단하고 명령·로그·오류에 token을 노출하지 않는다. 명시적 `--sync`는 원격 디렉터리 `0700`, Compose 파일 `0600`을 보장하고 SHA-256이 다른 파일만 원자적 SFTP 전송한 뒤 `docker compose --project-name ... --file ... config --quiet`로 검증한다. 이 단계에서 `pull`/`up`은 호출하지 않고 옵션 없는 apply를 계속 차단한다. mock SSH/전송으로 명령 순서, Secret redaction, Compose 미설치, checksum skip, 권한, config 검증, 복수 서버 실패 집계와 CLI 라우팅을 검증했고 Crosswalk 전체 test/vet와 예제 dry-run을 통과했다. 다음은 Phase 3 digest pull, revision 전환, health 확인과 rollback이다.
+
 - 2026-09-18 M7 Docker Compose Phase 1 완료: Crosswalk 설정에 서버별 `compose_projects` 계약과 project/local file/remote directory 검증을 추가하고, 비밀값 없이 engine·Compose v2·Registry 인증·파일 동기화·config 검증·pull·apply 순서를 보여주는 `deploy compose --dry-run`을 구현했다. dry-run 없는 apply는 Phase 2~3 전까지 명시적으로 차단한다. Studio에는 `crosswalk-compose@1.0.0` capability·validation·비동기 generation·package preview/download와 프론트 생성기 선택을 연결했으며, 기존 Container 토폴로지를 VM별 digest 고정 `compose.yml`로 변환한다. Compose ZIP과 Crosswalk dry-run을 잇는 통합 harness도 VM/Docker 흐름과 함께 확장했다. 프론트 57개 테스트·typecheck·API drift·애플리케이션 lint, Crosswalk 및 Studio 백엔드 전체 test/vet, diff 검사를 통과했다. 격리 임시 디렉터리를 삭제하는 통합 harness 실제 실행은 승인 대기이며, 다음은 Phase 2 SSH/Docker Compose preflight와 checksum 기반 파일 동기화다.
 
 - 2026-09-18 Studio M6.2 Docker 생성기 진행: Blueprint v1에 Registry·Container·VM container placement와 digest 고정 image, host/container port, environment, restart, health timeout 계약을 추가하고 `crosswalk-docker@1.0.0` 생성기를 validation·비동기 generation·package metadata/preview/download lifecycle에 연결. 프론트 노드 팔레트·Inspector·배치·API round-trip·생성기 선택·이력 표시까지 반영했으며 Registry token 값은 저장하지 않고 환경변수 이름만 유지한다. 기존 `registry.secretRef` VM 설계 호환성과 Crosswalk Registry host/username 규칙을 회귀 검증했다. Docker VM 1대에 API/Web Container, Harbor, 외부 PostgreSQL을 구성한 import 가능 `Docker Commerce Demo` 예제를 추가했다. 프론트 55개 테스트·typecheck·API drift, 백엔드 전체 test/vet, 애플리케이션 lint와 diff 검사는 통과. VM/Docker 통합 dry-run harness는 구현했으며 격리 임시 디렉터리 삭제 승인 후 실행 예정.
@@ -57,6 +77,7 @@
 - 2026-09-10 Studio Crosswalk 배포 모델·생성기 core 구현: Blueprint에 공통 SSH/bastion/directory defaults, VM별 bootstrap·공통 파일·utility, Java별 JAR/설정/추가 파일·압축 해제·chmod·JVM/extra opts·script values를 추가. 프론트 API round-trip과 노드별 JSON 편집기를 연결했고, backend `crosswalk-vm` 생성기가 `deploy.yml` 및 실제 artifact ZIP 상대 경로를 결정적으로 생성하도록 구현. 경로 탈출/충돌과 패키징 중 size·SHA-256 변경을 차단하는 테스트를 추가. 다음은 immutable artifact 업로드/조회와 생성·패키지 다운로드 API 연결, Crosswalk 실제 loader 호환성 자동화.
 
 ## Completed
+
 - 2026-09-10 목적별 커밋 정리: Crosswalk 순수 경로 이동, VM 멱등성·안전성, 터미널 대시보드, Studio API·백엔드, Studio 프론트 연동, 공통 개발 환경·문서로 분리. 작업 파일의 기존 변경을 보존했으며 로컬 DB·빌드 산출물·운영 자산은 제외. 원격 푸시는 수행하지 않음.
 - 2026-09-10 Studio 저장·검증 화면 연동: 기존 SQLite/API 기반을 활용해 실제 프로젝트 생성·조회·수정, DEV/QA/PROD 설계 저장/복원, URL 선택 복원, revision 409 충돌 보호 및 재조회 확인 UI 구현. 서버 design 검증 API와 모델·배치·포트 충돌·Java 설정 검사, 노드/필드 오류 표시 추가. 현재 편집기 미지원 모델은 조용히 변환하지 않고 로드 거부.
 - 2026-09-10 검증 결과: 프론트 타입 검사·테스트 20개·production build, Go backend 전체 race 테스트, SQLite 재오픈 복원 및 localhost 화면/API 프록시 smoke 통과. 검토 오류 케이스 3개: 동시 저장 충돌, 오래된 검증 결과, 저장/복원 중 배치·포트 정보 손실. 브라우저 직접 조작 QA는 미실시.
@@ -260,6 +281,7 @@
 - 2026-09-15 Studio JSON 큰 화면 편집기 추가: 공통 Crosswalk 설정, 노드별 배포 상세, 토폴로지 가져오기 JSON에서 viewport 기반 대형 팝업 편집·JSON 정렬·줄/문자 수·Ctrl/⌘+Enter 적용·팝업 내부 문법 오류 표시 지원
 
 ## Next To-Do
+
 - iSTOCKMALL 운영 배포 전 Redis mock 설정 3개를 실제 Secret 주입 방식·systemd unit과 맞는 운영 파일로 교체하고, Elasticsearch mock archive를 Object Storage/분할 정책이 확정된 실제 archive로 교체.
 - iSTOCKMALL 운영 배포 전 현재 APP_NAME만 포함한 최소 logback 템플릿을 실제 appender/rolling 정책 파일로 교체하고, dummy JAR를 앱별 실제 빌드 artifact로 교체.
 - stock-company prod 제외 자산 후속: 실제 비밀값이 포함된 env/OLD/요약 파일은 placeholder 템플릿으로 정제하고, 256MiB를 초과하는 archive는 용량 정책·분할/외부 Object Storage 방식을 확정한 뒤 등록.
@@ -267,10 +289,11 @@
 - Studio Backend 후속: JSON Pointer 단위 package 오류 세분화, worker 관측 지표와 재시도 보존·만료 정책.
 - Studio 프론트 후속: 실제 파일 fixture를 사용하는 브라우저 업로드→artifact 선택→설계 저장→package 생성→ZIP 내용 검증 E2E와 설정·일반 파일용 구조화 편집기.
 - Studio 계약 후속: 조직 단위 권한 모델, 외부 Secret 참조 방식, generator별 schema evolution 정책 확정.
-- 생성기 후속: 환경별 overlay와 Docker Compose·Helm·GitLab CI·Argo CD 생성기를 capability 기반으로 추가하고 Terraform은 이후 단계로 분리.
+- 생성기 후속: 환경별 overlay와 Helm·GitLab CI·Argo CD 생성기를 capability 기반으로 추가하고 Terraform은 이후 단계로 분리. Docker Compose 생성기는 구현·로컬 E2E 검증 완료이며 외부 Docker/Registry 인수를 유지.
 - 실행 계층 후속: Redis/Elasticsearch 설치·실행 생성기, 포트 매핑 및 서비스별 복수 포트 모델, 실제 브라우저 조작 QA 추가.
 - 리뷰 후속: POSIX rename 미지원 서버의 안전한 교체 전략과 bootstrap ensure 명령의 실제 변경 여부 반환 규약을 확장 검토.
-- M3 Docker 모드의 이미지 registry 인증, digest 기반 pull skip, 컨테이너 상태 확인과 실행 흐름을 설계·구현
+- M3 Docker 후속: 구현된 Registry 인증·digest pull skip·컨테이너 교체/rollback을 지정 Docker SSH fixture와 Harbor에서 최종 smoke 검증.
+- 복잡성 정리 후속: Studio 편집·프로젝트 이동·패키지 비동기 상태를 전용 훅으로 분리하고, delivery service의 artifact 검사·generation·package 조회 책임을 분리.
 - `deploy dashboard`를 실제 DEV read-only 계정/환경에서 실행해 custom `script.mode: local-file` 앱의 로그 경로와 상태 판별 규약을 확인하고, 필요한 앱별 로그 경로 override 스키마를 확정
 - DEV OA 전용 ALB 전환 안정화 후 기존 `dev-external-alb` priority `50` OA rule 및 old ALB -> `dev_was:25205` SG rule cleanup 여부 결정
 - PRD 운영 private env와 `global-bundle.pem`을 git 추적 밖 경로로 확보한 뒤 `ops/stock_company/prod/deploy.yml`의 `.env.sample` 참조를 실제 private 자산으로 교체하고 PRD `--server-tag search` dry-run을 재시도
@@ -302,7 +325,7 @@
 - 샘플 운영 스크립트에서 아직 설정 스키마로 일반화되지 않은 항목(예: context path, 별도 healthcheck path, Java agent 전용 옵션)을 템플릿 입력으로 승격할지 검토
 - `deploy.example.yml`과 함께 제공할 템플릿 value 파일 샘플을 저장소 표준 위치로 정리할지 결정
 - 실제 bastion/VM 환경에서 대용량 `.jar` 전송 시 progress bar 출력이 운영 터미널에서도 자연스럽게 갱신되는지 확인
-- apt 기반 Ubuntu/Debian bootstrap 지원과 package manager 자동 감지 확장 여부 결정
+- bootstrap 후속: 구현된 Ubuntu/Debian apt-get 및 RPM package manager 분기를 신규 지원 OS 조합에서 추가 검증.
 - 실제 Amazon Linux 서버에서 `bootstrap.timezone`/`bootstrap.swap` dry-run 및 실배포를 검증하고 `nc` 패키지명이 환경별로 맞는지 확인
 - `deploy.example.yml`와 운영 문서에 `servers[].apps` 예시 추가
 - `TEST/stock_company/PLAN.md` 기준 `devwas`용 실제 multi-app `deploy.yml` 샘플 작성

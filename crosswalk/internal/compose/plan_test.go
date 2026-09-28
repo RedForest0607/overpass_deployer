@@ -23,7 +23,7 @@ func TestBuildPlanKeepsCredentialsOutAndOrdersActions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(plan.Actions) != 7 {
+	if len(plan.Actions) != 10 {
 		t.Fatalf("actions=%#v", plan.Actions)
 	}
 	got := make([]string, 0, len(plan.Actions))
@@ -33,15 +33,15 @@ func TestBuildPlanKeepsCredentialsOutAndOrdersActions(t *testing.T) {
 			t.Fatalf("plan leaked token: %#v", action)
 		}
 	}
-	want := "verify-engine,verify-compose,registry-login,sync-compose-file,validate-compose,pull-compose-images,apply-compose-project"
+	want := "verify-engine,verify-compose,registry-login,sync-compose-file,validate-compose,pull-compose-images,activate-compose-revision,apply-compose-project,verify-compose-health,rollback-compose-on-failure"
 	if strings.Join(got, ",") != want {
 		t.Fatalf("actions=%s", strings.Join(got, ","))
 	}
 }
 
-func TestRunRequiresDryRunDuringPhaseOne(t *testing.T) {
-	if err := Run(composeConfig(), Options{}); err == nil || !strings.Contains(err.Error(), "Phase 1") {
-		t.Fatalf("expected Phase 1 apply error, got %v", err)
+func TestRunRequiresExplicitApply(t *testing.T) {
+	if err := Run(composeConfig(), Options{}); err == nil || !strings.Contains(err.Error(), "--apply") {
+		t.Fatalf("expected explicit apply error, got %v", err)
 	}
 	if err := Run(composeConfig(), Options{DryRun: true}); err != nil {
 		t.Fatalf("dry-run failed: %v", err)

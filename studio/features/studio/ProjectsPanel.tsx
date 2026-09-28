@@ -37,6 +37,7 @@ export default function ProjectsPanel({
     <>
       <div className="actions" style={{ margin: '0 30px 20px' }}>
         <button
+          className="primary"
           disabled={busy}
           onClick={() => {
             setError('');
@@ -55,22 +56,28 @@ export default function ProjectsPanel({
             <span className="pill">LOCAL DB</span>
             <h2>{project.name}</h2>
             <p>{project.description}</p>
-            <button disabled={busy} onClick={() => open(project)}>
-              토폴로지 열기
-            </button>
-            <button
-              disabled={busy}
-              onClick={() => {
-                setError('');
-                setForm({
-                  project,
-                  name: project.name,
-                  description: project.description,
-                });
-              }}
-            >
-              프로젝트 수정
-            </button>
+            <div className="project-card-actions">
+              <button
+                className="primary"
+                disabled={busy}
+                onClick={() => open(project)}
+              >
+                토폴로지 열기
+              </button>
+              <button
+                disabled={busy}
+                onClick={() => {
+                  setError('');
+                  setForm({
+                    project,
+                    name: project.name,
+                    description: project.description,
+                  });
+                }}
+              >
+                프로젝트 수정
+              </button>
+            </div>
           </article>
         ))}
         {!projects.length && (
@@ -109,9 +116,10 @@ export default function ProjectsPanel({
                   );
               }}
             >
-              <label className="field">
+              <label className="field" htmlFor="studio-project-name">
                 <span>프로젝트 이름</span>
                 <Input
+                  id="studio-project-name"
                   required
                   maxLength={128}
                   value={form.name}
@@ -119,9 +127,10 @@ export default function ProjectsPanel({
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                 />
               </label>
-              <label className="field">
+              <label className="field" htmlFor="studio-project-description">
                 <span>설명</span>
                 <Input
+                  id="studio-project-description"
                   maxLength={2000}
                   value={form.description}
                   disabled={busy}

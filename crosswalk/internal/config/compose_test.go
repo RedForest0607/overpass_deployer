@@ -42,15 +42,28 @@ func TestValidateComposeProjectsRejectsUnsafeValues(t *testing.T) {
 	cfg.Servers[0].Containers = nil
 	cfg.Servers[0].ComposeProjects = []ComposeProjectConfig{
 		{Name: "Invalid.Project", LocalPath: "/missing/compose.yml", RemoteDir: "relative/path"},
-		{Name: "invalid.project", LocalPath: "/missing/other.yml", RemoteDir: "/app/compose"},
+		{Name: "invalid.project", LocalPath: "/missing/other.yml", RemoteDir: "/app/compose/../unsafe;command"},
 	}
 	err := ValidateAndApplyDefaults(&cfg)
 	if err == nil {
 		t.Fatal("expected Compose validation error")
 	}
-	for _, expected := range []string{"compose_projects", "local_path", "remote_dir", "lowercase"} {
+	for _, expected := range []string{"compose_projects", "local_path", "remote_dir", "clean absolute path", "lowercase"} {
 		if !strings.Contains(err.Error(), expected) {
 			t.Fatalf("missing %q in %v", expected, err)
 		}
+	}
+}
+
+func TestValidateComposeProjectsRejectsSharedRemoteDirectory(t *testing.T) {
+	cfg := validDockerConfig(t)
+	cfg.Servers[0].Containers = nil
+	local := writeTempFile(t, "compose.yml", "services:\n  api:\n    image: harbor.example.com/demo/api@sha256:"+strings.Repeat("a", 64)+"\n")
+	cfg.Servers[0].ComposeProjects = []ComposeProjectConfig{
+		{Name: "api", LocalPath: local, RemoteDir: "/app/compose/shared"},
+		{Name: "worker", LocalPath: local, RemoteDir: "/app/compose/shared"},
+	}
+	if err := ValidateAndApplyDefaults(&cfg); err == nil || !strings.Contains(err.Error(), "remote_dir must be unique") {
+		t.Fatalf("expected shared directory error, got %v", err)
 	}
 }

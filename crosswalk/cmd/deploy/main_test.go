@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -33,6 +34,47 @@ func TestRunComposeRoutesDryRunWithoutRemoteMutation(t *testing.T) {
 	})
 	if exitCode != 0 || gotPath != "compose-deploy.yml" || !gotOptions.DryRun {
 		t.Fatalf("exit=%d path=%q options=%#v", exitCode, gotPath, gotOptions)
+	}
+}
+
+func TestRunComposeRoutesPhaseTwoModes(t *testing.T) {
+	for _, testCase := range []struct {
+		name string
+		flag string
+		want composedeploy.Options
+	}{
+		{name: "preflight", flag: "--preflight", want: composedeploy.Options{Preflight: true}},
+		{name: "sync", flag: "--sync", want: composedeploy.Options{Sync: true}},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			var got composedeploy.Options
+			exitCode := run([]string{"compose", testCase.flag}, dependencies{
+				stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{},
+				loadConfig: func(string) (*config.Config, error) { return &config.Config{}, nil },
+				runCompose: func(_ *config.Config, options composedeploy.Options) error {
+					got = options
+					return nil
+				},
+			})
+			if exitCode != 0 || !reflect.DeepEqual(got, composedeploy.Options{
+				DryRun: testCase.want.DryRun, Preflight: testCase.want.Preflight,
+				Sync: testCase.want.Sync, ParallelServers: 1,
+			}) {
+				t.Fatalf("exit=%d options=%#v", exitCode, got)
+			}
+		})
+	}
+}
+
+func TestRunComposeRoutesExplicitApplyAndFilters(t *testing.T) {
+	var got composedeploy.Options
+	exit := run([]string{"compose", "--apply", "--server-tag", "dev", "--project", "commerce,worker", "--parallel", "2"}, dependencies{
+		stdout: &bytes.Buffer{}, stderr: &bytes.Buffer{},
+		loadConfig: func(string) (*config.Config, error) { return &config.Config{}, nil },
+		runCompose: func(_ *config.Config, options composedeploy.Options) error { got = options; return nil },
+	})
+	if exit != 0 || !got.Apply || got.ParallelServers != 2 || !reflect.DeepEqual(got.ServerTags, []string{"dev"}) || !reflect.DeepEqual(got.Projects, []string{"commerce", "worker"}) {
+		t.Fatalf("exit=%d options=%#v", exit, got)
 	}
 }
 

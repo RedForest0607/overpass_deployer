@@ -369,7 +369,7 @@ export default function ServerPackage({
           </NativeSelect>
           <button onClick={onBack}>편집기로 돌아가기</button>
           <button
-            className="primary"
+            className={generatedPackage ? undefined : 'primary'}
             disabled={!!blockedReason || busy || !capabilities}
             onClick={() => void generate()}
           >
@@ -381,6 +381,7 @@ export default function ServerPackage({
                 : '검증 후 생성'}
           </button>
           <button
+            className={generatedPackage ? 'primary' : undefined}
             disabled={!generatedPackage || busy}
             onClick={() => void download()}
           >

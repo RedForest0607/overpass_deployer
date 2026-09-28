@@ -22,6 +22,7 @@ type Graph = {
   viewport?: { x: number; y: number; zoom: number };
   deployment?: DeploymentProfile;
 };
+type OpenOptions = { discardChanges?: boolean };
 const viewport = { x: 0, y: 0, zoom: 1 };
 export const graphKey = (graph: Graph) =>
   JSON.stringify(
@@ -71,7 +72,7 @@ export function usePersistence(graph: Graph, replace: (graph: Graph) => void) {
       );
   }
 
-  async function load(project: Project, env: Environment) {
+  async function load(project: Project, env: Environment): Promise<boolean> {
     const token = ++operation.current;
     lock.current = true;
     setBusy(true);
@@ -90,7 +91,7 @@ export function usePersistence(graph: Graph, replace: (graph: Graph) => void) {
         if (!(error instanceof APIError && error.code === 'TOPOLOGY_NOT_FOUND'))
           throw error;
       }
-      if (!alive.current || token !== operation.current) return;
+      if (!alive.current || token !== operation.current) return false;
       replace(restored);
       setBaseline(graphKey(restored));
       setRevision(nextRevision);
@@ -107,8 +108,10 @@ export function usePersistence(graph: Graph, replace: (graph: Graph) => void) {
       url.searchParams.set('project', project.id);
       url.searchParams.set('environment', env);
       window.history.replaceState(null, '', url);
+      return true;
     } catch (error) {
       if (alive.current && token === operation.current) report(error);
+      return false;
     } finally {
       if (alive.current && token === operation.current) {
         lock.current = false;
@@ -168,18 +171,22 @@ export function usePersistence(graph: Graph, replace: (graph: Graph) => void) {
     return () => window.removeEventListener('beforeunload', warn);
   }, [dirty]);
 
-  async function open(project: Project, env = environment) {
-    if (lock.current) return;
-    if (dirty) {
+  async function open(
+    project: Project,
+    env = environment,
+    options: OpenOptions = {},
+  ): Promise<boolean> {
+    if (lock.current) return false;
+    if (dirty && !options.discardChanges) {
       setNotice(
         '미저장 변경이 있습니다. 먼저 저장하거나 서버 버전 다시 불러오기로 편집을 취소하세요.',
       );
-      return;
+      return false;
     }
-    await load(project, env);
+    return load(project, env);
   }
-  async function save() {
-    if (!active || lock.current || conflict) return;
+  async function save(): Promise<boolean> {
+    if (!active || lock.current || conflict) return false;
     lock.current = true;
     setBusy(true);
     const snapshot = current.current;
@@ -195,16 +202,24 @@ export function usePersistence(graph: Graph, replace: (graph: Graph) => void) {
           snapshot.graph.deployment,
         ),
       );
-      if (!alive.current) return;
+      if (!alive.current) return false;
       setRevision(result.revision);
       setBaseline(snapshot.key);
+      if (current.current.key !== snapshot.key) {
+        setNotice(
+          '저장 중 설계가 다시 변경되었습니다. 최신 변경을 저장한 뒤 이동하세요.',
+        );
+        return false;
+      }
       setNotice('설계를 저장했습니다. revision ' + result.revision);
+      return true;
     } catch (error) {
       if (alive.current) {
         if (error instanceof APIError && error.status === 409)
           setConflict(true);
         report(error);
       }
+      return false;
     } finally {
       if (alive.current) {
         lock.current = false;

@@ -5,7 +5,7 @@ Deployer 프로젝트의 배포 실행 산출물입니다. 아래 개발 명령�
 
 단일 바이너리 기반 VM bootstrap/deploy CLI입니다.
 
-현재 기준으로 M1(VM 모드 MVP)은 완료되었고, `deploy update`는 사용할 수 있습니다. `deploy docker`는 M3 Phase 4의 설정 검증, dry-run, 원격 preflight, digest 고정 image pull, container reconcile과 실패 rollback을 지원합니다.
+현재 기준으로 M1(VM 모드 MVP)은 완료되었고, `deploy update`는 사용할 수 있습니다. `deploy docker`는 M3 Phase 4의 설정 검증, dry-run, 원격 preflight, digest 고정 image pull, container reconcile과 실패 rollback을 지원합니다. `deploy compose`는 M7 Phase 3의 dry-run, preflight, checksum 동기화, 명시적 revision apply와 실패 rollback을 지원합니다. 실제 VM/Registry smoke는 대기 중입니다.
 
 핵심 포인트:
 
@@ -38,10 +38,16 @@ Deployer 프로젝트의 배포 실행 산출물입니다. 아래 개발 명령�
 - `deploy docker --pull --config deploy.docker.example.yml`: 현재 image digest 조회, missing digest pull과 사후 검증(M3 Phase 3, container 변경 없음)
 - `deploy docker --config deploy.docker.example.yml`: canonical spec 기반 생성·skip·보존형 교체와 readiness rollback(M3 Phase 4)
 - `deploy docker --config ... --server-tag wave1 --container-tag api --parallel 2`: 선택·제한 병렬 배포와 결과 summary(M3 Phase 5)
+- `deploy compose --dry-run --config deploy.compose.example.yml`: Compose 배포 계획 검토(M7 Phase 1)
+- `deploy compose --preflight --config deploy.compose.example.yml`: Docker Engine, Compose v2, Registry 인증 확인(M7 Phase 2)
+- `deploy compose --sync --config deploy.compose.example.yml`: checksum 기반 파일 동기화와 원격 config 검증(M7 Phase 2, workload 변경 없음)
+- `deploy compose --apply --config deploy.compose.example.yml`: digest 이미지 준비, checksum revision 전환, Compose 실행·health 검증과 실패 rollback(M7 Phase 3)
+- `deploy compose --apply --config ... --server-tag dev --project commerce --parallel 2`: 서버/project 선택 및 제한 병렬 처리
 
 비지원 또는 미구현:
 
 - 지정된 Docker/Podman SSH fixture와 Harbor에서의 실제 smoke 결과 기록(M3 Phase 5 잔여)
+- M7 Compose는 loopback SSH/SFTP fixture를 통과했으며 실제 Linux Docker/Registry smoke 결과 기록은 대기
 - M2/M4/M5 범위의 고도화 기능은 로드맵 단계이며 README에서는 구현된 내용만 다룹니다.
 
 주의:
@@ -65,6 +71,7 @@ go run ./cmd/deploy validate --config deploy.yml
 ```bash
 go run ./cmd/deploy vm --dry-run --config deploy.example.yml
 go run ./cmd/deploy docker --dry-run --config deploy.docker.example.yml
+go run ./cmd/deploy compose --dry-run --config deploy.compose.example.yml
 go run ./cmd/deploy dashboard --config deploy.example.yml
 ```
 
@@ -240,6 +247,17 @@ CLI 기준 현재 서브커맨드:
 - `docker --pull --config ...`: container/local image 상태 조회와 digest 고정 image의 조건부 pull·검증(M3 Phase 3)
 - `docker --config ...`: canonical spec 기반 container reconcile과 readiness 실패 rollback(M3 Phase 4)
 - Docker 공통 옵션: `--server-tag`, `--container-tag`, `--parallel`(M3 Phase 5)
+- `compose --dry-run --config ...`: 비밀값 없는 Compose 작업 계획 출력(M7 Phase 1)
+- `compose --preflight --config ...`: SSH Docker/Compose v2 접근과 password-stdin Registry 인증 확인(M7 Phase 2)
+- `compose --sync --config ...`: SHA-256 비교 후 변경 파일만 전송하고 원격 `config --quiet` 검증(M7 Phase 2)
+- `compose --apply --config ...`: digest image pull·검증, checksum revision 적용과 이전 revision rollback(M7 Phase 3)
+- Compose 공통 옵션: `--server-tag`, `--project`, `--parallel`(기본 1)
+
+Compose workload 적용은 `--apply`를 명시해야 실행됩니다. 실행 파일은 생성된 Compose subset(`name`, service의 `image`, `ports`, `environment`, `restart`)만 받으며 변수 보간·상대 파일 참조 등은 거부합니다. Registry token은 환경변수에서만 읽고 원격 `docker login --password-stdin`에 전달합니다. `--preflight`와 `--sync`는 workload를 변경하지 않으며, `--apply` 실패 뒤 rollback도 실패하면 운영자가 원격 상태를 확인해야 합니다. 세부 순서는 `docs/M7-COMPOSE-PLAN.md`를 참고하세요.
+
+M7 격리 검증은 저장소 루트의 `make test-compose-fixture`로 실행합니다. 실제 Linux Docker/Registry 인수 테스트는 필수 `SMOKE_*` 대상을 지정한 뒤 `make smoke-compose-real`로 실행하며 Registry push와 원격 workload 변경을 포함하므로 [운영 smoke runbook](../docs/M7-COMPOSE-SMOKE.md)을 먼저 확인해야 합니다.
+
+기존 로컬 Podman machine을 이용한 실제 Linux engine 검증은 `make smoke-compose-podman`으로 실행합니다. 공식 Compose provider와 임시 Registry를 사용하며 기존 동명 자산은 덮어쓰지 않습니다. 성공 시 자신이 만든 workload와 임시 설정을 정리하고, 실패 시에는 진단을 위해 상태를 보존할 수 있습니다.
 
 `--parallel`은 여러 서버를 동시에 배포합니다. 기본값은 `1`이며, 운영에서는 SSH/네트워크 여유에 맞춰 `2~4`부터 올리는 것을 권장합니다. 실제 배포에서는 서버별 원격 checksum을 배치 조회하고 SFTP 세션을 재사용해 SSH 왕복과 연결 생성 비용을 줄입니다.
 
@@ -249,6 +267,7 @@ CLI 기준 현재 서브커맨드:
 cmd/deploy               CLI entrypoint
 internal/config          설정 로드/검증/기본값 처리
 internal/docker          Docker 계획, preflight, digest pull, canonical reconcile과 rollback
+internal/compose         Compose 계획, 필터, preflight, checksum revision, digest pull, apply와 rollback
 internal/vm              VM 배포 실행 흐름
 internal/ssh             SSH 연결 및 원격 실행
 internal/scp             파일 전송 및 checksum 비교

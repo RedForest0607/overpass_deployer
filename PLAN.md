@@ -26,7 +26,7 @@
 | M4 | UX, Reliability & Dashboard | [~] | `docs/M4-PLAN.md` |
 | M5 | AWS Extension | [ ] | `docs/M5-PLAN.md` |
 | M6 | Studio Backend | [x] | `docs/STUDIO-BACKEND-PLAN.md` |
-| M6.2 | Studio Docker 생성기 | [~] | `docs/M6.2-STUDIO-DOCKER-PLAN.md` |
+| M6.2 | Studio Docker 생성기 | [x] | `docs/M6.2-STUDIO-DOCKER-PLAN.md` |
 | M7 | Docker Compose 모드 | [~] | `docs/M7-COMPOSE-PLAN.md` |
 
 ---
@@ -155,7 +155,7 @@
 
 **완료 기준:** `docs/M6.2-STUDIO-DOCKER-PLAN.md` 체크리스트와 로컬 E2E 통과
 **선행 조건:** M3 Docker 로컬 구현, M6 Studio Backend
-**현재 상태:** [~] `crosswalk-docker@1.0.0` 생성기, 프론트 모델·편집·패키지 UI, API lifecycle 및 VM/Docker 통합 dry-run harness 구현. 단위·계약·API 테스트는 통과했고 로컬 통합 E2E 실행 대기. 실제 원격 Docker/Harbor 변경 smoke는 M3 Phase 5에 유지
+**현재 상태:** [x] `crosswalk-docker@1.0.0` 생성기, 프론트 모델·편집·패키지 UI와 API lifecycle 구현 완료. 격리 Studio API에서 VM/Docker/Compose 패키지를 생성·다운로드하고 실제 Crosswalk 각 모드 dry-run까지 연결하는 로컬 통합 E2E 통과. 실제 원격 Docker/Harbor 변경 smoke는 M3 Phase 5에 유지
 
 ---
 
@@ -171,7 +171,7 @@
 
 **완료 기준:** `docs/M7-COMPOSE-PLAN.md` Phase 1~3와 지정 Docker Compose fixture 통합 검증
 **선행 조건:** M3 Docker 모드, M6.2 Studio Docker 생성기
-**현재 상태:** [~] Phase 1 계약·생성·dry-run 로컬 구현 완료. 실제 원격 preflight·파일 전송·apply·rollback은 Phase 2~3 후속
+**현재 상태:** [~] Phase 1~5 기능·자동화와 Phase 6 Podman Linux 실제 engine smoke 완료. 공식 Compose v2와 실제 Registry에서 신규·skip·업그레이드·unhealthy rollback을 검증했으며 포트 포함 Registry와 Podman 구조화 출력 호환을 보강. 외부 Docker VM/조직 Registry 최종 인수만 대기
 
 ---
 

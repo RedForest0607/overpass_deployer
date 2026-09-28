@@ -78,13 +78,18 @@ func run(args []string, deps dependencies) int {
 	}
 }
 
-// runCompose routes the Phase 1 non-mutating Compose plan. Apply remains
-// explicitly unavailable until remote transfer and rollback are implemented.
+// runCompose selects an explicit Compose operation and optional project scope.
 func runCompose(args []string, deps dependencies) int {
 	composeCmd := flag.NewFlagSet("compose", flag.ContinueOnError)
 	composeCmd.SetOutput(deps.stderr)
 	configPath := composeCmd.String("config", "deploy.yml", "Path to deploy.yml configuration file")
 	dryRun := composeCmd.Bool("dry-run", false, "Print the Compose deployment plan without remote changes")
+	preflight := composeCmd.Bool("preflight", false, "Verify remote Docker, Compose v2, and registry access without synchronizing files")
+	syncFiles := composeCmd.Bool("sync", false, "Synchronize and validate Compose files without applying workloads")
+	apply := composeCmd.Bool("apply", false, "Apply a digest-pinned Compose revision with health verification and rollback")
+	serverTags := composeCmd.String("server-tag", "", "Only process servers matching any listed tags (comma-separated)")
+	projects := composeCmd.String("project", "", "Only process named Compose projects (comma-separated)")
+	parallelServers := composeCmd.Int("parallel", 1, "Maximum number of Compose servers to process concurrently")
 	if err := composeCmd.Parse(args); err != nil {
 		return 1
 	}
@@ -93,7 +98,10 @@ func runCompose(args []string, deps dependencies) int {
 		fmt.Fprintf(deps.stderr, "Failed to load configuration: %v\n", err)
 		return 1
 	}
-	if err := deps.runCompose(cfg, composedeploy.Options{DryRun: *dryRun}); err != nil {
+	if err := deps.runCompose(cfg, composedeploy.Options{
+		DryRun: *dryRun, Preflight: *preflight, Sync: *syncFiles, Apply: *apply,
+		ServerTags: parseTagFilter(*serverTags), Projects: parseTagFilter(*projects), ParallelServers: *parallelServers,
+	}); err != nil {
 		fmt.Fprintf(deps.stderr, "Compose deployment failed: %v\n", err)
 		return 1
 	}
@@ -276,7 +284,7 @@ func printUsage(w io.Writer) {
 	fmt.Fprintf(w, "  dashboard  Open the interactive deployment dashboard\n")
 	fmt.Fprintf(w, "  validate   Validate a chart without connecting to servers\n")
 	fmt.Fprintf(w, "  docker  Deploy digest-pinned Docker containers (M3 Phase 4)\n\n")
-	fmt.Fprintf(w, "  compose Plan digest-pinned Docker Compose projects (Phase 1)\n\n")
+	fmt.Fprintf(w, "  compose Plan, preflight, synchronize, or apply Docker Compose revisions\n\n")
 	fmt.Fprintf(w, "Flags for 'vm':\n")
 	fmt.Fprintf(w, "  --config string   Path to configuration file (default: deploy.yml)\n")
 	fmt.Fprintf(w, "  --dry-run         Print planned actions without remote changes\n")
@@ -295,6 +303,12 @@ func printUsage(w io.Writer) {
 	fmt.Fprintf(w, "\nFlags for 'compose':\n")
 	fmt.Fprintf(w, "  --config string   Path to deploy.yml configuration file (default: deploy.yml)\n")
 	fmt.Fprintf(w, "  --dry-run         Print the Compose deployment plan without remote changes\n")
+	fmt.Fprintf(w, "  --preflight       Verify Docker, Compose v2, and registry access without file changes\n")
+	fmt.Fprintf(w, "  --sync            Synchronize and validate Compose files without applying workloads\n")
+	fmt.Fprintf(w, "  --apply           Pull, apply, verify health, and rollback Compose revisions\n")
+	fmt.Fprintf(w, "  --server-tag      Select Compose servers by tag (comma-separated)\n")
+	fmt.Fprintf(w, "  --project         Select Compose projects by name (comma-separated)\n")
+	fmt.Fprintf(w, "  --parallel int    Maximum concurrent Compose servers (default: 1)\n")
 	fmt.Fprintf(w, "\nFlags for 'update':\n")
 	fmt.Fprintf(w, "  --check           Check for updates without replacing the current binary\n")
 	fmt.Fprintf(w, "  --version string  Install a specific release tag\n")

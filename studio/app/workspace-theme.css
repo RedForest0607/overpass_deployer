@@ -1,0 +1,455 @@
+.studio {
+  width: 100%;
+  min-width: 0;
+}
+
+.dark .react-flow__edgelabel-renderer button {
+  background: var(--background);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+.project-navigation {
+  margin-top: 28px;
+}
+.nav button.current-project-link {
+  width: 100%;
+  justify-content: flex-start;
+  border: 0;
+  background: transparent;
+  padding: 12px 8px 6px;
+  color: var(--foreground);
+}
+.current-project-link span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.current-project-link svg {
+  margin-left: auto;
+}
+.project-navigation .secondary {
+  display: block;
+  margin: 0 8px 12px 23px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+}
+.nav .project-submenu {
+  margin-left: 11px;
+  padding-left: 10px;
+  border-left: 1px solid var(--border);
+  width: calc(100% - 11px);
+}
+.nav .nav-item[data-active] {
+  background: var(--sidebar-accent);
+  color: var(--sidebar-accent-foreground);
+}
+.main header .theme-toggle {
+  margin-left: auto;
+  margin-right: 16px;
+  flex-shrink: 0;
+}
+.nav-bottom {
+  position: static;
+  margin-top: 40px;
+}
+.dark {
+  --background: #15221f;
+  --foreground: #e3eee9;
+  --muted: #22352f;
+  --muted-foreground: #afc1b8;
+  --primary: #85cfad;
+  --primary-foreground: #10231a;
+  --border: #3a5046;
+  --sidebar: #111d19;
+  --sidebar-foreground: #e3eee9;
+  --sidebar-accent: #294c3d;
+  --sidebar-accent-foreground: #a0e3bd;
+  --sidebar-border: #3a5046;
+  --sidebar-primary: #85cfad;
+  --sidebar-ring: #85cfad;
+}
+.dark body {
+  background: var(--background);
+}
+.dark
+  :is(
+    .nav,
+    .file-browser aside,
+    .generation-history-heading,
+    .mapping-node-heading,
+    .table-shell th
+  ) {
+  background: var(--sidebar);
+}
+.dark
+  :is(
+    .palette,
+    .inspector,
+    .resource-node,
+    .projects-grid article,
+    .upload-card,
+    .artifact-list,
+    .mapping-card,
+    .generation-history,
+    .package-contract-info > div,
+    .editor-toolbar,
+    .canvas-label,
+    .choice,
+    .code-pane,
+    .package-empty,
+    .blueprint-code,
+    .react-flow__minimap
+  ) {
+  background: var(--background);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+.dark button:not([data-slot='button']) {
+  background: var(--background);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+.dark button:not([data-slot='button']):hover {
+  background: var(--muted);
+}
+.dark button.primary {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.dark :is(input, textarea, select) {
+  background: var(--background);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+.dark :is(.flow-container, .canvas-placeholder) {
+  background-color: #101b17;
+}
+.dark
+  :is(
+    .target-node,
+    .connection-pair,
+    .avatar,
+    .resource-icon,
+    .palette-node > span:first-child,
+    .brand span
+  ) {
+  background: var(--muted);
+  border-color: var(--border);
+}
+.dark .target-heading {
+  background: #263e32;
+  color: var(--primary);
+  border-color: var(--border);
+}
+.dark
+  :is(
+    .brand,
+    header b,
+    .workspace-id,
+    .table-shell .artifact-name,
+    .mapping-node-heading strong,
+    .mapping-role strong,
+    .generation-list article strong,
+    .package-contract-info dd,
+    .binary-file strong,
+    .package-empty strong,
+    .editor-toolbar strong,
+    .valid-state strong,
+    .code-pane pre,
+    .blueprint-code
+  ) {
+  color: var(--foreground);
+}
+.dark
+  :is(
+    .page-heading p,
+    .field > span,
+    .field-note,
+    .section-heading p,
+    .projects-grid p,
+    .project-detail,
+    .table-shell td,
+    .table-shell th,
+    .table-shell code,
+    .node-kind,
+    .resource-node p,
+    .resource-bottom code,
+    .nav-item,
+    .feedback,
+    .artifact-note,
+    .code-header,
+    .mapping-role code,
+    .generation-list article p,
+    .package-contract-info dt,
+    .palette p.palette-help,
+    .palette-node small,
+    .palette section > small,
+    small,
+    .eyebrow
+  ) {
+  color: var(--muted-foreground);
+}
+.dark
+  :is(
+    .resource-bottom,
+    .mapping-row,
+    .mapping-group,
+    .generation-list article,
+    .result-tabs [data-slot='tabs-list']
+  ) {
+  border-color: var(--border);
+}
+.dark
+  :is(
+    .package-status,
+    .good-count,
+    .valid-state > span,
+    .generation-badge,
+    .mapping-summary,
+    .artifact-symbol,
+    .file-browser aside button.selected
+  ) {
+  background: #244635;
+  color: #a0e3bd;
+  border-color: #41664f;
+}
+.dark :is(.draft-notice, .mapping-summary.warning, .project-symbol) {
+  background: #403824;
+  color: #eed59a;
+  border-color: #695c3d;
+}
+.dark :is(.package-issues, .issue-count, .generation-badge.failed) {
+  background: #412b2e;
+  color: #ffb4b4;
+  border-color: #714247;
+}
+.dark :is(.package-issues p, .upload-error, .danger-button) {
+  color: #ffb4b4;
+}
+.dark .react-flow__edge-textbg {
+  fill: var(--background);
+}
+.dark .react-flow__edge-text {
+  fill: var(--foreground);
+}
+.dark :is(button, input):focus-visible {
+  outline-color: var(--primary);
+}
+@media (max-width: 760px) {
+  .nav[data-slot='sidebar'] {
+    height: auto;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .workspace-navigation {
+    display: grid;
+    gap: 12px;
+  }
+  .nav .nav-item span {
+    display: inline;
+  }
+  .nav [data-slot='sidebar-menu'] {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+  .project-navigation {
+    margin-top: 0;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+  .project-navigation > small {
+    display: block;
+  }
+  .nav .project-submenu {
+    margin-left: 11px;
+  }
+  .main header {
+    height: auto;
+    min-height: 48px;
+    gap: 8px;
+    padding-block: 8px;
+  }
+  .main header > span:first-child {
+    flex-wrap: wrap;
+    min-width: 0;
+    gap: 5px;
+  }
+  .main header .theme-toggle {
+    margin-right: 0;
+  }
+  .theme-toggle span {
+    display: none;
+  }
+}
+
+/* Studio action hierarchy and readable workspace state. */
+.studio .page-heading {
+  align-items: flex-start;
+}
+.studio .page-heading h1 {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  min-width: 0;
+}
+.studio .workspace-context {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 12px;
+  letter-spacing: 0;
+}
+.studio .workspace-context .pill {
+  margin-left: 0;
+  font-size: 12px;
+  padding: 4px 9px;
+}
+.studio .save-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.studio .save-state--success {
+  background: var(--studio-success-bg);
+  color: var(--studio-success);
+}
+.studio .save-state--warning {
+  background: var(--studio-warning-bg);
+  color: var(--studio-warning);
+}
+.studio .save-state--error {
+  background: var(--studio-error-bg);
+  color: var(--studio-error);
+}
+.studio .save-state--busy {
+  background: var(--studio-busy-bg);
+  color: var(--studio-busy);
+}
+.studio .page-heading p,
+.studio .projects-grid p,
+.studio .section-heading p,
+.studio .field > span,
+.studio .field-note,
+.studio .palette p.palette-help,
+.studio .palette-node small,
+.studio .palette section > small {
+  color: var(--studio-secondary-text);
+  font-size: 13px;
+}
+.studio .page-heading p,
+.studio .projects-grid p {
+  font-size: 14px;
+}
+.studio .palette section > small {
+  letter-spacing: 0.5px;
+}
+.studio .palette-node strong {
+  font-size: 14px;
+}
+.studio .palette button.palette-node {
+  min-height: 48px;
+}
+.studio button:not([data-slot='button']):not(.react-flow__controls-button) {
+  min-height: 38px;
+}
+.studio .actions button,
+.studio .package-heading button {
+  font-size: 14px;
+  white-space: normal;
+  text-align: center;
+}
+.studio .projects-grid article {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.studio .projects-grid article > .pill {
+  align-self: flex-start;
+  margin-left: 0;
+}
+.studio .projects-grid article > p {
+  flex: 1;
+}
+.studio .project-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 18px;
+}
+.studio .project-card-actions button:first-child {
+  flex: 1 1 170px;
+}
+.studio .project-card-actions button:last-child {
+  flex: 0 1 auto;
+}
+.studio .projects-grid .project-card-actions button.primary {
+  color: var(--primary-foreground);
+}
+.studio .workspace-notice {
+  display: block;
+  min-height: 1.5em;
+  margin: 0 30px 12px;
+  color: var(--studio-secondary-text);
+  font-size: 13px;
+}
+.studio .workspace-notice--error {
+  color: var(--studio-error);
+}
+.dark .studio button.primary:not([data-slot='button']):hover {
+  background: #a3e1bf;
+  color: var(--primary-foreground);
+}
+.dark .studio .workspace-notice,
+.dark .studio .page-heading p,
+.dark .studio .projects-grid p,
+.dark .studio .section-heading p,
+.dark .studio .field > span,
+.dark .studio .field-note,
+.dark .studio .palette p.palette-help,
+.dark .studio .palette-node small,
+.dark .studio .palette section > small {
+  color: var(--studio-secondary-text);
+}
+.dark .studio .workspace-notice--error {
+  color: var(--studio-error);
+}
+.unsaved-navigation-dialog {
+  max-width: min(560px, calc(100vw - 32px));
+}
+.unsaved-navigation-dialog [data-slot='alert-dialog-footer'] {
+  flex-wrap: wrap;
+}
+.unsaved-navigation-dialog [data-slot='alert-dialog-footer'] button {
+  min-height: 38px;
+  white-space: normal;
+}
+@media (max-width: 760px) {
+  .studio .workspace-notice {
+    margin-inline: 16px;
+  }
+  .studio .page-heading .actions {
+    width: 100%;
+  }
+  .studio .page-heading .actions button {
+    flex: 1 1 auto;
+  }
+  .studio .project-card-actions button:last-child {
+    flex: 1 1 120px;
+  }
+  .unsaved-navigation-dialog [data-slot='alert-dialog-footer'] button {
+    width: 100%;
+  }
+}
+@media (min-width: 761px) and (max-height: 800px) {
+  .studio .editor {
+    min-height: 430px;
+  }
+}

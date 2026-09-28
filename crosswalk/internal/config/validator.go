@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -314,12 +315,12 @@ func validateDockerDeploymentConfig(cfg *Config, errs *[]string, checkUnresolved
 	checkUnresolvedEnv(registry.Host, "docker.registry.host")
 	checkUnresolvedEnv(registry.Username, "docker.registry.username")
 	if registry.Host == "" {
-		*errs = append(*errs, "docker.registry.host is required when containers are configured")
+		*errs = append(*errs, "docker.registry.host is required when Docker workloads are configured")
 	} else if !isValidDockerRegistryHost(registry.Host) {
 		*errs = append(*errs, "docker.registry.host must be a hostname with an optional port")
 	}
 	if registry.Username == "" {
-		*errs = append(*errs, "docker.registry.username is required when containers are configured")
+		*errs = append(*errs, "docker.registry.username is required when Docker workloads are configured")
 	} else if !dockerRegistryUsernamePattern.MatchString(registry.Username) {
 		*errs = append(*errs, "docker.registry.username contains unsupported characters")
 	}
@@ -330,6 +331,7 @@ func validateDockerDeploymentConfig(cfg *Config, errs *[]string, checkUnresolved
 
 func validateComposeProjects(projects []ComposeProjectConfig, prefix string, errs *[]string, checkUnresolvedEnv func(string, string)) {
 	names := make(map[string]struct{}, len(projects))
+	remoteDirs := make(map[string]struct{}, len(projects))
 	for index := range projects {
 		project := &projects[index]
 		fieldPrefix := fmt.Sprintf("%s[%d]", prefix, index)
@@ -352,9 +354,14 @@ func validateComposeProjects(projects []ComposeProjectConfig, prefix string, err
 		} else {
 			validateExistingFile(project.LocalPath, fieldPrefix+".local_path", errs)
 		}
-		if project.RemoteDir == "" || !filepath.IsAbs(project.RemoteDir) {
+		if project.RemoteDir == "" || !path.IsAbs(project.RemoteDir) {
 			*errs = append(*errs, fieldPrefix+".remote_dir must be an absolute path")
+		} else if path.Clean(project.RemoteDir) != project.RemoteDir || !composeRemoteDirPattern.MatchString(project.RemoteDir) {
+			*errs = append(*errs, fieldPrefix+".remote_dir must be a clean absolute path containing only letters, numbers, dots, underscores, hyphens, and slashes")
+		} else if _, exists := remoteDirs[project.RemoteDir]; exists {
+			*errs = append(*errs, fieldPrefix+".remote_dir must be unique on the server")
 		}
+		remoteDirs[project.RemoteDir] = struct{}{}
 	}
 }
 
@@ -1163,6 +1170,7 @@ var fileModePattern = regexp.MustCompile(`^[0-7]{3,4}$`)
 var sysctlNamePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]+$`)
 var containerNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
 var composeProjectNamePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
+var composeRemoteDirPattern = regexp.MustCompile(`^/[A-Za-z0-9._/-]+$`)
 var dockerRegistryHostPattern = regexp.MustCompile(`^[a-z0-9.-]+$`)
 var dockerRegistryUsernamePattern = regexp.MustCompile(`^[A-Za-z0-9_.@+$-]+$`)
 var dockerRepositoryPattern = regexp.MustCompile(`^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:/[a-z0-9]+(?:[._-][a-z0-9]+)*)*$`)

@@ -1,0 +1,8 @@
+FROM scratch
+
+COPY compose-fixture /compose-fixture
+
+HEALTHCHECK --interval=1s --timeout=1s --start-period=1s --retries=2 CMD ["/compose-fixture", "health"]
+
+EXPOSE 8080
+ENTRYPOINT ["/compose-fixture", "serve"]

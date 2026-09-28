@@ -20,11 +20,15 @@ type Options struct {
 	ParallelServers int
 }
 
-type remoteRunner interface {
+// RemoteRunner is the minimal remote execution contract shared by Docker and
+// Compose workflows. Secrets must be supplied through RunWithStdin.
+type RemoteRunner interface {
 	Run(command string) (string, error)
 	RunWithStdin(command string, input io.Reader) (string, error)
 	Close() error
 }
+
+type remoteRunner = RemoteRunner
 
 var connectDockerSSH = func(sshCfg config.SSHConfig, host string) (remoteRunner, error) {
 	return ssh.Connect(

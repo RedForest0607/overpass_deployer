@@ -1,4 +1,4 @@
-.PHONY: generate-studio-api check-studio-api-generated test-crosswalk test-studio test-studio-backend test-studio-backend-race test-studio-operational test-studio-e2e test-studio-browser-e2e test-studio-local build-crosswalk build-studio build-studio-backend build-studio-admin build-studio-release dev-studio-local smoke-studio-local
+.PHONY: generate-studio-api check-studio-api-generated test-crosswalk test-compose-fixture smoke-compose-real smoke-compose-podman test-studio test-studio-backend test-studio-backend-race test-studio-operational test-studio-e2e test-studio-browser-e2e test-studio-local build-crosswalk build-studio build-studio-backend build-studio-admin build-studio-release dev-studio-local smoke-studio-local
 
 generate-studio-api:
 	cd studio && npm run generate:api
@@ -8,6 +8,16 @@ check-studio-api-generated:
 
 test-crosswalk:
 	cd crosswalk && go test ./...
+
+test-compose-fixture:
+	node --test crosswalk/tests/compose/podman-smoke.test.mjs
+	cd crosswalk && go test ./internal/compose -run TestComposeApplySSHFixtureLifecycle -v
+
+smoke-compose-real:
+	cd crosswalk && bash ./tests/compose/run-real-smoke.sh
+
+smoke-compose-podman:
+	cd crosswalk && bash ./tests/compose/run-podman-smoke.sh
 
 test-studio: check-studio-api-generated
 	cd studio && ./node_modules/.bin/tsc --noEmit
@@ -24,6 +34,7 @@ test-studio: check-studio-api-generated
 	cd studio && node --test features/generation/generation-state.test.mjs
 	cd studio && node --test features/generation/package-contract.test.mjs
 	cd studio && node --test features/studio/validation-state.test.mjs
+	cd studio && node --test features/studio/unsaved-navigation.test.mjs
 
 test-studio-backend:
 	cd studio/backend && go test ./...

@@ -20,7 +20,6 @@ import {
   ArrowUpRight,
   ShieldCheck,
   Plus,
-  Folder,
   ChevronRight,
   CircleHelp,
   Check,
@@ -29,15 +28,13 @@ import {
   Download,
   FileUp,
   Undo2,
-  FileArchive,
+  Moon,
+  Sun,
 } from 'lucide-react';
 import {
   SidebarProvider,
   Sidebar,
   SidebarContent,
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
 } from '@/components/ui/sidebar';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
@@ -63,7 +60,6 @@ import Inspector from '../topology/Inspector';
 import Choice from '../topology/Choice';
 import { downloadBlob } from '../../lib/download';
 import ServerPackage from '../generation/ServerPackage';
-import { filesFor } from '../generation/preview';
 import ArtifactManager from '../artifacts/ArtifactManager';
 import { useArtifacts } from '../artifacts/useArtifacts';
 import { applyArtifactMappings } from '../artifacts/artifact-mapping';
@@ -72,11 +68,19 @@ import type { ArtifactAssignments } from '../artifacts/artifact-mapping';
 import { usePersistence } from './usePersistence';
 import { toAPI } from '../topology/api-adapter';
 import { defaultDeploymentProfile } from '../topology/api-adapter';
-import type { DeploymentProfile } from '../../lib/api/contracts';
+import type { DeploymentProfile, Environment } from '../../lib/api/contracts';
+import type { Project } from '../../lib/api/projects';
 import DeploymentProfileEditor from '../topology/DeploymentProfileEditor';
 import TopologyImportDialog from '../topology/TopologyImportDialog';
 import type { ImportedTopology } from '../topology/topology-import';
 import ProjectsPanel from './ProjectsPanel';
+import WorkspaceNavigation from './WorkspaceNavigation';
+import { useTheme } from './useTheme';
+import UnsavedChangesDialog from './UnsavedChangesDialog';
+import {
+  isSameTopologyContext,
+  requiresUnsavedConfirmation,
+} from './unsaved-navigation';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -98,6 +102,7 @@ export default function Studio() {
   );
 }
 function Workspace() {
+  const { theme, toggleTheme } = useTheme();
   const initial = useMemo(
     () => ({ nodes: [] as TopologyNode[], edges: [] as TopologyEdge[] }),
     [],
@@ -110,6 +115,11 @@ function Workspace() {
   );
   const [view, setView] = useState('projects');
   const [confirmReload, setConfirmReload] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<{
+    project: Project;
+    environment: Environment;
+  } | null>(null);
+  const [navigationAttempted, setNavigationAttempted] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
   const [deployment, setDeployment] = useState<DeploymentProfile>(
@@ -143,6 +153,13 @@ function Workspace() {
   );
   const project = persistence.active?.name ?? '프로젝트를 선택하세요';
   const environment = persistence.environment.toUpperCase();
+  const saveState = persistence.conflict
+    ? { tone: 'error', label: '저장 충돌' }
+    : persistence.busy
+      ? { tone: 'busy', label: '처리 중' }
+      : persistence.dirty
+        ? { tone: 'warning', label: '미저장 변경' }
+        : { tone: 'success', label: `저장됨 · r${persistence.revision}` };
   const artifacts = useArtifacts(persistence.active?.id);
   const localIssues = useMemo(() => validate(nodes, edges), [nodes, edges]);
   const issues = persistence.validation
@@ -158,19 +175,14 @@ function Workspace() {
     () => toAPI(nodes, edges, viewport, deployment),
     [nodes, edges, viewport, deployment],
   );
-  const files = useMemo(
-    () => ({
-      ...filesFor(nodes, edges, environment),
-      'topology.json': JSON.stringify(
-        {
-          environment: persistence.environment,
-          ...topologyDocument,
-        },
+  const topologyJSON = useMemo(
+    () =>
+      JSON.stringify(
+        { environment: persistence.environment, ...topologyDocument },
         null,
         2,
       ),
-    }),
-    [nodes, edges, environment, persistence.environment, topologyDocument],
+    [persistence.environment, topologyDocument],
   );
   const visibleEdges = useMemo(
     () =>
@@ -191,7 +203,7 @@ function Workspace() {
           edge.id === edgeId
             ? {
                 ...edge,
-                data: { ...(edge.data ?? {}), layout: normalized },
+                data: { ...edge.data, layout: normalized },
               }
             : edge,
         ),
@@ -204,7 +216,7 @@ function Workspace() {
       visibleEdges.map((edge) => ({
         ...edge,
         data: {
-          ...(edge.data ?? {}),
+          ...edge.data,
           onLayoutChange: (
             layout: NonNullable<TopologyEdge['data']>['layout'],
           ) => updateEdgeLayout(edge.id, layout),
@@ -327,6 +339,43 @@ function Workspace() {
     }
     setView('packages');
   }
+  async function openTopology(
+    target: { project: Project; environment: Environment },
+    discardChanges = false,
+  ) {
+    const opened = await persistence.open(target.project, target.environment, {
+      discardChanges,
+    });
+    if (opened) {
+      setPendingNavigation(null);
+      setNavigationAttempted(false);
+      setView('topology');
+    }
+  }
+  function requestTopology(project: Project, nextEnvironment: Environment) {
+    const current = {
+      projectId: persistence.active?.id,
+      environment: persistence.environment,
+    };
+    const target = { projectId: project.id, environment: nextEnvironment };
+    if (isSameTopologyContext(current, target)) {
+      setView('topology');
+      return;
+    }
+    if (requiresUnsavedConfirmation(persistence.dirty, current, target)) {
+      setNavigationAttempted(false);
+      setPendingNavigation({ project, environment: nextEnvironment });
+      return;
+    }
+    void openTopology({ project, environment: nextEnvironment });
+  }
+  async function saveAndNavigate() {
+    if (!pendingNavigation) return;
+    setNavigationAttempted(true);
+    const target = pendingNavigation;
+    if (!(await persistence.save())) return;
+    await openTopology(target, true);
+  }
   function mapArtifacts(
     assignments: ArtifactAssignments,
     availableArtifacts = artifacts.items,
@@ -352,35 +401,14 @@ function Workspace() {
             <Boxes /> overpass<span>STUDIO</span>
           </div>
           <SidebarContent>
-            <small>WORKSPACE</small>
-            <SidebarMenu>
-              {[
-                { id: 'projects', label: '프로젝트', Icon: Folder },
-                { id: 'artifacts', label: '파일', Icon: FileArchive },
-                { id: 'topology', label: '토폴로지', Icon: Workflow },
-                { id: 'packages', label: '배포 패키지', Icon: Package },
-              ].map(({ id, label, Icon }) => (
-                <SidebarMenuItem key={id}>
-                  <SidebarMenuButton
-                    className="nav-item"
-                    isActive={view === id}
-                    onClick={() =>
-                      id === 'packages' ? preview() : setView(id)
-                    }
-                  >
-                    <Icon size={18} />
-                    <span>{label}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-            <div className="nav-project">
-              <small>CURRENT PROJECT</small>
-              <p>
-                <span className="project-dot" /> {project}
-              </p>
-              <span className="secondary">Java · Development</span>
-            </div>
+            <WorkspaceNavigation
+              view={view}
+              project={persistence.active?.name}
+              environment={environment}
+              onNavigate={(next) =>
+                next === 'packages' ? preview() : setView(next)
+              }
+            />
           </SidebarContent>
           <div className="nav-bottom">
             <div className="workspace-id">
@@ -397,7 +425,8 @@ function Workspace() {
         <main className="main">
           <header>
             <span>
-              Workspace <ChevronRight size={13} /> <b>Commerce platform</b>{' '}
+              Workspace <ChevronRight size={13} />{' '}
+              <b>{view === 'projects' ? '프로젝트' : project}</b>{' '}
               <ChevronRight size={13} />{' '}
               {view === 'topology'
                 ? 'Topology'
@@ -407,14 +436,19 @@ function Workspace() {
                     ? 'Artifacts'
                     : 'Delivery package'}
             </span>
-            <span className="header-right">
-              <span className="green-dot" />{' '}
-              {persistence.busy
-                ? '요청 중'
-                : persistence.dirty
-                  ? '미저장 변경'
-                  : '로컬 DB · r' + persistence.revision}{' '}
-              <span className="avatar">OP</span>
+            <button
+              className="theme-toggle"
+              onClick={toggleTheme}
+              aria-label={
+                theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'
+              }
+              aria-pressed={theme === 'dark'}
+            >
+              {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+              <span>{theme === 'dark' ? '라이트 모드' : '다크 모드'}</span>
+            </button>
+            <span className="avatar" aria-label="Overpass workspace">
+              OP
             </span>
           </header>
           <section className="page-heading">
@@ -426,13 +460,20 @@ function Workspace() {
                   : view === 'artifacts'
                     ? '프로젝트 파일'
                     : project}{' '}
-                <span className="pill">{environment}</span>
+                {persistence.active && (
+                  <span className="workspace-context">
+                    <span className="pill">{environment}</span>
+                    <output className={`save-state save-state--${saveState.tone}`}>
+                      {saveState.label}
+                    </output>
+                  </span>
+                )}
               </h1>
               <p>
                 {view === 'projects'
                   ? '프로젝트와 환경별 배포 구성을 저장하고 관리하세요.'
                   : view === 'artifacts'
-                    ? 'JAR, 설정, 일반 파일과 배포 스크립트 입력값을 프로젝트 범위로 관리하세요.'
+                    ? `${project}에 등록된 JAR, 설정, 배포 파일을 관리하세요.`
                     : '서비스의 연결부터 배포 구성까지, 하나의 작업공간에서.'}
               </p>
             </div>
@@ -443,7 +484,7 @@ function Workspace() {
                 options={['DEV', 'QA', 'PROD']}
                 onChange={(value) => {
                   if (persistence.active)
-                    void persistence.open(
+                    requestTopology(
                       persistence.active,
                       value.toLowerCase() as 'dev' | 'qa' | 'prod',
                     );
@@ -452,6 +493,7 @@ function Workspace() {
               {view === 'topology' && (
                 <>
                   <button
+                    className={persistence.dirty ? 'primary' : undefined}
                     disabled={
                       persistence.busy ||
                       !persistence.active ||
@@ -480,7 +522,10 @@ function Workspace() {
                   >
                     <ShieldCheck size={16} /> 서버 검증
                   </button>
-                  <button className="primary" onClick={preview}>
+                  <button
+                    className={persistence.dirty ? undefined : 'primary'}
+                    onClick={preview}
+                  >
                     <Package size={16} /> 산출물 미리보기{' '}
                     <ArrowUpRight size={16} />
                   </button>
@@ -489,11 +534,7 @@ function Workspace() {
             </div>
           </section>
           <output
-            style={{
-              display: 'block',
-              margin: '0 30px 12px',
-              color: persistence.conflict ? '#b34e4e' : '#397b60',
-            }}
+            className={`workspace-notice${persistence.conflict ? ' workspace-notice--error' : ''}`}
           >
             {persistence.notice}
           </output>
@@ -501,10 +542,9 @@ function Workspace() {
             <ProjectsPanel
               projects={persistence.projects}
               busy={persistence.busy}
-              open={(project) => {
-                void persistence.open(project);
-                setView('topology');
-              }}
+              open={(project) =>
+                requestTopology(project, persistence.environment)
+              }
               edit={persistence.editProject}
               refresh={() => {
                 void persistence.refresh();
@@ -581,7 +621,7 @@ function Workspace() {
                     title="토폴로지 JSON 다운로드"
                     onClick={() =>
                       downloadBlob(
-                        new Blob([files['topology.json']], {
+                        new Blob([topologyJSON], {
                           type: 'application/json',
                         }),
                         project + '-topology.json',
@@ -669,6 +709,7 @@ function Workspace() {
                     }}
                   >
                     <ReactFlow
+                      colorMode={theme}
                       nodes={nodes}
                       edges={renderedEdges}
                       onNodesChange={onNodesChange}
@@ -690,9 +731,15 @@ function Workspace() {
                       maxZoom={1.5}
                       deleteKeyCode={null}
                     >
-                      <Background gap={20} size={1} color="#d5dfd9" />
+                      <Background
+                        gap={20}
+                        size={1}
+                        color={theme === 'dark' ? '#334b43' : '#d5dfd9'}
+                      />
                       <Controls showInteractive={false} />
                       <MiniMap
+                        bgColor={theme === 'dark' ? '#15221f' : '#fff'}
+                        maskColor={theme === 'dark' ? '#0b151ab3' : '#f0f2f3b3'}
                         nodeColor={(n) =>
                           catalog.find((c) => c.kind === n.data.kind)?.color ??
                           '#777'
@@ -802,7 +849,7 @@ function Workspace() {
                     </TabsContent>
                     <TabsContent value="blueprint">
                       <pre className="blueprint-code">
-                        {files['topology.json']}
+                        {topologyJSON}
                       </pre>
                     </TabsContent>
                   </Tabs>
@@ -844,6 +891,26 @@ function Workspace() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+        <UnsavedChangesDialog
+          open={pendingNavigation !== null}
+          busy={persistence.busy}
+          currentLabel={`${persistence.active?.name ?? '현재 프로젝트'} / ${environment}`}
+          targetLabel={`${pendingNavigation?.project.name ?? ''} / ${pendingNavigation?.environment.toUpperCase() ?? ''}`}
+          status={
+            navigationAttempted && !persistence.busy ? persistence.notice : ''
+          }
+          onCancel={() => {
+            setPendingNavigation(null);
+            setNavigationAttempted(false);
+          }}
+          onDiscard={() => {
+            if (pendingNavigation) {
+              setNavigationAttempted(true);
+              void openTopology(pendingNavigation, true);
+            }
+          }}
+          onSave={() => void saveAndNavigate()}
+        />
         <TopologyImportDialog
           open={importOpen}
           dirty={persistence.dirty}
