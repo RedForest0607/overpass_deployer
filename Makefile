@@ -32,6 +32,7 @@ test-studio: check-studio-api-generated
 	cd studio && node --test features/artifacts/artifact-mapping.test.mjs
 	cd studio && node --test features/artifacts/artifact-text.test.mjs
 	cd studio && node --test features/generation/generation-state.test.mjs
+	cd studio && node --test features/generation/package-polling.test.mjs
 	cd studio && node --test features/generation/package-contract.test.mjs
 	cd studio && node --test features/studio/validation-state.test.mjs
 	cd studio && node --test features/studio/unsaved-navigation.test.mjs

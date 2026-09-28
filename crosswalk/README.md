@@ -54,7 +54,7 @@ Deployer 프로젝트의 배포 실행 산출물입니다. 아래 개발 명령�
 
 - `deploy.yml`에 적는 로컬 파일 경로는 자동 생성되지 않습니다. 예: `jar.local_path`, `config_files[].local_path`, `script.local_path`, `extra_files[].local_path`
 - `ssh.host_key_checking: strict`를 쓰는 경우 `known_hosts` 파일이 미리 준비되어 있어야 합니다.
-- `deploy dashboard`의 로그 스트림은 기본 템플릿 규약인 `{base_dir}/logs/{app.name}.log`를 사용하며, 제어와 실배포는 선택한 단일 앱의 확인 모달을 거쳐 실행됩니다.
+- `deploy dashboard`의 로그 스트림은 `{base_dir}/logs/{app.name}.log` 또는 `monitor.log_path`를 사용하며, 제어와 실배포는 선택한 단일 앱의 확인 모달을 거쳐 실행됩니다. 서버/앱별 결과 표, `t` 선택 상태 재조회, `y` 실패 작업 확인 후 재시도를 제공합니다. [운영 범위와 단축키](../docs/dashboard-operations.md)를 확인하세요.
 - 대시보드는 하단 버튼의 마우스 클릭과 `r`(상태 갱신), `l`(로그), `s`(시작), `x`(중지), `R`(재시작), `d`(dry-run), `D`(배포), `q`(종료) 키를 지원합니다.
 
 ## 빠른 시작

@@ -104,7 +104,7 @@
 
 **완료 기준:** `docs/M4-PLAN.md` 체크리스트 전체 통과
 **선행 조건:** M1 완료. 단, Docker 공통 UX 항목은 M3 이후 확정
-**현재 상태:** [~] VM dashboard, 상태 조회, 로그 stream, 앱 제어 확인창, 선택 앱 dry-run/배포 경로는 구현 및 일부 DEV 검증 완료. 로그 경로 override, 상태 판별 규약 확정, 결과 요약/재시도 UX는 후속
+**현재 상태:** [~] VM dashboard의 상태·로그·제어·선택 배포, monitor override, 서버/앱 결과 요약과 선택 재시도 UX 구현 완료. 중복 실행 차단·확인 대상 고정과 가상 터미널 회귀 검증을 추가하고 VM/Docker/Compose 공통 UX 및 local-file Java 규약을 문서화했다. DEV custom 앱·PRD read-only 운영 인수는 대기.
 
 ---
 

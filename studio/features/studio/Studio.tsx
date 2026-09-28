@@ -8,9 +8,7 @@ import {
   MiniMap,
   useNodesState,
   useEdgesState,
-  addEdge,
   useReactFlow,
-  type Connection,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import {
@@ -39,8 +37,6 @@ import {
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   catalog,
-  createNode,
-  connectionType,
   validate,
   type Kind,
   type TopologyNode,
@@ -49,13 +45,7 @@ import {
 import ResourceNode, { ResourceIcon } from '../topology/ResourceNode';
 import TargetNode from '../topology/TargetNode';
 import CommunicationEdge from '../topology/CommunicationEdge';
-import {
-  isTarget,
-  isWorkload,
-  placeWorkload,
-  removeResource,
-  layoutPlacement,
-} from '../topology/placement';
+import { isTarget } from '../topology/placement';
 import Inspector from '../topology/Inspector';
 import Choice from '../topology/Choice';
 import { downloadBlob } from '../../lib/download';
@@ -68,8 +58,7 @@ import type { ArtifactAssignments } from '../artifacts/artifact-mapping';
 import { usePersistence } from './usePersistence';
 import { toAPI } from '../topology/api-adapter';
 import { defaultDeploymentProfile } from '../topology/api-adapter';
-import type { DeploymentProfile, Environment } from '../../lib/api/contracts';
-import type { Project } from '../../lib/api/projects';
+import type { DeploymentProfile } from '../../lib/api/contracts';
 import DeploymentProfileEditor from '../topology/DeploymentProfileEditor';
 import TopologyImportDialog from '../topology/TopologyImportDialog';
 import type { ImportedTopology } from '../topology/topology-import';
@@ -77,10 +66,8 @@ import ProjectsPanel from './ProjectsPanel';
 import WorkspaceNavigation from './WorkspaceNavigation';
 import { useTheme } from './useTheme';
 import UnsavedChangesDialog from './UnsavedChangesDialog';
-import {
-  isSameTopologyContext,
-  requiresUnsavedConfirmation,
-} from './unsaved-navigation';
+import { useTopologyNavigation } from './useTopologyNavigation';
+import { useTopologyEditor } from './useTopologyEditor';
 import {
   AlertDialog,
   AlertDialogContent,
@@ -115,11 +102,6 @@ function Workspace() {
   );
   const [view, setView] = useState('projects');
   const [confirmReload, setConfirmReload] = useState(false);
-  const [pendingNavigation, setPendingNavigation] = useState<{
-    project: Project;
-    environment: Environment;
-  } | null>(null);
-  const [navigationAttempted, setNavigationAttempted] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [viewport, setViewport] = useState({ x: 0, y: 0, zoom: 1 });
   const [deployment, setDeployment] = useState<DeploymentProfile>(
@@ -136,6 +118,17 @@ function Workspace() {
     nodes: TopologyNode[];
     edges: TopologyEdge[];
   } | null>(null);
+  const { place, valid, connect, add, remove, updateNode } = useTopologyEditor({
+    nodes,
+    edges,
+    selection,
+    setNodes,
+    setEdges,
+    setSelection,
+    setMessage,
+    setLastRemoval,
+    setPaletteOpen,
+  });
   const flow = useReactFlow();
   const persistence = usePersistence(
     { nodes, edges, viewport, deployment },
@@ -151,6 +144,14 @@ function Workspace() {
       void flow.setViewport(restoredViewport);
     },
   );
+  const {
+    pendingNavigation,
+    navigationAttempted,
+    requestTopology,
+    cancelNavigation,
+    saveAndNavigate,
+    discardAndNavigate,
+  } = useTopologyNavigation(persistence, () => setView('topology'));
   const project = persistence.active?.name ?? '프로젝트를 선택하세요';
   const environment = persistence.environment.toUpperCase();
   const saveState = persistence.conflict
@@ -238,11 +239,6 @@ function Workspace() {
     );
     void flow.setViewport(value.graph.viewport);
   }
-  function place(id: string, targetId?: string) {
-    const next = placeWorkload(nodes, edges, id, targetId);
-    setNodes(next.nodes);
-    setEdges(next.edges);
-  }
   const selectedNode =
     selection?.type === 'node'
       ? nodes.find((n) => n.id === selection.id)
@@ -251,86 +247,6 @@ function Workspace() {
     selection?.type === 'edge'
       ? edges.find((e) => e.id === selection.id)
       : undefined;
-  const valid = useCallback(
-    (c: Connection | TopologyEdge) => {
-      const from = nodes.find((n) => n.id === c.source),
-        to = nodes.find((n) => n.id === c.target);
-      return (
-        !!from &&
-        !!to &&
-        from.id !== to.id &&
-        !!connectionType(from.data.kind, to.data.kind) &&
-        !edges.some((e) => e.source === c.source && e.target === c.target)
-      );
-    },
-    [nodes, edges],
-  );
-  function connect(c: Connection) {
-    if (!valid(c)) {
-      setMessage('이 노드 조합은 연결할 수 없습니다.');
-      return;
-    }
-    const from = nodes.find((n) => n.id === c.source)!,
-      to = nodes.find((n) => n.id === c.target)!;
-    const relation = connectionType(from.data.kind, to.data.kind)!;
-    if (relation === 'deploys_to') {
-      place(from.id, to.id);
-      return;
-    }
-    const network = ['connects_to', 'routes_to'].includes(relation);
-    setEdges((es) =>
-      addEdge(
-        {
-          ...c,
-          type: 'communication',
-          label: network ? 'TCP · ' + to.data.port : relation,
-          data: network ? { protocol: 'TCP', port: to.data.port } : undefined,
-        },
-        es,
-      ),
-    );
-  }
-  function add(kind: Kind, position?: { x: number; y: number }) {
-    const id = crypto.randomUUID();
-    const node = createNode(
-      kind,
-      id,
-      position?.x ?? 550,
-      position?.y ?? 120 + (nodes.length % 3) * 190,
-    );
-    const targets = nodes.filter(isTarget);
-    const target = position
-      ? targets.find(
-          (n) =>
-            position.x >= n.position.x &&
-            position.x <= n.position.x + Number(n.style?.width ?? 340) &&
-            position.y >= n.position.y &&
-            position.y <= n.position.y + Number(n.style?.height ?? 300),
-        )
-      : targets.length === 1
-        ? targets[0]
-        : undefined;
-    const next =
-      isWorkload(node) && target
-        ? placeWorkload([...nodes, node], edges, id, target.id)
-        : { nodes: layoutPlacement([...nodes, node]), edges };
-    setNodes(next.nodes);
-    setEdges(next.edges);
-    setMessage('노드를 추가했습니다. 더블클릭해 설정하세요.');
-    setPaletteOpen(false);
-    setTimeout(() => flow.fitView({ padding: 0.25, duration: 250 }), 50);
-  }
-  function remove() {
-    if (!selection) return;
-    setLastRemoval({ nodes, edges });
-    if (selection.type === 'node') {
-      const next = removeResource(nodes, edges, selection.id);
-      setNodes(next.nodes);
-      setEdges(next.edges);
-    } else setEdges((es) => es.filter((e) => e.id !== selection.id));
-    setSelection(null);
-    setMessage('삭제했습니다. 실행 취소로 복구할 수 있습니다.');
-  }
 
   function preview() {
     if (!persistence.active) {
@@ -338,43 +254,6 @@ function Workspace() {
       return;
     }
     setView('packages');
-  }
-  async function openTopology(
-    target: { project: Project; environment: Environment },
-    discardChanges = false,
-  ) {
-    const opened = await persistence.open(target.project, target.environment, {
-      discardChanges,
-    });
-    if (opened) {
-      setPendingNavigation(null);
-      setNavigationAttempted(false);
-      setView('topology');
-    }
-  }
-  function requestTopology(project: Project, nextEnvironment: Environment) {
-    const current = {
-      projectId: persistence.active?.id,
-      environment: persistence.environment,
-    };
-    const target = { projectId: project.id, environment: nextEnvironment };
-    if (isSameTopologyContext(current, target)) {
-      setView('topology');
-      return;
-    }
-    if (requiresUnsavedConfirmation(persistence.dirty, current, target)) {
-      setNavigationAttempted(false);
-      setPendingNavigation({ project, environment: nextEnvironment });
-      return;
-    }
-    void openTopology({ project, environment: nextEnvironment });
-  }
-  async function saveAndNavigate() {
-    if (!pendingNavigation) return;
-    setNavigationAttempted(true);
-    const target = pendingNavigation;
-    if (!(await persistence.save())) return;
-    await openTopology(target, true);
   }
   function mapArtifacts(
     assignments: ArtifactAssignments,
@@ -463,7 +342,9 @@ function Workspace() {
                 {persistence.active && (
                   <span className="workspace-context">
                     <span className="pill">{environment}</span>
-                    <output className={`save-state save-state--${saveState.tone}`}>
+                    <output
+                      className={`save-state save-state--${saveState.tone}`}
+                    >
                       {saveState.label}
                     </output>
                   </span>
@@ -725,8 +606,7 @@ function Workspace() {
                       onEdgeClick={(_, e) =>
                         setSelection({ type: 'edge', id: e.id })
                       }
-                      fitView
-                      fitViewOptions={{ padding: 0.25 }}
+                      defaultViewport={viewport}
                       minZoom={0.3}
                       maxZoom={1.5}
                       deleteKeyCode={null}
@@ -848,9 +728,7 @@ function Workspace() {
                       </div>
                     </TabsContent>
                     <TabsContent value="blueprint">
-                      <pre className="blueprint-code">
-                        {topologyJSON}
-                      </pre>
+                      <pre className="blueprint-code">{topologyJSON}</pre>
                     </TabsContent>
                   </Tabs>
                 </section>
@@ -899,16 +777,8 @@ function Workspace() {
           status={
             navigationAttempted && !persistence.busy ? persistence.notice : ''
           }
-          onCancel={() => {
-            setPendingNavigation(null);
-            setNavigationAttempted(false);
-          }}
-          onDiscard={() => {
-            if (pendingNavigation) {
-              setNavigationAttempted(true);
-              void openTopology(pendingNavigation, true);
-            }
-          }}
+          onCancel={cancelNavigation}
+          onDiscard={() => void discardAndNavigate()}
           onSave={() => void saveAndNavigate()}
         />
         <TopologyImportDialog
@@ -930,28 +800,7 @@ function Workspace() {
           node={persistence.busy ? undefined : selectedNode}
           edge={persistence.busy ? undefined : selectedEdge}
           onClose={() => setSelection(null)}
-          updateNode={(data) => {
-            setNodes((ns) =>
-              ns.map((n) =>
-                n.id === selection?.id
-                  ? { ...n, data: { ...n.data, ...data } }
-                  : n,
-              ),
-            );
-            if (typeof data.port === 'number') {
-              setEdges((es) =>
-                es.map((e) =>
-                  e.target === selection?.id && e.data?.port !== undefined
-                    ? {
-                        ...e,
-                        data: { ...e.data, port: data.port! },
-                        label: 'TCP · ' + data.port,
-                      }
-                    : e,
-                ),
-              );
-            }
-          }}
+          updateNode={updateNode}
           remove={remove}
         />
       </div>

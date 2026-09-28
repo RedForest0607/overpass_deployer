@@ -180,12 +180,13 @@ export const deliveryAPI = {
       { signal },
     );
   },
-  downloadPackage(projectId: string, packageId: string) {
+  downloadPackage(projectId: string, packageId: string, signal?: AbortSignal) {
     return requestBlob(
       projectPath(projectId) +
         '/packages/' +
         encodeURIComponent(packageId) +
         '/download',
+      { signal },
     );
   },
 };

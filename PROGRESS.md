@@ -1,5 +1,9 @@
 # Progress
 
+- 2026-09-28 M5 이전 로컬 후속 개발: M4 dashboard에 서버/앱별 최근 결과 표, 선택 앱의 read-only 상태 재조회, 확인 후 실패 제어/배포 재시도와 중복 작업 차단을 추가했다. 작업 확인 후 선택이 바뀌어도 원래 대상을 유지하고, 성공 재시도는 이전 실패를 대체하며 상태 갱신·이력 제한으로 재시도 정보를 잃지 않는다. 조회·작업·선택 설정을 파일별로 분리하고 VM Java local-file 규약 및 CLI tag 선택과의 차이를 문서화했다. Studio는 편집 동작·미저장 탐색·패키지 생성·파일 미리보기를 전용 훅으로 분리하고 polling의 취소/리스너 정리·다운로드 취소·생성/이력 재시도 직렬화를 보강했다. backend delivery는 artifact 처리/검사, generation, package 생성/조회로 분리했다. 오류 검토: 잘못된 앱 재시도, 부분 실패 후 중복 실행, 취소된 패키지 응답으로 화면 덮어쓰기 모두 방지 로직과 회귀 테스트로 검토했다. M3/M7 외부 Docker/Harbor 및 M4 DEV custom·PRD read-only 인수는 대상·권한 확정 후 진행하며 M5는 미착수로 유지한다.
+
+- 2026-09-28 검증 결과: 프론트 66개 테스트·API drift·typecheck·변경 파일 lint·빌드, Studio backend 전체 race/test/vet, Crosswalk config/docker/compose/dashboard/monitor/CLI race/test 및 dashboard/monitor/CLI vet 통과. 가상 터미널에서 선택 재조회·확인 후 재시도와 대상 고정을 검증했고 실제 Chrome E2E 4개(artifact→package ZIP, snapshot 재시도, 미저장 이동 취소/버리기, 저장 충돌 시 이동 차단)가 통과했다. 브라우저 검증 중 자동 fitView가 저장된 viewport를 변경해 단순 로드가 dirty로 표시되는 문제를 발견해 저장 viewport로 시작하도록 수정했다. 실제 SSH fixture 및 외부 Docker/Registry·DEV/PRD 검증은 이번 실행에서 제외했다.
+
 - 2026-09-28 복잡성 리뷰 후 1차 정리: Studio에서 화면에 사용하지 않는 VM 초안 생성 호출을 제거하고 JSON 미리보기·다운로드의 직렬화를 하나로 통일했다. Compose 실제 smoke target의 bash 진입점을 수정하고, Podman connection을 선택 머신의 rootless SSH endpoint와 검증한 뒤 Registry/image/정리 및 하위 smoke에 일관되게 적용했다. VM 내부 provider 준비를 별도 스크립트로 분리하고 arm64/amd64를 감지하며 정리 실패를 보고하고 배포 실패·보존 요청 시 진단 환경을 유지하도록 보강했다. 예상 오류 3가지(다른 머신 조작, engine 접속 실패를 자산 미존재로 오인, 정리 실패에도 성공 보고)를 회귀 테스트로 검토했다. shell mock 5개, 프론트 61개 테스트·typecheck·API drift, 변경 파일 lint·Studio build·shell syntax·diff 검사를 통과했으며 실제 VM 다운로드/배포 smoke는 실행하지 않았다. 다음은 Studio 편집·탐색 및 패키지 비동기 훅 분리, delivery service 책임 분리와 외부 Docker/Registry 인수다.
 
 - 2026-09-23 M6.2 Studio Docker 생성기 완료: 격리 임시 Studio API/SQLite를 기동해 Registry·VM·Container topology 저장, package validation, 비동기 `crosswalk-docker` generation, metadata·ZIP 다운로드와 실제 `deploy docker --dry-run`까지 E2E를 실행했다. 동일 harness에서 기존 VM과 신규 Compose package도 각각 실제 Crosswalk dry-run으로 검증했고, Docker package가 `deploy.yml`만 포함하며 token 원문 없이 `token_env`, digest, port, environment 계약을 유지함을 확인했다. 테스트 종료 후 자체 API 프로세스와 `overpass-studio-e2e-*` 임시 디렉터리를 정리했으며 M6.2를 완료 처리했다. 실제 원격 Docker/Harbor smoke는 M3 Phase 5에 유지한다.
@@ -293,8 +297,8 @@
 - 실행 계층 후속: Redis/Elasticsearch 설치·실행 생성기, 포트 매핑 및 서비스별 복수 포트 모델, 실제 브라우저 조작 QA 추가.
 - 리뷰 후속: POSIX rename 미지원 서버의 안전한 교체 전략과 bootstrap ensure 명령의 실제 변경 여부 반환 규약을 확장 검토.
 - M3 Docker 후속: 구현된 Registry 인증·digest pull skip·컨테이너 교체/rollback을 지정 Docker SSH fixture와 Harbor에서 최종 smoke 검증.
-- 복잡성 정리 후속: Studio 편집·프로젝트 이동·패키지 비동기 상태를 전용 훅으로 분리하고, delivery service의 artifact 검사·generation·package 조회 책임을 분리.
-- `deploy dashboard`를 실제 DEV read-only 계정/환경에서 실행해 custom `script.mode: local-file` 앱의 로그 경로와 상태 판별 규약을 확인하고, 필요한 앱별 로그 경로 override 스키마를 확정
+- 복잡성 정리 후속: 완료된 Studio 훅·delivery 책임 분리와 Chrome E2E 이후 모바일·대용량 파일 시각 QA. M3/M7 외부 Docker/Registry smoke 및 M4 DEV custom·PRD read-only 인수는 별도 승인된 대상에서 수행.
+- `deploy dashboard`의 문서화된 Java/local-file 규약과 구현된 monitor override를 DEV custom 앱·PRD read-only 환경에서 인수 검증.
 - DEV OA 전용 ALB 전환 안정화 후 기존 `dev-external-alb` priority `50` OA rule 및 old ALB -> `dev_was:25205` SG rule cleanup 여부 결정
 - PRD 운영 private env와 `global-bundle.pem`을 git 추적 밖 경로로 확보한 뒤 `ops/stock_company/prod/deploy.yml`의 `.env.sample` 참조를 실제 private 자산으로 교체하고 PRD `--server-tag search` dry-run을 재시도
 - 원격 PRD/DEV running process와 배포 대상 checksum을 read-only로 재확인한 뒤 bastion deploy.yml checksum 동기화 여부를 승인받아 반영

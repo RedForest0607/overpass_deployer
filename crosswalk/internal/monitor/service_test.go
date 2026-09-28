@@ -1,10 +1,12 @@
 package monitor
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
 	"go-deployer/internal/config"
+	"go-deployer/internal/ssh"
 )
 
 func TestParseStatus(t *testing.T) {
@@ -23,6 +25,29 @@ func TestParseStatus(t *testing.T) {
 				t.Fatalf("parseStatus() = %#v, want %#v", actual, test.want)
 			}
 		})
+	}
+}
+
+func TestCollectTargetRetriesOnlySelectedServerAndPreservesIdentity(t *testing.T) {
+	cfg := &config.Config{SSH: config.SSHConfig{Port: 22}, Servers: []config.ServerConfig{
+		{Name: "healthy-server", Host: "healthy", Apps: []config.AppConfig{{Name: "first", Script: config.ScriptConfig{RemotePath: "/app/first.sh"}}}},
+		{Name: "failed-server", Host: "failed", SSHPort: 2222, Apps: []config.AppConfig{{Name: "second", Script: config.ScriptConfig{RemotePath: "/app/second.sh"}}}},
+	}}
+	calls := 0
+	service := Service{connect: func(settings config.SSHConfig, host string) (*ssh.Client, error) {
+		calls++
+		if host != "failed" || settings.Port != 2222 {
+			t.Fatalf("wrong retry endpoint: %s:%d", host, settings.Port)
+		}
+		return nil, errors.New("connection timed out")
+	}}
+	target := Target{ServerIndex: 1, AppIndex: 0}
+	status, err := service.CollectTarget(cfg, target)
+	if err != nil || calls != 1 || status.Target != target || status.State != StateUnavailable || status.AppName != "second" {
+		t.Fatalf("selected retry returned wrong identity/state: %#v, %v", status, err)
+	}
+	if _, err := service.CollectTarget(cfg, Target{ServerIndex: 5}); err == nil || calls != 1 {
+		t.Fatal("invalid retry target must fail before connecting")
 	}
 }
 

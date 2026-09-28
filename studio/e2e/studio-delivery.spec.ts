@@ -157,7 +157,7 @@ test('uploads artifacts, maps a topology, saves it, and verifies the downloaded 
   const contract = page.getByLabel('생성 패키지 계약 정보');
   await expect(contract).toContainText('차트 포맷crosswalk/v1');
   await expect(contract).toContainText('생성기crosswalk-vm@1.0.0');
-  await expect(contract).toContainText('토폴로지 스냅샷QA · revision 1');
+  await expect(contract).toContainText('토폴로지 스냅샷DEV · revision 1');
   await expect(page.getByText('생성 이력')).toBeVisible();
   await expect(page.getByText('완료', { exact: true }).first()).toBeVisible();
 
@@ -214,4 +214,126 @@ test('retries a failed immutable snapshot from generation history', async ({
       ).length;
     })
     .toBe(1);
+});
+
+async function navigationFixture(request: APIRequestContext, page: Page) {
+  const document = JSON.parse(await readFile(topologyPath, 'utf8'));
+  const projects = [];
+  for (const label of ['navigation-a', 'navigation-b']) {
+    const name = uniqueName(label);
+    const created = await request.post('/api/v1/projects', {
+      data: { name, description: 'navigation regression' },
+    });
+    expect(created.status()).toBe(201);
+    const id = created.headers().location.split('/').at(-1)!;
+    const saved = await request.put(`/api/v1/projects/${id}/topologies/dev`, {
+      data: {
+        expectedRevision: 0,
+        blueprint: document.blueprint,
+        layout: document.layout,
+      },
+    });
+    expect(saved.status()).toBe(200);
+    projects.push({ id, name });
+  }
+  const [first, second] = projects;
+  await page.goto(`/?project=${first.id}&environment=dev`);
+  await expect(page.getByRole('heading', { name: first.name })).toBeVisible();
+  await expect(page.getByText('저장됨 · r1', { exact: true })).toBeVisible();
+  document.blueprint.nodes.find(
+    (node: { id: string }) => node.id === 'app',
+  ).name = 'edited-commerce';
+  await page.getByRole('button', { name: 'JSON 가져오기' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.locator('input[type=file]').setInputFiles({
+    name: 'edited-topology.json',
+    mimeType: 'application/json',
+    buffer: Buffer.from(JSON.stringify(document)),
+  });
+  await dialog.getByRole('button', { name: '에디터에 적용' }).click();
+  await expect(
+    page.getByText(/edited-topology\.json을 에디터에 적용/),
+  ).toBeVisible();
+  return { first, second };
+}
+
+async function requestOtherTopology(page: Page, name: string) {
+  await page.getByRole('button', { name: '프로젝트', exact: true }).click();
+  await page
+    .locator('article')
+    .filter({ has: page.getByRole('heading', { name, exact: true }) })
+    .getByRole('button', { name: '토폴로지 열기' })
+    .click();
+  await expect(page.getByRole('alertdialog')).toBeVisible();
+}
+
+test('project navigation preserves edits on cancel and discards only after confirmation', async ({
+  page,
+  request,
+}) => {
+  const { first, second } = await navigationFixture(request, page);
+  await requestOtherTopology(page, second.name);
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: '취소', exact: true })
+    .click();
+  await expect(page.getByRole('alertdialog')).not.toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`project=${first.id}`));
+  await page.getByRole('button', { name: '토폴로지', exact: true }).click();
+  await expect(
+    page.getByText('edited-commerce', { exact: true }).first(),
+  ).toBeVisible();
+
+  await requestOtherTopology(page, second.name);
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: '저장하지 않고 이동' })
+    .click();
+  await expect(page).toHaveURL(new RegExp(`project=${second.id}`));
+  await expect(page.getByRole('heading', { name: second.name })).toBeVisible();
+  const original = await request.get(
+    `/api/v1/projects/${first.id}/topologies/dev`,
+  );
+  expect((await original.json()).revision).toBe(1);
+});
+
+test('save conflict keeps the navigation dialog open and never opens the other project', async ({
+  page,
+  request,
+}) => {
+  const { first, second } = await navigationFixture(request, page);
+  await page.route(
+    `**/api/v1/projects/${first.id}/topologies/dev`,
+    async (route) => {
+      if (route.request().method() !== 'PUT') {
+        await route.continue();
+        return;
+      }
+      await route.fulfill({
+        status: 409,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: { code: 'REVISION_CONFLICT', message: 'revision changed' },
+        }),
+      });
+    },
+  );
+  await requestOtherTopology(page, second.name);
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: '저장하고 이동' })
+    .click();
+  await expect(page.getByRole('alertdialog')).toBeVisible();
+  await expect(page.getByRole('alertdialog').getByRole('alert')).toContainText(
+    '저장 충돌',
+  );
+  await expect(page).toHaveURL(new RegExp(`project=${first.id}`));
+  await page
+    .getByRole('alertdialog')
+    .getByRole('button', { name: '취소', exact: true })
+    .click();
+  await page.getByRole('button', { name: '토폴로지', exact: true }).click();
+  await expect(
+    page.getByText('edited-commerce', { exact: true }).first(),
+  ).toBeVisible();
 });

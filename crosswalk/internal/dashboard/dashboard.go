@@ -3,26 +3,27 @@ package dashboard
 import (
 	"bufio"
 	"fmt"
-	"strings"
 	"sync"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 	"go-deployer/internal/config"
 	"go-deployer/internal/monitor"
-	"go-deployer/internal/vm"
-	"go-deployer/pkg/logger"
 )
 
 const maxActivityBytes = 256 * 1024
 
 // Run은 deploy.yml을 기준으로 상태, 로그, 제어, 선택 배포를 제공하는 터미널 대시보드를 시작한다.
 func Run(cfg *config.Config) error {
+	if !hasApplications(cfg) {
+		return fmt.Errorf("dashboard requires VM applications; use docker or compose CLI commands for container workloads")
+	}
 	dashboard := &application{
 		ui:      tview.NewApplication().EnableMouse(true),
 		cfg:     cfg,
 		monitor: monitor.NewService(),
 		table:   tview.NewTable().SetSelectable(true, false).SetFixed(1, 0),
+		results: tview.NewTable().SetFixed(1, 0),
 		activity: tview.NewTextView().
 			SetDynamicColors(true).
 			SetScrollable(true).
@@ -30,10 +31,12 @@ func Run(cfg *config.Config) error {
 	}
 	dashboard.table.SetBorder(true).SetTitle(" Application Status ")
 	dashboard.activity.SetBorder(true).SetTitle(" Activity and Logs ")
+	dashboard.results.SetBorder(true).SetTitle(" Recent Results (selected app: t retry status / y retry action) ")
 	dashboard.table.SetSelectionChangedFunc(func(row, _ int) { dashboard.selectRow(row) })
 
 	body := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(dashboard.table, 0, 2, true).
+		AddItem(dashboard.results, 0, 1, false).
 		AddItem(dashboard.activity, 0, 3, false)
 	dashboard.root = tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(body, 0, 1, true).
@@ -54,6 +57,12 @@ func Run(cfg *config.Config) error {
 		switch event.Rune() {
 		case 'r':
 			dashboard.requestRefresh()
+			return nil
+		case 't':
+			dashboard.requestStatusRetry()
+			return nil
+		case 'y':
+			dashboard.confirmRetry()
 			return nil
 		case 'l':
 			dashboard.requestLog()
@@ -88,20 +97,31 @@ func Run(cfg *config.Config) error {
 	return dashboard.ui.SetRoot(dashboard.root, true).Run()
 }
 
+type monitoringService interface {
+	Collect(*config.Config) []monitor.AppStatus
+	CollectTarget(*config.Config, monitor.Target) (monitor.AppStatus, error)
+	Control(*config.Config, monitor.Target, monitor.Action) (string, error)
+	OpenLog(*config.Config, monitor.Target) (*monitor.LogStream, error)
+}
+
 type application struct {
-	ui         *tview.Application
-	root       tview.Primitive
-	cfg        *config.Config
-	monitor    monitor.Service
-	table      *tview.Table
-	activity   *tview.TextView
-	rows       []monitor.AppStatus
-	selected   monitor.Target
-	logMu      sync.Mutex
-	log        *monitor.LogStream
-	logVersion uint64
-	confirming bool
-	deploying  bool
+	ui          *tview.Application
+	root        tview.Primitive
+	cfg         *config.Config
+	monitor     monitoringService
+	table       *tview.Table
+	results     *tview.Table
+	history     []operationResult
+	lastActions map[monitor.Target]operationResult
+	refreshing  bool
+	activity    *tview.TextView
+	rows        []monitor.AppStatus
+	selected    monitor.Target
+	logMu       sync.Mutex
+	log         *monitor.LogStream
+	logVersion  uint64
+	confirming  bool
+	deploying   bool
 }
 
 func (a *application) controls() *tview.Flex {
@@ -110,6 +130,8 @@ func (a *application) controls() *tview.Flex {
 		action func()
 	}{
 		{"Refresh", a.requestRefresh},
+		{"Retry status", a.requestStatusRetry},
+		{"Retry action", a.confirmRetry},
 		{"Log", a.requestLog},
 		{"Start", func() { a.confirmControl(monitor.ActionStart) }},
 		{"Stop", func() { a.confirmControl(monitor.ActionStop) }},
@@ -122,47 +144,6 @@ func (a *application) controls() *tview.Flex {
 		bar.AddItem(tview.NewButton(button.label).SetSelectedFunc(button.action), 0, 1, false)
 	}
 	return bar
-}
-
-// requestRefresh는 UI 이벤트 루프를 막지 않도록 상태 조회를 별도 goroutine으로 요청한다.
-func (a *application) requestRefresh() {
-	go a.refresh()
-}
-
-func (a *application) refresh() {
-	a.appendActivity("[yellow]Refreshing application status...[-]\n")
-	go func() {
-		statuses := a.monitor.Collect(a.cfg)
-		a.ui.QueueUpdateDraw(func() {
-			selected := a.selected
-			a.rows = statuses
-			a.table.Clear()
-			for column, title := range []string{"Server", "Application", "State", "PID", "Port", "Details"} {
-				a.table.SetCell(0, column, tview.NewTableCell(title).SetSelectable(false).SetTextColor(tcell.ColorYellow))
-			}
-			for row, status := range statuses {
-				a.table.SetCell(row+1, 0, tview.NewTableCell(status.ServerName+"\n"+status.Host))
-				a.table.SetCell(row+1, 1, tview.NewTableCell(status.AppName))
-				a.table.SetCell(row+1, 2, tview.NewTableCell(strings.ToUpper(string(status.State))).SetTextColor(stateColor(status.State)))
-				a.table.SetCell(row+1, 3, tview.NewTableCell(status.PID))
-				a.table.SetCell(row+1, 4, tview.NewTableCell(fmt.Sprintf("%d", status.Port)))
-				details := status.Message
-				if details == "" {
-					details = status.Process
-				}
-				a.table.SetCell(row+1, 5, tview.NewTableCell(details))
-			}
-			if len(statuses) > 0 {
-				selectedRow := statusRow(statuses, selected)
-				if selectedRow < 0 {
-					selectedRow = 0
-				}
-				a.selectRow(selectedRow + 1)
-				a.table.Select(selectedRow+1, 0)
-			}
-			a.appendActivityNow(fmt.Sprintf("[green]Status refresh completed: %d application(s).[-]\n", len(statuses)))
-		})
-	}()
 }
 
 // requestLog는 SSH 연결과 로그 stream 생성을 UI 이벤트 루프 밖에서 처리한다.
@@ -281,77 +262,6 @@ func (a *application) appName(target monitor.Target) string {
 	return "unknown"
 }
 
-func (a *application) confirmControl(action monitor.Action) {
-	status, ok := a.currentStatus()
-	if !ok {
-		a.appendActivityNow("[red]Select an application before controlling it.[-]\n")
-		return
-	}
-	target := status.Target
-	a.confirm(fmt.Sprintf("Run %s for %s on %s?", strings.ToUpper(string(action)), status.AppName, status.ServerName), func() { a.runControl(target, action) })
-}
-
-func (a *application) runControl(target monitor.Target, action monitor.Action) {
-	go func() {
-		output, err := a.monitor.Control(a.cfg, target, action)
-		if output != "" {
-			a.appendActivity(output + "\n")
-		}
-		if err != nil {
-			a.appendActivity(fmt.Sprintf("[red]%s failed: %v[-]\n", action, err))
-		} else {
-			a.appendActivity(fmt.Sprintf("[green]%s completed.[-]\n", action))
-		}
-		a.requestRefresh()
-	}()
-}
-
-func (a *application) confirmDeployment(dryRun bool) {
-	if a.deploying {
-		a.appendActivityNow("[yellow]A deployment is already running.[-]\n")
-		return
-	}
-	status, ok := a.currentStatus()
-	if !ok {
-		a.appendActivityNow("[red]Select an application before deploying it.[-]\n")
-		return
-	}
-	label := "DEPLOY"
-	if dryRun {
-		label = "DRY-RUN"
-	}
-	target := status.Target
-	a.confirm(fmt.Sprintf("Run %s for %s on %s?", label, status.AppName, status.ServerName), func() { a.runDeployment(target, dryRun) })
-}
-
-func (a *application) runDeployment(target monitor.Target, dryRun bool) {
-	selectedCfg, err := selectedDeploymentConfig(a.cfg, target)
-	if err != nil {
-		a.appendActivityNow(fmt.Sprintf("[red]Unable to prepare deployment: %v[-]\n", err))
-		return
-	}
-	a.deploying = true
-	go func() {
-		if err := config.ValidateAndApplyDefaults(selectedCfg); err != nil {
-			a.appendActivity(fmt.Sprintf("[red]Deployment configuration is invalid: %v[-]\n", err))
-			a.ui.QueueUpdateDraw(func() { a.deploying = false })
-			return
-		}
-
-		restoreOutput := logger.SetOutput(dashboardLogWriter{dashboard: a})
-		defer restoreOutput()
-		defer a.ui.QueueUpdateDraw(func() { a.deploying = false })
-		a.appendActivity("[yellow]Deployment started.[-]\n")
-		err := vm.RunWithOptions(selectedCfg, vm.RunOptions{DryRun: dryRun})
-		if err != nil {
-			a.appendActivity(fmt.Sprintf("[red]Deployment failed: %v[-]\n", err))
-		} else {
-			a.appendActivity("[green]Deployment completed.[-]\n")
-		}
-		a.requestRefresh()
-	}()
-}
-
 func (a *application) currentStatus() (monitor.AppStatus, bool) {
 	for _, status := range a.rows {
 		if status.Target == a.selected {
@@ -403,42 +313,4 @@ type dashboardLogWriter struct{ dashboard *application }
 func (w dashboardLogWriter) Write(p []byte) (int, error) {
 	w.dashboard.appendActivity(string(p))
 	return len(p), nil
-}
-
-// selectedDeploymentConfig은 선택 앱과 그 배포에 필요한 SSH/디렉터리 기본값만 새 설정으로 복사한다.
-// 서버 bootstrap, 공통 파일, utils, bastion 동기화는 대시보드의 앱 단위 배포 범위에서 제외한다.
-func selectedDeploymentConfig(cfg *config.Config, target monitor.Target) (*config.Config, error) {
-	if target.ServerIndex < 0 || target.ServerIndex >= len(cfg.Servers) {
-		return nil, fmt.Errorf("server selection is out of range")
-	}
-	server := cfg.Servers[target.ServerIndex]
-	apps := server.EffectiveApps()
-	if target.AppIndex < 0 || target.AppIndex >= len(apps) {
-		return nil, fmt.Errorf("application selection is out of range")
-	}
-
-	selectedServer := config.ServerConfig{
-		Host:    server.Host,
-		Name:    server.Name,
-		Tags:    append([]string(nil), server.Tags...),
-		SSHPort: server.SSHPort,
-		Apps:    []config.AppConfig{cloneAppConfig(apps[target.AppIndex])},
-	}
-	return &config.Config{
-		SSH: cfg.SSH,
-		DirectoryDefaults: config.DirectoryDefaultsConfig{
-			Rules: append([]config.DirectoryOwnershipRule(nil), cfg.DirectoryDefaults.Rules...),
-		},
-		Servers: []config.ServerConfig{selectedServer},
-	}, nil
-}
-
-func cloneAppConfig(app config.AppConfig) config.AppConfig {
-	cloned := app
-	cloned.Tags = append([]string(nil), app.Tags...)
-	cloned.Jvm.JavaOpts = append([]string(nil), app.Jvm.JavaOpts...)
-	cloned.ExtraOpts = append(config.StringList(nil), app.ExtraOpts...)
-	cloned.ConfigFiles = append([]config.ConfigFile(nil), app.ConfigFiles...)
-	cloned.ExtraFiles = append([]config.ExtraFile(nil), app.ExtraFiles...)
-	return cloned
 }

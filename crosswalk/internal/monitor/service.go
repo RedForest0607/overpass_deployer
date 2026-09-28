@@ -24,6 +24,9 @@ func (s Service) Collect(cfg *config.Config) []AppStatus {
 	statuses := make([]AppStatus, 0)
 	for serverIndex, server := range cfg.Servers {
 		apps := server.EffectiveApps()
+		if len(apps) == 0 {
+			continue
+		}
 		client, err := s.connect(server.SSHSettings(cfg.SSH), server.Host)
 		if err != nil {
 			for appIndex, app := range apps {
@@ -37,6 +40,20 @@ func (s Service) Collect(cfg *config.Config) []AppStatus {
 		_ = client.Close()
 	}
 	return statuses
+}
+
+// CollectTarget retries only the selected application's read-only status query.
+func (s Service) CollectTarget(cfg *config.Config, target Target) (AppStatus, error) {
+	server, app, err := resolveTarget(cfg, target)
+	if err != nil {
+		return AppStatus{}, err
+	}
+	client, err := s.connect(server.SSHSettings(cfg.SSH), server.Host)
+	if err != nil {
+		return unavailableStatus(target.ServerIndex, target.AppIndex, server, app, err), nil
+	}
+	defer client.Close()
+	return s.inspect(client, target, server, app), nil
 }
 
 func (s Service) inspect(client *ssh.Client, target Target, server config.ServerConfig, app config.AppConfig) AppStatus {

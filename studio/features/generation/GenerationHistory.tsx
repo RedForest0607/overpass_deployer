@@ -25,13 +25,17 @@ export default function GenerationHistory({
   environment,
   activeGeneration,
   onResume,
+  onRetry,
   generationBlockedReason,
+  operationBusy,
 }: {
   projectId: string;
   environment: Environment;
   activeGeneration: Generation | null;
   onResume: (generation: Generation) => Promise<void>;
+  onRetry: (generation: Generation, key: string) => Promise<void>;
   generationBlockedReason: string | null;
+  operationBusy: boolean;
 }) {
   const [items, setItems] = useState<Generation[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -103,6 +107,7 @@ export default function GenerationHistory({
   }, [projectId, environment]);
 
   async function retry(generation: Generation) {
+    if (operationBusy || actionId) return;
     if (generationBlockedReason) {
       setMessage(generationBlockedReason);
       return;
@@ -115,13 +120,7 @@ export default function GenerationHistory({
         key = crypto.randomUUID();
         retryKeys.current.set(generation.id, key);
       }
-      const queued = await deliveryAPI.retryGeneration(
-        projectId,
-        generation.id,
-        key,
-      );
-      setItems((current) => [queued, ...current]);
-      await onResume(queued);
+      await onRetry(generation, key);
     } catch (cause) {
       setMessage(
         cause instanceof Error
@@ -134,6 +133,7 @@ export default function GenerationHistory({
   }
 
   async function resume(generation: Generation) {
+    if (operationBusy || actionId) return;
     setActionId(generation.id);
     setMessage('');
     try {
@@ -179,7 +179,12 @@ export default function GenerationHistory({
               </p>
               {item.status === 'failed' ? (
                 <button
-                  disabled={loading || !!actionId || !!generationBlockedReason}
+                  disabled={
+                    loading ||
+                    operationBusy ||
+                    !!actionId ||
+                    !!generationBlockedReason
+                  }
                   title={generationBlockedReason || undefined}
                   onClick={() => void retry(item)}
                 >
@@ -187,7 +192,7 @@ export default function GenerationHistory({
                 </button>
               ) : (
                 <button
-                  disabled={loading || !!actionId}
+                  disabled={loading || operationBusy || !!actionId}
                   onClick={() => void resume(item)}
                 >
                   {item.status === 'succeeded'
