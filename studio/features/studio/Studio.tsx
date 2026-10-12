@@ -1,5 +1,5 @@
 'use client';
-import { useMemo, useState, useCallback } from 'react';
+import { lazy, Suspense, useMemo, useState, useCallback } from 'react';
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -42,8 +42,6 @@ import TopologyToolbar from './TopologyToolbar';
 import Inspector from '../topology/Inspector';
 import Choice from '../topology/Choice';
 import { downloadBlob } from '../../lib/download';
-import ServerPackage from '../generation/ServerPackage';
-import ArtifactManager from '../artifacts/ArtifactManager';
 import { useArtifacts } from '../artifacts/useArtifacts';
 import { applyArtifactMappings } from '../artifacts/artifact-mapping';
 import type { ArtifactAssignments } from '../artifacts/artifact-mapping';
@@ -52,7 +50,6 @@ import { usePersistence } from './usePersistence';
 import { toAPI } from '../topology/api-adapter';
 import { defaultDeploymentProfile } from '../topology/api-adapter';
 import type { DeploymentProfile } from '../../lib/api/contracts';
-import TopologyImportDialog from '../topology/TopologyImportDialog';
 import type { ImportedTopology } from '../topology/topology-import';
 import ProjectsPanel from './ProjectsPanel';
 import WorkspaceNavigation from './WorkspaceNavigation';
@@ -73,6 +70,20 @@ import {
 
 const nodeTypes = { resource: ResourceNode, targetGroup: TargetNode };
 const edgeTypes = { communication: CommunicationEdge };
+const ArtifactManager = lazy(() => import('../artifacts/ArtifactManager'));
+const ServerPackage = lazy(() => import('../generation/ServerPackage'));
+const TopologyImportDialog = lazy(
+  () => import('../topology/TopologyImportDialog'),
+);
+
+function ViewFallback({ label }: { label: string }) {
+  return (
+    <output className="workspace-notice" aria-live="polite">
+      {label} 불러오는 중…
+    </output>
+  );
+}
+
 export default function Studio() {
   return (
     <ReactFlowProvider>
@@ -423,36 +434,40 @@ function Workspace() {
               }}
             />
           ) : view === 'artifacts' ? (
-            <ArtifactManager
-              key={persistence.active?.id ?? 'none'}
-              projectId={persistence.active?.id}
-              projectName={project}
-              artifacts={artifacts.items}
-              busy={artifacts.busy}
-              error={artifacts.error}
-              upload={artifacts.upload}
-              refresh={artifacts.refresh}
-              readText={artifacts.readText}
-              nodes={nodes}
-              mapArtifacts={mapArtifacts}
-            />
+            <Suspense fallback={<ViewFallback label="파일 관리 화면" />}>
+              <ArtifactManager
+                key={persistence.active?.id ?? 'none'}
+                projectId={persistence.active?.id}
+                projectName={project}
+                artifacts={artifacts.items}
+                busy={artifacts.busy}
+                error={artifacts.error}
+                upload={artifacts.upload}
+                refresh={artifacts.refresh}
+                readText={artifacts.readText}
+                nodes={nodes}
+                mapArtifacts={mapArtifacts}
+              />
+            </Suspense>
           ) : view === 'packages' ? (
-            <ServerPackage
-              key={
-                (persistence.active?.id ?? 'none') +
-                ':' +
-                persistence.environment +
-                ':' +
-                persistence.revision
-              }
-              projectId={persistence.active?.id}
-              projectName={project}
-              environment={persistence.environment}
-              revision={persistence.revision}
-              dirty={persistence.dirty}
-              blueprint={topologyDocument.blueprint}
-              onBack={() => setView('topology')}
-            />
+            <Suspense fallback={<ViewFallback label="배포 패키지 화면" />}>
+              <ServerPackage
+                key={
+                  (persistence.active?.id ?? 'none') +
+                  ':' +
+                  persistence.environment +
+                  ':' +
+                  persistence.revision
+                }
+                projectId={persistence.active?.id}
+                projectName={project}
+                environment={persistence.environment}
+                revision={persistence.revision}
+                dirty={persistence.dirty}
+                blueprint={topologyDocument.blueprint}
+                onBack={() => setView('topology')}
+              />
+            </Suspense>
           ) : (
             <>
               <TopologyToolbar
@@ -634,13 +649,17 @@ function Workspace() {
           onDiscard={() => void discardAndNavigate()}
           onSave={() => void saveAndNavigate()}
         />
-        <TopologyImportDialog
-          open={importOpen}
-          dirty={persistence.dirty}
-          environment={persistence.environment}
-          onOpenChange={setImportOpen}
-          onImport={importTopology}
-        />
+        {importOpen && (
+          <Suspense fallback={<ViewFallback label="가져오기 화면" />}>
+            <TopologyImportDialog
+              open
+              dirty={persistence.dirty}
+              environment={persistence.environment}
+              onOpenChange={setImportOpen}
+              onImport={importTopology}
+            />
+          </Suspense>
+        )}
         <Inspector
           artifacts={artifacts.items}
           errors={

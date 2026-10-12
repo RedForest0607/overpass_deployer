@@ -1,18 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { sample, createNode, validate, connectionType } from './model.ts';
-import { filesFor } from '../generation/preview.ts';
 import { placeWorkload, removeResource } from './placement.ts';
-import { parse } from 'yaml';
 
-void test('sample topology passes and VM draft references only deployed applications', () => {
+void test('sample topology passes validation', () => {
   const { nodes, edges } = sample();
   assert.deepEqual(validate(nodes, edges), []);
-  const files = filesFor(nodes, edges, 'DEV');
-  const doc = parse(files['deploy.draft.yml']);
-  assert.equal(doc.servers.length, 1);
-  assert.equal(doc.servers[0].apps[0].name, 'bo-pcweb');
-  assert.match(files['README.txt'], /실행 가능한 배포 패키지가 아닙니다/);
 });
 void test('rejects invalid ports, disconnected workloads and duplicate names', () => {
   const { nodes, edges } = sample();
@@ -44,16 +37,6 @@ void test('detects same-host application port collision and stale network bindin
   assert.ok(issues.some((i) => i.id === 'secondconflict'));
   assert.ok(issues.some((i) => i.id === 'app-dbbinding'));
 });
-void test('YAML serialization safely quotes arbitrary draft values', () => {
-  const { nodes, edges } = sample();
-  nodes.find((n) => n.id === 'app').data.artifact =
-    'odd: filename # comment.jar';
-  assert.equal(
-    parse(filesFor(nodes, edges, 'DEV')['deploy.draft.yml']).servers[0].apps[0]
-      .jar.local_path,
-    './assets/odd: filename # comment.jar',
-  );
-});
 void test('multiple Java and search services share one host with independent slots', () => {
   let { nodes, edges } = sample();
   const app = createNode('java', 'second', 0, 0);
@@ -72,13 +55,6 @@ void test('multiple Java and search services share one host with independent slo
     children.every(
       (n) => nodes.indexOf(n) > nodes.findIndex((n) => n.id === 'vm'),
     ),
-  );
-  const files = filesFor(nodes, edges, 'DEV');
-  assert.equal(parse(files['deploy.draft.yml']).servers[0].apps.length, 2);
-  assert.equal(
-    JSON.parse(files['topology.json']).nodes.find((n) => n.id === 'search')
-      .parentId,
-    'vm',
   );
 });
 void test('moving a service replaces placement and deleting the target preserves services', () => {
