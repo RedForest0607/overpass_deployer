@@ -26,8 +26,6 @@ export function usePointerDrag({
 }: PointerDragOptions) {
   const state = useRef<DragState | null>(null);
   const suppressNextClick = useRef(false);
-  const callbacks = useRef({ onDrag, onClick });
-  callbacks.current = { onDrag, onClick };
 
   function finish(
     event: ReactPointerEvent<HTMLButtonElement>,
@@ -45,7 +43,7 @@ export function usePointerDrag({
     window.setTimeout(() => {
       suppressNextClick.current = false;
     }, 0);
-    if (!cancelled && !current.dragged) callbacks.current.onClick?.();
+    if (!cancelled && !current.dragged) onClick?.();
   }
 
   return {
@@ -75,7 +73,7 @@ export function usePointerDrag({
       current.dragged = true;
       event.preventDefault();
       event.stopPropagation();
-      callbacks.current.onDrag({ x: event.clientX, y: event.clientY });
+      onDrag({ x: event.clientX, y: event.clientY });
     },
     onPointerUp(event: ReactPointerEvent<HTMLButtonElement>) {
       finish(event, false);
@@ -86,7 +84,7 @@ export function usePointerDrag({
     onClick(event: ReactMouseEvent<HTMLButtonElement>) {
       event.preventDefault();
       event.stopPropagation();
-      if (!suppressNextClick.current) callbacks.current.onClick?.();
+      if (!suppressNextClick.current) onClick?.();
     },
   };
 }

@@ -52,22 +52,6 @@
   position: static;
   margin-top: 40px;
 }
-.dark {
-  --background: #15221f;
-  --foreground: #e3eee9;
-  --muted: #22352f;
-  --muted-foreground: #afc1b8;
-  --primary: #85cfad;
-  --primary-foreground: #10231a;
-  --border: #3a5046;
-  --sidebar: #111d19;
-  --sidebar-foreground: #e3eee9;
-  --sidebar-accent: #294c3d;
-  --sidebar-accent-foreground: #a0e3bd;
-  --sidebar-border: #3a5046;
-  --sidebar-primary: #85cfad;
-  --sidebar-ring: #85cfad;
-}
 .dark body {
   background: var(--background);
 }

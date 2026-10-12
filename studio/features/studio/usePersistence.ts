@@ -1,5 +1,11 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import {
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import { APIError } from '../../lib/api/client';
 import {
   projectsAPI,
@@ -39,7 +45,7 @@ export function usePersistence(graph: Graph, replace: (graph: Graph) => void) {
   const [active, setActive] = useState<Project | null>(null);
   const [environment, setEnvironment] = useState<Environment>('dev');
   const [revision, setRevision] = useState(0);
-  const [baseline, setBaseline] = useState(graphKey(graph));
+  const [baseline, setBaseline] = useState(() => graphKey(graph));
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState('');
   const [conflict, setConflict] = useState(false);
@@ -49,17 +55,13 @@ export function usePersistence(graph: Graph, replace: (graph: Graph) => void) {
   } | null>(null);
   const currentKey = graphKey(graph);
   const current = useRef({ graph, key: currentKey });
-  current.current = { graph, key: currentKey };
+  useLayoutEffect(() => {
+    current.current = { graph, key: currentKey };
+  }, [graph, currentKey]);
   const operation = useRef(0);
   const alive = useRef(true);
   const lock = useRef(false);
   const dirty = currentKey !== baseline;
-  useEffect(() => {
-    if (validation && validation.key !== currentKey) {
-      setValidation(null);
-      setNotice('설계가 변경되었습니다. 서버 검증을 다시 실행하세요.');
-    }
-  }, [currentKey, validation]);
 
   function report(error: unknown) {
     if (error instanceof APIError && error.status === 409) {
@@ -151,20 +153,27 @@ export function usePersistence(graph: Graph, replace: (graph: Graph) => void) {
       }
     }
   }
+  const initialRefresh = useEffectEvent(refresh);
   useEffect(() => {
+    const operationRef = operation;
+    const lockRef = lock;
+    const aliveRef = alive;
     alive.current = true;
-    void refresh();
+    let disposed = false;
+    void Promise.resolve().then(() => {
+      if (!disposed) return initialRefresh();
+    });
     return () => {
-      alive.current = false;
-      operation.current++;
-      lock.current = false;
+      disposed = true;
+      aliveRef.current = false;
+      operationRef.current++;
+      lockRef.current = false;
     };
   }, []);
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
       if (dirty) {
         event.preventDefault();
-        event.returnValue = '';
       }
     };
     window.addEventListener('beforeunload', warn);
@@ -189,6 +198,7 @@ export function usePersistence(graph: Graph, replace: (graph: Graph) => void) {
     if (!active || lock.current || conflict) return false;
     lock.current = true;
     setBusy(true);
+    setValidation(null);
     const snapshot = current.current;
     try {
       const result = await projectsAPI.save(
@@ -314,7 +324,10 @@ export function usePersistence(graph: Graph, replace: (graph: Graph) => void) {
     environment,
     revision,
     busy,
-    notice,
+    notice:
+      validation && validation.key !== currentKey
+        ? '설계가 변경되었습니다. 서버 검증을 다시 실행하세요.'
+        : notice,
     dirty,
     conflict,
     validation: validation?.key === currentKey ? validation.value : null,

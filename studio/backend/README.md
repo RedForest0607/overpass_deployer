@@ -76,6 +76,8 @@ artifact와 Crosswalk generation/package 경로를 지원합니다. 생성 요�
 `queued`로 저장한 뒤 202를 반환하고, 프로세스 내 worker가 비동기로 package를 생성합니다.
 서버 재시작 시 중단된 작업은 최대 3회 범위에서 복구하며 같은 Idempotency-Key와 동일 요청은 기존 결과를 반환합니다.
 DB에서 참조하지 않고 24시간 이상 지난 content-addressed blob과 업로드 임시 파일은 시작 시 정리합니다.
+참조 조회·결과 순회 또는 package manifest 해석에 실패하면 불완전한 참조 목록으로 정리를 진행하지 않고 오류를 반환합니다.
+패키지 생성 취소는 ZIP 입력·출력과 staging에 전달하며, 취소된 staging 임시 파일은 폐기합니다. 이미 commit된 immutable blob은 즉시 삭제하지 않으며, 참조되지 않으면 위 정리 정책을 따릅니다.
 package 목적 검증은 저장 없이 artifact 참조와 생성기 입력을 검사합니다.
 `crosswalk-vm`은 Java 실행 파일은 `jar`, 압축 해제 파일은 `archive`, 설정·스크립트·values는
 각 용도에 맞는 kind인지 생성 시 다시 확인합니다.

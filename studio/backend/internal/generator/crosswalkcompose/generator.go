@@ -32,16 +32,11 @@ type Bundle struct {
 	Files      []File
 }
 
-// Generate reuses the direct-Docker generator as the canonical Blueprint
-// validator, then projects each VM's containers into one Compose project.
+// Generate renders Compose directly from the common validated container model.
 func Generate(raw json.RawMessage, environment string) (Bundle, error) {
-	dockerBundle, err := crosswalkdocker.Generate(raw, environment)
+	source, err := crosswalkdocker.BuildTargets(raw, environment)
 	if err != nil {
 		return Bundle{}, err
-	}
-	var source dockerChart
-	if err := yaml.Unmarshal(dockerBundle.DeployYAML, &source); err != nil {
-		return Bundle{}, fmt.Errorf("decode validated Docker chart: %w", err)
 	}
 	if len(source.Servers) == 0 {
 		return Bundle{}, errors.New("crosswalk-compose requires at least one container server")

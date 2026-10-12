@@ -13,19 +13,10 @@ import {
 import '@xyflow/react/dist/style.css';
 import {
   Boxes,
-  Workflow,
   Package,
   ArrowUpRight,
   ShieldCheck,
-  Plus,
   ChevronRight,
-  CircleHelp,
-  Check,
-  AlertTriangle,
-  FileCode,
-  Download,
-  FileUp,
-  Undo2,
   Moon,
   Sun,
 } from 'lucide-react';
@@ -34,7 +25,6 @@ import {
   Sidebar,
   SidebarContent,
 } from '@/components/ui/sidebar';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import {
   catalog,
   validate,
@@ -42,10 +32,13 @@ import {
   type TopologyNode,
   type TopologyEdge,
 } from '../topology/model';
-import ResourceNode, { ResourceIcon } from '../topology/ResourceNode';
+import ResourceNode from '../topology/ResourceNode';
 import TargetNode from '../topology/TargetNode';
 import CommunicationEdge from '../topology/CommunicationEdge';
 import { isTarget } from '../topology/placement';
+import TopologyPalette from './TopologyPalette';
+import TopologyResults from './TopologyResults';
+import TopologyToolbar from './TopologyToolbar';
 import Inspector from '../topology/Inspector';
 import Choice from '../topology/Choice';
 import { downloadBlob } from '../../lib/download';
@@ -59,7 +52,6 @@ import { usePersistence } from './usePersistence';
 import { toAPI } from '../topology/api-adapter';
 import { defaultDeploymentProfile } from '../topology/api-adapter';
 import type { DeploymentProfile } from '../../lib/api/contracts';
-import DeploymentProfileEditor from '../topology/DeploymentProfileEditor';
 import TopologyImportDialog from '../topology/TopologyImportDialog';
 import type { ImportedTopology } from '../topology/topology-import';
 import ProjectsPanel from './ProjectsPanel';
@@ -171,7 +163,6 @@ function Workspace() {
         message: issue.message + ' (' + issue.path + ')',
       }))
     : localIssues;
-  const errors = issues.filter((i) => i.severity === 'error');
   const topologyDocument = useMemo(
     () => toAPI(nodes, edges, viewport, deployment),
     [nodes, edges, viewport, deployment],
@@ -433,6 +424,7 @@ function Workspace() {
             />
           ) : view === 'artifacts' ? (
             <ArtifactManager
+              key={persistence.active?.id ?? 'none'}
               projectId={persistence.active?.id}
               projectName={project}
               artifacts={artifacts.items}
@@ -463,110 +455,38 @@ function Workspace() {
             />
           ) : (
             <>
-              <div className="editor-toolbar">
-                <div>
-                  <Workflow size={16} />
-                  <strong>Topology editor</strong>
-                  <span className="toolbar-divider" />
-                  <span>{nodes.length} nodes</span>
-                  <span>{visibleEdges.length} connections</span>
-                </div>
-                <div>
-                  <button
-                    className="mobile-palette"
-                    onClick={() => setPaletteOpen(!paletteOpen)}
-                  >
-                    <Plus size={14} /> 노드
-                  </button>
-                  <button
-                    disabled={!lastRemoval}
-                    onClick={() => {
-                      if (lastRemoval) {
-                        setNodes(lastRemoval.nodes);
-                        setEdges(lastRemoval.edges);
-                        setLastRemoval(null);
-                        setMessage('삭제를 취소했습니다.');
-                      }
-                    }}
-                  >
-                    <Undo2 size={15} /> 삭제 취소
-                  </button>
-                  <button
-                    disabled={persistence.busy || !persistence.active}
-                    title="토폴로지 JSON 가져오기"
-                    onClick={() => setImportOpen(true)}
-                  >
-                    <FileUp size={15} /> JSON 가져오기
-                  </button>
-                  <button
-                    title="토폴로지 JSON 다운로드"
-                    onClick={() =>
-                      downloadBlob(
-                        new Blob([topologyJSON], {
-                          type: 'application/json',
-                        }),
-                        project + '-topology.json',
-                      )
-                    }
-                  >
-                    <Download size={15} /> JSON
-                  </button>
-                </div>
-              </div>
+              <TopologyToolbar
+                nodeCount={nodes.length}
+                connectionCount={visibleEdges.length}
+                paletteOpen={paletteOpen}
+                setPaletteOpen={setPaletteOpen}
+                canUndo={!!lastRemoval}
+                undo={() => {
+                  if (!lastRemoval) return;
+                  setNodes(lastRemoval.nodes);
+                  setEdges(lastRemoval.edges);
+                  setLastRemoval(null);
+                  setMessage('삭제를 취소했습니다.');
+                }}
+                canImport={!persistence.busy && !!persistence.active}
+                openImport={() => setImportOpen(true)}
+                downloadJSON={() =>
+                  downloadBlob(
+                    new Blob([topologyJSON], { type: 'application/json' }),
+                    project + '-topology.json',
+                  )
+                }
+              />
               <div
                 className="editor"
                 inert={persistence.busy || !persistence.active}
               >
-                <aside className={'palette ' + (paletteOpen ? 'open' : '')}>
-                  <h3>
-                    노드 라이브러리 <span>{catalog.length}</span>
-                  </h3>
-                  <p className="palette-help">클릭 또는 캔버스로 드래그</p>
-                  {Array.from(new Set(catalog.map((c) => c.group))).map(
-                    (group) => (
-                      <section key={group}>
-                        <small>{group}</small>
-                        {catalog
-                          .filter((c) => c.group === group)
-                          .map((c) => (
-                            <button
-                              key={c.kind}
-                              className="palette-node"
-                              draggable
-                              onDragStart={(e) => {
-                                e.dataTransfer.setData(
-                                  'application/overpass-node',
-                                  c.kind,
-                                );
-                                e.dataTransfer.effectAllowed = 'move';
-                              }}
-                              onClick={() => add(c.kind)}
-                            >
-                              <span style={{ color: c.color }}>
-                                <ResourceIcon kind={c.kind} size={18} />
-                              </span>
-                              <span>
-                                <strong>{c.title}</strong>
-                                <small>{c.subtitle}</small>
-                              </span>
-                              <Plus size={13} />
-                            </button>
-                          ))}
-                      </section>
-                    ),
-                  )}
-                  <div className="palette-note">
-                    <CircleHelp size={16} />
-                    <span>
-                      Java·Redis·Elasticsearch는 VM 내부로 드래그하세요. 실행
-                      대상은 설정에서 변경하며, 핸들은 통신 연결에 사용합니다.
-                    </span>
-                  </div>
-                  <DeploymentProfileEditor
-                    value={deployment}
-                    onChange={setDeployment}
-                  />
-                </aside>
+                <TopologyPalette
+                  paletteOpen={paletteOpen}
+                  deployment={deployment}
+                  setDeployment={setDeployment}
+                  add={add}
+                />
                 <section className="canvas-stack">
                   <div
                     className="flow-container"
@@ -648,89 +568,22 @@ function Workspace() {
                       </span>
                     </div>
                   </div>
-                  <Tabs
-                    className="result-tabs"
-                    value={tab}
-                    onValueChange={(v) => setTab(String(v))}
-                  >
-                    <TabsList variant="line">
-                      <TabsTrigger value="issues">
-                        <ShieldCheck size={15} /> 검증 결과{' '}
-                        <span
-                          className={
-                            errors.length ? 'issue-count' : 'good-count'
-                          }
-                        >
-                          {issues.length}
-                        </span>
-                      </TabsTrigger>
-                      <TabsTrigger value="blueprint">
-                        <FileCode size={15} /> Blueprint
-                      </TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="issues">
-                      <div className="issue-list">
-                        {issues.length ? (
-                          issues.map((issue) => (
-                            <button
-                              key={issue.id}
-                              className="issue-row"
-                              onClick={() => {
-                                if (issue.nodeId) {
-                                  setSelection({
-                                    type: 'node',
-                                    id: issue.nodeId,
-                                  });
-                                  void flow.fitView({
-                                    nodes: [{ id: issue.nodeId }],
-                                    duration: 250,
-                                    padding: 0.8,
-                                  });
-                                }
-                              }}
-                            >
-                              <AlertTriangle
-                                size={15}
-                                color={
-                                  issue.severity === 'error'
-                                    ? '#c45151'
-                                    : '#ac862f'
-                                }
-                              />
-                              <span>{issue.message}</span>
-                              <small>
-                                {
-                                  nodes.find((n) => n.id === issue.nodeId)?.data
-                                    .label
-                                }
-                              </small>
-                              <ChevronRight size={14} />
-                            </button>
-                          ))
-                        ) : (
-                          <div className="valid-state">
-                            <span>
-                              <Check size={20} />
-                            </span>
-                            <div>
-                              <strong>
-                                {persistence.validation
-                                  ? '서버 설계 검증을 통과했습니다.'
-                                  : '로컬 기본 검사 결과입니다. 서버 검증을 실행하세요.'}
-                              </strong>
-                              <p>
-                                연결 규칙과 VM 포트 충돌 검사가 완료되었습니다.
-                                실제 통신 가능 여부는 별도 확인이 필요합니다.
-                              </p>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </TabsContent>
-                    <TabsContent value="blueprint">
-                      <pre className="blueprint-code">{topologyJSON}</pre>
-                    </TabsContent>
-                  </Tabs>
+                  <TopologyResults
+                    tab={tab}
+                    setTab={setTab}
+                    issues={issues}
+                    nodes={nodes}
+                    serverValidated={!!persistence.validation}
+                    topologyJSON={topologyJSON}
+                    onSelectNode={(nodeId) => {
+                      setSelection({ type: 'node', id: nodeId });
+                      void flow.fitView({
+                        nodes: [{ id: nodeId }],
+                        duration: 250,
+                        padding: 0.8,
+                      });
+                    }}
+                  />
                 </section>
               </div>
               <footer>

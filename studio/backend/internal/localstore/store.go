@@ -1,6 +1,7 @@
 package localstore
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -94,6 +95,13 @@ func New(root, temporary string) (*Store, error) {
 }
 
 func (s *Store) Stage(reader io.Reader, limit int64) (Staged, error) {
+	return s.StageContext(context.Background(), reader, limit)
+}
+
+func (s *Store) StageContext(ctx context.Context, reader io.Reader, limit int64) (Staged, error) {
+	if err := ctx.Err(); err != nil {
+		return Staged{}, err
+	}
 	file, err := os.CreateTemp(s.temporary, "upload-*")
 	if err != nil {
 		return Staged{}, fmt.Errorf("create temporary blob: %w", err)
@@ -107,12 +115,18 @@ func (s *Store) Stage(reader io.Reader, limit int64) (Staged, error) {
 		}
 	}()
 	hash := sha256.New()
-	written, err := io.Copy(io.MultiWriter(file, hash), io.LimitReader(reader, limit+1))
+	written, err := io.Copy(ContextWriter{Context: ctx, Writer: io.MultiWriter(file, hash)}, io.LimitReader(contextReader{ctx: ctx, reader: reader}, limit+1))
 	if err != nil {
+		if contextErr := ctx.Err(); contextErr != nil {
+			return Staged{}, contextErr
+		}
 		return Staged{}, fmt.Errorf("write temporary blob: %w", err)
 	}
 	if written > limit {
 		return Staged{}, ErrTooLarge
+	}
+	if err := ctx.Err(); err != nil {
+		return Staged{}, err
 	}
 	if err := file.Sync(); err != nil {
 		return Staged{}, fmt.Errorf("sync temporary blob: %w", err)
@@ -163,21 +177,5 @@ func (s *Store) Open(key string) (*os.File, error) {
 }
 
 func (s *Store) PutGenerated(write func(io.Writer) error, limit int64) (Staged, string, error) {
-	reader, writer := io.Pipe()
-	done := make(chan error, 1)
-	go func() { err := write(writer); _ = writer.CloseWithError(err); done <- err }()
-	staged, err := s.Stage(reader, limit)
-	if err != nil {
-		_ = reader.CloseWithError(err)
-	}
-	writeErr := <-done
-	if err != nil {
-		return Staged{}, "", err
-	}
-	if writeErr != nil {
-		s.Abort(staged)
-		return Staged{}, "", writeErr
-	}
-	key, err := s.Commit(staged)
-	return staged, key, err
+	return s.PutGeneratedContext(context.Background(), func(_ context.Context, w io.Writer) error { return write(w) }, limit)
 }

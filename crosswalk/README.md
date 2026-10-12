@@ -113,6 +113,8 @@ ssh:
 - `user`, `key_path`는 필수입니다.
 - `host_key_checking`은 `strict`, `accept-new`, `insecure` 중 하나입니다.
 - `strict`일 때는 `known_hosts_path`가 실제 파일이어야 합니다.
+- `timeout_sec`는 SSH 접속 제한이며, 원격 명령 실행 제한과는 별개입니다. 각 명령은 기본 최대 10분 동안 기다리고 `RunContext` 호출자의 더 짧은 deadline도 적용합니다. 이 실행 제한은 현재 YAML 설정으로 변경하지 않습니다.
+- 명령 취소·시간 초과는 SSH 연결을 닫으므로 같은 연결을 재사용할 수 없습니다. 원격 프로세스 종료나 변경 사항의 롤백을 보장하지 않으므로 재실행 전 대상 상태를 확인해야 합니다.
 
 ### `bastion`
 

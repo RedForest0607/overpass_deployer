@@ -277,56 +277,6 @@ func (r *DeliveryRepository) RecoverGenerations(ctx context.Context, maxAttempts
 	return failedCount + requeuedCount, nil
 }
 
-func (r *DeliveryRepository) ReferencedBlobKeys(ctx context.Context) (map[string]struct{}, map[string]struct{}, error) {
-	artifactKeys, packageKeys := map[string]struct{}{}, map[string]struct{}{}
-	rows, err := r.db.QueryContext(ctx, `SELECT blob_key FROM artifacts`)
-	if err != nil {
-		return nil, nil, err
-	}
-	for rows.Next() {
-		var key string
-		if err := rows.Scan(&key); err != nil {
-			rows.Close()
-			return nil, nil, err
-		}
-		artifactKeys[key] = struct{}{}
-	}
-	if err := rows.Close(); err != nil {
-		return nil, nil, err
-	}
-	rows, err = r.db.QueryContext(ctx, `SELECT manifest_json FROM packages`)
-	if err != nil {
-		return nil, nil, err
-	}
-	for rows.Next() {
-		var manifest string
-		if err := rows.Scan(&manifest); err != nil {
-			rows.Close()
-			return nil, nil, err
-		}
-		var metadata map[string]string
-		if json.Unmarshal([]byte(manifest), &metadata) == nil && metadata["zipBlobKey"] != "" {
-			packageKeys[metadata["zipBlobKey"]] = struct{}{}
-		}
-	}
-	if err := rows.Close(); err != nil {
-		return nil, nil, err
-	}
-	rows, err = r.db.QueryContext(ctx, `SELECT blob_key FROM package_files WHERE blob_key<>''`)
-	if err != nil {
-		return nil, nil, err
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var key string
-		if err := rows.Scan(&key); err != nil {
-			return nil, nil, err
-		}
-		packageKeys[key] = struct{}{}
-	}
-	return artifactKeys, packageKeys, rows.Err()
-}
-
 func (r *DeliveryRepository) GetPackage(ctx context.Context, ownerID, projectID, id string) (domain.Package, error) {
 	var value domain.Package
 	var environment, createdAt, manifest string

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { DeploymentProfile } from '../../lib/api/contracts';
 import JsonEditorTextarea from './JsonEditorTextarea';
 
@@ -11,10 +11,24 @@ export default function DeploymentProfileEditor({
   value: DeploymentProfile;
   onChange: (value: DeploymentProfile) => void;
 }) {
+  return (
+    <ProfileDraft
+      key={JSON.stringify(value)}
+      value={value}
+      onChange={onChange}
+    />
+  );
+}
+
+function ProfileDraft({
+  value,
+  onChange,
+}: {
+  value: DeploymentProfile;
+  onChange: (value: DeploymentProfile) => void;
+}) {
   const [draft, setDraft] = useState(() => JSON.stringify(value, null, 2));
   const [error, setError] = useState('');
-
-  useEffect(() => setDraft(JSON.stringify(value, null, 2)), [value]);
 
   function apply(source = draft): string | void {
     try {

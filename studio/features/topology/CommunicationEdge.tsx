@@ -82,14 +82,20 @@ export default function CommunicationEdge(props: EdgeProps<TopologyEdge>) {
         screenToFlowPosition(screenPoint),
       );
       if (position !== undefined) {
-        updateLayout({ labelPosition: position, labelOffset: undefined });
+        data?.onLayoutChange?.({
+          bendOffset: data.layout?.bendOffset,
+          labelPosition: position,
+        });
       }
     },
     onClick: data?.onSelect,
   });
-  const displayLabel = String(
-    label ?? (data?.port ? `${data.protocol ?? 'TCP'} · ${data.port}` : ''),
-  );
+  const displayLabel =
+    label ?? (data?.port ? `${data.protocol ?? 'TCP'} · ${data.port}` : '');
+  const accessibleLabel =
+    typeof displayLabel === 'string' || typeof displayLabel === 'number'
+      ? `${displayLabel} 라벨 위치 이동`
+      : '통신 라벨 위치 이동';
 
   return (
     <>
@@ -132,7 +138,7 @@ export default function CommunicationEdge(props: EdgeProps<TopologyEdge>) {
         {displayLabel && (
           <button
             type="button"
-            aria-label={`${displayLabel} 라벨 위치 이동`}
+            aria-label={accessibleLabel}
             title="드래그: 선을 따라 포트 라벨 이동 · 더블클릭: 초기화"
             className="nodrag nopan pointer-events-auto absolute -translate-x-1/2 -translate-y-1/2 cursor-move rounded-md border border-[#dce5df] bg-white/95 px-2 py-1 font-mono text-[10px] whitespace-nowrap text-[#667c70] shadow-sm"
             style={{
@@ -142,10 +148,7 @@ export default function CommunicationEdge(props: EdgeProps<TopologyEdge>) {
             }}
             onDoubleClick={(event) => {
               event.stopPropagation();
-              updateLayout({
-                labelPosition: undefined,
-                labelOffset: undefined,
-              });
+              data?.onLayoutChange?.({ bendOffset: data.layout?.bendOffset });
             }}
             {...labelInteraction}
           >

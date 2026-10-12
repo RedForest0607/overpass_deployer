@@ -21,6 +21,21 @@ import {
 
 export default function TopologyImportDialog({
   open,
+  ...props
+}: ImportDialogProps) {
+  return open ? <ImportSession open={open} {...props} /> : null;
+}
+
+type ImportDialogProps = {
+  open: boolean;
+  dirty: boolean;
+  environment: Environment;
+  onOpenChange: (open: boolean) => void;
+  onImport: (value: ImportedTopology, filename?: string) => void;
+};
+
+function ImportSession({
+  open,
   dirty,
   environment,
   onOpenChange,
@@ -39,14 +54,11 @@ export default function TopologyImportDialog({
   const fileRead = useRef(0);
 
   useEffect(() => {
-    if (!open) {
-      fileRead.current += 1;
-      setSource('');
-      setFilename('');
-      setError('');
-      setPending(null);
-    }
-  }, [open]);
+    const token = fileRead;
+    return () => {
+      token.current += 1;
+    };
+  }, []);
 
   async function selectFile(file?: File) {
     const token = ++fileRead.current;

@@ -376,12 +376,22 @@ func isCrosswalkExtractableArchive(name string) bool {
 }
 
 func WriteZIP(w io.Writer, bundle Bundle) error {
+	return WriteZIPContext(context.Background(), w, bundle)
+}
+
+func WriteZIPContext(ctx context.Context, w io.Writer, bundle Bundle) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	zw := zip.NewWriter(w)
 	if err := writeZIPBytes(zw, "deploy.yml", bundle.DeployYAML); err != nil {
 		return err
 	}
 	seen := map[string]struct{}{"deploy.yml": {}}
 	for _, file := range bundle.Files {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		clean, err := safePackagePath(file.Path)
 		if err != nil {
 			return err
@@ -399,8 +409,7 @@ func WriteZIP(w io.Writer, bundle Bundle) error {
 			return fmt.Errorf("open artifact %s: %w", file.Artifact.ID, err)
 		}
 		hash := sha256.New()
-		written, copyErr := io.Copy(io.MultiWriter(entry, hash), reader)
-		closeErr := reader.Close()
+		written, copyErr, closeErr := copyArtifactContext(ctx, io.MultiWriter(entry, hash), reader)
 		if copyErr != nil {
 			return fmt.Errorf("copy artifact %s: %w", file.Artifact.ID, copyErr)
 		}
@@ -411,10 +420,24 @@ func WriteZIP(w io.Writer, bundle Bundle) error {
 			return fmt.Errorf("artifact %s changed while packaging", file.Artifact.ID)
 		}
 	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if err := zw.Close(); err != nil {
 		return fmt.Errorf("close ZIP: %w", err)
 	}
 	return nil
+}
+
+func copyArtifactContext(ctx context.Context, writer io.Writer, reader io.ReadCloser) (int64, error, error) {
+	stop := context.AfterFunc(ctx, func() { _ = reader.Close() })
+	written, copyErr := io.Copy(writer, reader)
+	stop()
+	closeErr := reader.Close()
+	if err := ctx.Err(); err != nil {
+		copyErr = err
+	}
+	return written, copyErr, closeErr
 }
 
 func writeZIPBytes(zw *zip.Writer, name string, body []byte) error {

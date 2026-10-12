@@ -216,7 +216,11 @@ test('retries a failed immutable snapshot from generation history', async ({
     .toBe(1);
 });
 
-async function navigationFixture(request: APIRequestContext, page: Page) {
+async function navigationFixture(
+  request: APIRequestContext,
+  page: Page,
+  edit = true,
+) {
   const document = JSON.parse(await readFile(topologyPath, 'utf8'));
   const projects = [];
   for (const label of ['navigation-a', 'navigation-b']) {
@@ -240,6 +244,7 @@ async function navigationFixture(request: APIRequestContext, page: Page) {
   await page.goto(`/?project=${first.id}&environment=dev`);
   await expect(page.getByRole('heading', { name: first.name })).toBeVisible();
   await expect(page.getByText('저장됨 · r1', { exact: true })).toBeVisible();
+  if (!edit) return { first, second };
   document.blueprint.nodes.find(
     (node: { id: string }) => node.id === 'app',
   ).name = 'edited-commerce';
@@ -295,6 +300,119 @@ test('project navigation preserves edits on cancel and discards only after confi
     `/api/v1/projects/${first.id}/topologies/dev`,
   );
   expect((await original.json()).revision).toBe(1);
+});
+
+test('old artifact refresh cannot populate another project when its list fails', async ({
+  page,
+  request,
+}) => {
+  const { first, second } = await navigationFixture(request, page, false);
+  const artifact = {
+    id: 'art_first',
+    projectId: first.id,
+    kind: 'config-template',
+    originalName: 'first-only.yml',
+    sizeBytes: 10,
+    sha256: 'a'.repeat(64),
+    createdAt: new Date().toISOString(),
+  };
+  let calls = 0;
+  let release!: () => void;
+  let requested!: () => void;
+  let completed!: () => void;
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const oldStarted = new Promise<void>((resolve) => {
+    requested = resolve;
+  });
+  const oldCompleted = new Promise<void>((resolve) => {
+    completed = resolve;
+  });
+  await page.route(
+    `**/api/v1/projects/${first.id}/artifacts?*`,
+    async (route) => {
+      calls++;
+      if (calls === 2) {
+        requested();
+        await pending;
+      }
+      try {
+        await route.fulfill({ json: { items: [artifact], nextCursor: null } });
+      } finally {
+        if (calls === 2) completed();
+      }
+    },
+  );
+  await page.route(`**/api/v1/projects/${second.id}/artifacts?*`, (route) =>
+    route.fulfill({
+      status: 503,
+      json: { error: { code: 'UNAVAILABLE', message: 'second list failed' } },
+    }),
+  );
+  await page.getByRole('button', { name: '파일', exact: true }).click();
+  // The topology fixture has already loaded its initial artifact list.
+  // Refresh once after installing the routes before delaying the next request.
+  await page.getByRole('button', { name: '새로고침', exact: true }).click();
+  await expect(
+    page.getByRole('cell', { name: artifact.originalName }),
+  ).toBeVisible();
+  await page.getByRole('button', { name: '새로고침', exact: true }).click();
+  await oldStarted;
+  try {
+    await page.getByRole('button', { name: '프로젝트', exact: true }).click();
+    await page
+      .locator('article')
+      .filter({
+        has: page.getByRole('heading', { name: second.name, exact: true }),
+      })
+      .getByRole('button', { name: '토폴로지 열기' })
+      .click();
+    await expect(page).toHaveURL(new RegExp(`project=${second.id}`));
+    await page.getByRole('button', { name: '파일', exact: true }).click();
+    await expect(page.getByText('second list failed')).toBeVisible();
+  } finally {
+    release();
+  }
+  await oldCompleted;
+  await expect(
+    page.getByRole('cell', { name: artifact.originalName }),
+  ).not.toBeVisible();
+  await expect(page.getByText('0개의 immutable artifact')).toBeVisible();
+});
+
+test('workspace remains responsive and import drafts reset on close', async ({
+  page,
+  request,
+}) => {
+  await navigationFixture(request, page, false);
+  await page.getByRole('button', { name: 'JSON 가져오기' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('textbox').fill('unfinished import');
+  await dialog.getByRole('button', { name: '취소', exact: true }).click();
+  await page.getByRole('button', { name: 'JSON 가져오기' }).click();
+  await expect(page.getByRole('dialog').getByRole('textbox')).toHaveValue('');
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: '취소', exact: true })
+    .click();
+
+  const widths = [];
+  for (const width of [1366, 1920]) {
+    await page.setViewportSize({ width, height: 1080 });
+    const box = await page.locator('main.main').boundingBox();
+    expect(box!.width).toBeGreaterThan(width - 250);
+    widths.push(box!.width);
+  }
+  expect(widths[1] - widths[0]).toBeGreaterThan(500);
+  await page.getByRole('button', { name: '다크 모드로 전환' }).click();
+  await expect(page.locator('html')).toHaveClass(/dark/);
+  await page.setViewportSize({ width: 640, height: 900 });
+  const mobileBox = await page.locator('main.main').boundingBox();
+  expect(mobileBox!.width).toBeLessThanOrEqual(640);
+  await expect(
+    page.getByRole('button', { name: '라이트 모드로 전환' }),
+  ).toBeVisible();
 });
 
 test('save conflict keeps the navigation dialog open and never opens the other project', async ({

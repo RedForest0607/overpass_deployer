@@ -54,6 +54,7 @@ export const deliveryAPI = {
     kind: ArtifactKind,
     file: File,
     displayName?: string,
+    signal?: AbortSignal,
   ) {
     const form = new FormData();
     form.set('kind', kind);
@@ -62,6 +63,7 @@ export const deliveryAPI = {
     return request<Artifact>(projectPath(projectId) + '/artifacts', {
       method: 'POST',
       body: form,
+      signal,
     });
   },
   getArtifactContent(

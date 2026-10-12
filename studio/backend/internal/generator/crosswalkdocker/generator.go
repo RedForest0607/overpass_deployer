@@ -74,17 +74,30 @@ type containerSpec struct {
 }
 
 func Generate(raw json.RawMessage, environment string) (Bundle, error) {
+	value, err := BuildTargets(raw, environment)
+	if err != nil {
+		return Bundle{}, err
+	}
+	body, err := yaml.Marshal(value)
+	if err != nil {
+		return Bundle{}, fmt.Errorf("render deploy.yml: %w", err)
+	}
+	return Bundle{DeployYAML: body}, nil
+}
+
+// BuildTargets validates Blueprint container placements without serializing YAML.
+func BuildTargets(raw json.RawMessage, environment string) (chart, error) {
 	var document blueprint
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&document); err != nil {
-		return Bundle{}, fmt.Errorf("decode blueprint: %w", err)
+		return chart{}, fmt.Errorf("decode blueprint: %w", err)
 	}
 	if document.APIVersion != "studio.deployer/v1" {
-		return Bundle{}, errors.New("unsupported blueprint version")
+		return chart{}, errors.New("unsupported blueprint version")
 	}
 	if document.Deployment == nil || strings.TrimSpace(document.Deployment.SSH.User) == "" || strings.TrimSpace(document.Deployment.SSH.KeyPath) == "" {
-		return Bundle{}, errors.New("deployment.ssh.user and keyPath are required")
+		return chart{}, errors.New("deployment.ssh.user and keyPath are required")
 	}
 
 	byID := make(map[string]node, len(document.Nodes))
@@ -97,7 +110,7 @@ func Generate(raw json.RawMessage, environment string) (Bundle, error) {
 		case "vm":
 			var spec vmSpec
 			if err := json.Unmarshal(item.Spec, &spec); err != nil {
-				return Bundle{}, fmt.Errorf("decode VM %s: %w", item.Name, err)
+				return chart{}, fmt.Errorf("decode VM %s: %w", item.Name, err)
 			}
 			server := chartServer{Host: spec.Host, Name: item.Name, Tags: []string{strings.ToLower(environment)}}
 			if spec.Deployment != nil {
@@ -110,25 +123,25 @@ func Generate(raw json.RawMessage, environment string) (Bundle, error) {
 			serverOrder = append(serverOrder, item.ID)
 		case "registry":
 			if registry != nil {
-				return Bundle{}, errors.New("crosswalk-docker requires exactly one registry node")
+				return chart{}, errors.New("crosswalk-docker requires exactly one registry node")
 			}
 			var spec registrySpec
 			if err := json.Unmarshal(item.Spec, &spec); err != nil {
-				return Bundle{}, fmt.Errorf("decode registry %s: %w", item.Name, err)
+				return chart{}, fmt.Errorf("decode registry %s: %w", item.Name, err)
 			}
 			endpoint := strings.ToLower(strings.TrimSpace(spec.Endpoint))
 			if !validRegistryHost(endpoint) {
-				return Bundle{}, errors.New("registry endpoint must be a host with an optional port, without a URL scheme")
+				return chart{}, errors.New("registry endpoint must be a host with an optional port, without a URL scheme")
 			}
 			username := strings.TrimSpace(spec.Username)
 			if !registryUsernamePattern.MatchString(username) || !tokenEnvironmentPattern.MatchString(spec.TokenEnv) {
-				return Bundle{}, errors.New("registry username and tokenEnv are required")
+				return chart{}, errors.New("registry username and tokenEnv are required")
 			}
 			registry = &chartRegistry{Host: endpoint, Username: username, TokenEnv: spec.TokenEnv}
 		}
 	}
 	if registry == nil {
-		return Bundle{}, errors.New("crosswalk-docker requires exactly one registry node")
+		return chart{}, errors.New("crosswalk-docker requires exactly one registry node")
 	}
 
 	containerCount := 0
@@ -138,21 +151,21 @@ func Generate(raw json.RawMessage, environment string) (Bundle, error) {
 		}
 		server := servers[item.TargetRef]
 		if server == nil {
-			return Bundle{}, fmt.Errorf("container placement target %q is not a VM", item.TargetRef)
+			return chart{}, fmt.Errorf("container placement target %q is not a VM", item.TargetRef)
 		}
 		workload, exists := byID[item.WorkloadRef]
 		if !exists || workload.Kind != "container" {
-			return Bundle{}, fmt.Errorf("container placement workload %q is not a container", item.WorkloadRef)
+			return chart{}, fmt.Errorf("container placement workload %q is not a container", item.WorkloadRef)
 		}
 		container, err := buildContainer(workload)
 		if err != nil {
-			return Bundle{}, err
+			return chart{}, err
 		}
 		server.Containers = append(server.Containers, container)
 		containerCount++
 	}
 	if containerCount == 0 {
-		return Bundle{}, errors.New("at least one container placement is required")
+		return chart{}, errors.New("at least one container placement is required")
 	}
 
 	profile := document.Deployment
@@ -167,11 +180,7 @@ func Generate(raw json.RawMessage, environment string) (Bundle, error) {
 			value.Servers = append(value.Servers, *servers[id])
 		}
 	}
-	body, err := yaml.Marshal(value)
-	if err != nil {
-		return Bundle{}, fmt.Errorf("render deploy.yml: %w", err)
-	}
-	return Bundle{DeployYAML: body}, nil
+	return value, nil
 }
 
 func validRegistryHost(value string) bool {

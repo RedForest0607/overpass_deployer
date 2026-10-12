@@ -2,6 +2,7 @@ package ssh
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -73,17 +74,40 @@ func (c *Client) RawClient() *ssh.Client {
 
 // Run은 원격 명령을 실행하고 stdout/stderr를 함께 수집해 호출자에게 돌려준다.
 func (c *Client) Run(cmd string) (string, error) {
-	return c.run(cmd, nil)
+	return c.RunContext(context.Background(), cmd)
+}
+
+// DefaultCommandTimeout is separate from the SSH connection timeout. Package
+// installation may legitimately take longer than a connection handshake.
+const DefaultCommandTimeout = 10 * time.Minute
+
+func (c *Client) RunContext(ctx context.Context, cmd string) (string, error) {
+	return c.run(ctx, cmd, nil)
 }
 
 // RunWithStdin은 비밀값을 명령 인자에 포함하지 않고 원격 프로세스의 표준 입력으로 전달한다.
 func (c *Client) RunWithStdin(cmd string, input io.Reader) (string, error) {
-	return c.run(cmd, input)
+	return c.RunWithStdinContext(context.Background(), cmd, input)
 }
 
-func (c *Client) run(cmd string, input io.Reader) (string, error) {
+func (c *Client) RunWithStdinContext(ctx context.Context, cmd string, input io.Reader) (string, error) {
+	return c.run(ctx, cmd, input)
+}
+
+func (c *Client) run(parent context.Context, cmd string, input io.Reader) (string, error) {
+	ctx, cancel := context.WithTimeout(parent, DefaultCommandTimeout)
+	defer cancel()
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	// Closing the transport also releases a blocked NewSession or session.Run.
+	stop := context.AfterFunc(ctx, func() { _ = c.client.Close() })
+	defer stop()
 	session, err := c.client.NewSession()
 	if err != nil {
+		if ctx.Err() != nil {
+			return "", ctx.Err()
+		}
 		return "", fmt.Errorf("creating ssh session: %w", err)
 	}
 	defer session.Close()
@@ -95,7 +119,7 @@ func (c *Client) run(cmd string, input io.Reader) (string, error) {
 	session.Stdout = &buf
 	session.Stderr = &buf
 
-	err = session.Run(cmd)
+	err = runCommandContext(ctx, session, cmd)
 	outStr := buf.String()
 
 	if err != nil {

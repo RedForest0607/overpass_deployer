@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, type SyntheticEvent } from 'react';
+import { useEffect, useRef, useState, type SyntheticEvent } from 'react';
 import {
   Check,
   Clipboard,
@@ -91,6 +91,8 @@ export default function ArtifactManager({
   } | null>(null);
   const [editorLoading, setEditorLoading] = useState('');
   const input = useRef<HTMLInputElement>(null);
+  const editorRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => editorRequest.current?.abort(), []);
 
   async function submit(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -117,19 +119,24 @@ export default function ArtifactManager({
   }
 
   async function openEditor(artifact: Artifact) {
+    editorRequest.current?.abort();
+    const controller = new AbortController();
+    editorRequest.current = controller;
     setMessage('');
     setEditorLoading(artifact.id);
     try {
-      const result = await readText(artifact.id);
+      const result = await readText(artifact.id, controller.signal);
+      if (controller.signal.aborted) return;
       setEditor({ artifact, content: result.content });
     } catch (cause) {
+      if (controller.signal.aborted) return;
       setMessage(
         cause instanceof Error
           ? cause.message
           : '파일 내용을 불러오지 못했습니다.',
       );
     } finally {
-      setEditorLoading('');
+      if (!controller.signal.aborted) setEditorLoading('');
     }
   }
 

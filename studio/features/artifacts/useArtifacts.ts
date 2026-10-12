@@ -5,71 +5,106 @@ import {
   type Artifact,
   type ArtifactKind,
 } from '../../lib/api/delivery';
+import { ArtifactRequests } from './artifact-requests';
+
+type ArtifactState = {
+  projectId?: string;
+  items: Artifact[];
+  busy: boolean;
+  error: string;
+};
 
 export function useArtifacts(projectId?: string) {
-  const [items, setItems] = useState<Artifact[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const currentProject = useRef(projectId);
+  const [state, setState] = useState<ArtifactState>({
+    items: [],
+    busy: false,
+    error: '',
+  });
+  const requests = useRef(new ArtifactRequests());
 
-  const refresh = useCallback(
-    async (signal?: AbortSignal) => {
-      if (!projectId) {
-        setItems([]);
-        return;
-      }
-      setBusy(true);
-      setError('');
-      try {
-        setItems(await deliveryAPI.listArtifacts(projectId, signal));
-      } catch (cause) {
-        if (!(cause instanceof DOMException && cause.name === 'AbortError')) {
-          setError(
+  const refresh = useCallback(async () => {
+    if (!projectId) return;
+    const request = requests.current.begin(projectId, 'list');
+    if (!request) return;
+    setState((current) => ({
+      projectId,
+      items: current.projectId === projectId ? current.items : [],
+      busy: true,
+      error: '',
+    }));
+    try {
+      const items = await deliveryAPI.listArtifacts(
+        projectId,
+        request.controller.signal,
+      );
+      if (requests.current.isCurrent(request))
+        setState({ projectId, items, busy: false, error: '' });
+    } catch (cause) {
+      if (requests.current.isCurrent(request))
+        setState((current) => ({
+          ...current,
+          busy: false,
+          error:
             cause instanceof Error
               ? cause.message
               : '파일 목록을 불러오지 못했습니다.',
-          );
-        }
-      } finally {
-        if (!signal?.aborted) setBusy(false);
-      }
-    },
-    [projectId],
-  );
+        }));
+    } finally {
+      requests.current.finish(request);
+    }
+  }, [projectId]);
 
   useEffect(() => {
-    currentProject.current = projectId;
-    const controller = new AbortController();
+    const scope = requests.current;
+    scope.cancel();
+    let disposed = false;
     void Promise.resolve().then(() => {
-      if (!controller.signal.aborted) return refresh(controller.signal);
+      if (!disposed) return refresh();
     });
-    return () => controller.abort();
-  }, [projectId, refresh]);
+    return () => {
+      disposed = true;
+      scope.cancel();
+    };
+  }, [refresh]);
 
   async function upload(kind: ArtifactKind, file: File, displayName?: string) {
-    if (!projectId || busy) return null;
-    setBusy(true);
-    setError('');
+    if (!projectId) return null;
+    const request = requests.current.begin(projectId, 'upload');
+    if (!request) return null;
+    setState((current) => ({
+      projectId,
+      items: current.projectId === projectId ? current.items : [],
+      busy: true,
+      error: '',
+    }));
     try {
       const created = await deliveryAPI.uploadArtifact(
         projectId,
         kind,
         file,
         displayName,
+        request.controller.signal,
       );
-      if (currentProject.current !== projectId) return null;
-      setItems((current) => [created, ...current]);
+      if (!requests.current.isCurrent(request)) return null;
+      setState((current) => ({
+        ...current,
+        items: [created, ...current.items],
+        busy: false,
+      }));
       return created;
     } catch (cause) {
-      if (currentProject.current === projectId)
-        setError(
-          cause instanceof Error
-            ? cause.message
-            : '파일을 업로드하지 못했습니다.',
-        );
+      if (requests.current.isCurrent(request))
+        setState((current) => ({
+          ...current,
+          busy: false,
+          error:
+            cause instanceof Error
+              ? cause.message
+              : '파일을 업로드하지 못했습니다.',
+        }));
       return null;
     } finally {
-      if (currentProject.current === projectId) setBusy(false);
+      requests.current.finish(request);
     }
   }
 
@@ -79,10 +114,11 @@ export function useArtifacts(projectId?: string) {
     return deliveryAPI.getArtifactContent(projectId, artifactId, signal);
   }
 
+  const matches = state.projectId === projectId;
   return {
-    items,
-    busy,
-    error,
+    items: matches ? state.items : [],
+    busy: !!projectId && (!matches || state.busy),
+    error: matches ? state.error : '',
     upload,
     readText,
     refresh: () => void refresh(),

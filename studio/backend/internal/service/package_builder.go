@@ -36,7 +36,7 @@ func (s *Delivery) BuildGeneration(ctx context.Context, generation domain.Genera
 	var deployYAML []byte
 	var packageFiles []crosswalkvm.PackageFile
 	var inlineFiles []crosswalkcompose.File
-	var writeZIP func(io.Writer) error
+	var writeZIP func(context.Context, io.Writer) error
 	var generatorVersion, chartFormat string
 	switch snapshot.Generator {
 	case crosswalkvm.ID:
@@ -46,7 +46,7 @@ func (s *Delivery) BuildGeneration(ctx context.Context, generation domain.Genera
 			return domain.Package{}, &InvalidArtifact{Err: buildErr}
 		}
 		deployYAML, packageFiles = bundle.DeployYAML, bundle.Files
-		writeZIP = func(w io.Writer) error { return crosswalkvm.WriteZIP(w, bundle) }
+		writeZIP = func(ctx context.Context, w io.Writer) error { return crosswalkvm.WriteZIPContext(ctx, w, bundle) }
 		generatorVersion, chartFormat = crosswalkvm.Version, crosswalkvm.ChartFormat
 	case crosswalkdocker.ID:
 		bundle, buildErr := crosswalkdocker.Generate(snapshot.Blueprint, string(snapshot.Environment))
@@ -54,7 +54,7 @@ func (s *Delivery) BuildGeneration(ctx context.Context, generation domain.Genera
 			return domain.Package{}, &InvalidArtifact{Err: buildErr}
 		}
 		deployYAML = bundle.DeployYAML
-		writeZIP = func(w io.Writer) error { return crosswalkdocker.WriteZIP(w, bundle) }
+		writeZIP = func(_ context.Context, w io.Writer) error { return crosswalkdocker.WriteZIP(w, bundle) }
 		generatorVersion, chartFormat = crosswalkdocker.Version, crosswalkdocker.ChartFormat
 	case crosswalkcompose.ID:
 		bundle, buildErr := crosswalkcompose.Generate(snapshot.Blueprint, string(snapshot.Environment))
@@ -62,10 +62,10 @@ func (s *Delivery) BuildGeneration(ctx context.Context, generation domain.Genera
 			return domain.Package{}, &InvalidArtifact{Err: buildErr}
 		}
 		deployYAML, inlineFiles = bundle.DeployYAML, bundle.Files
-		writeZIP = func(w io.Writer) error { return crosswalkcompose.WriteZIP(w, bundle) }
+		writeZIP = func(_ context.Context, w io.Writer) error { return crosswalkcompose.WriteZIP(w, bundle) }
 		generatorVersion, chartFormat = crosswalkcompose.Version, crosswalkcompose.ChartFormat
 	}
-	deployStage, err := s.packages.Stage(bytes.NewReader(deployYAML), s.textLimit)
+	deployStage, err := s.packages.StageContext(ctx, bytes.NewReader(deployYAML), s.textLimit)
 	if err != nil {
 		return domain.Package{}, err
 	}
@@ -86,7 +86,7 @@ func (s *Delivery) BuildGeneration(ctx context.Context, generation domain.Genera
 			maxZIP += int64(len(file.Body))
 		}
 	}
-	_, zipKey, err := s.packages.PutGenerated(writeZIP, maxZIP)
+	_, zipKey, err := s.packages.PutGeneratedContext(ctx, writeZIP, maxZIP)
 	if err != nil {
 		return domain.Package{}, err
 	}
@@ -100,7 +100,7 @@ func (s *Delivery) BuildGeneration(ctx context.Context, generation domain.Genera
 		files = append(files, domain.PackageFile{ID: fmt.Sprintf("file_%04d", i+1), Path: file.Path, BlobKey: "", MediaType: "application/octet-stream", SizeBytes: file.Artifact.Size, SHA256: file.Artifact.SHA256, Previewable: false})
 	}
 	for i, file := range inlineFiles {
-		stage, stageErr := s.packages.Stage(bytes.NewReader(file.Body), s.textLimit)
+		stage, stageErr := s.packages.StageContext(ctx, bytes.NewReader(file.Body), s.textLimit)
 		if stageErr != nil {
 			return domain.Package{}, stageErr
 		}
