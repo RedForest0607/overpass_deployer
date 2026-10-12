@@ -12,7 +12,7 @@ const capabilities = (generator) => ({
   limits: {},
 });
 
-test('package generation requires the crosswalk-vm package output and v1 chart format', () => {
+void test('package generation requires the crosswalk-vm package output and v1 chart format', () => {
   assert.deepEqual(evaluatePackageCapability(null), {
     supported: false,
     reason: null,
@@ -49,7 +49,7 @@ test('package generation requires the crosswalk-vm package output and v1 chart f
   );
 });
 
-test('Docker package generation uses an independent capability', () => {
+void test('Docker package generation uses an independent capability', () => {
   assert.match(
     evaluatePackageCapability(capabilities(null), 'crosswalk-docker').reason,
     /crosswalk-docker/,
@@ -67,7 +67,7 @@ test('Docker package generation uses an independent capability', () => {
   );
 });
 
-test('Compose package generation uses an independent capability', () => {
+void test('Compose package generation uses an independent capability', () => {
   assert.deepEqual(
     evaluatePackageCapability(
       capabilities({
@@ -92,7 +92,7 @@ test('Compose package generation uses an independent capability', () => {
   );
 });
 
-test('package responses with missing or incompatible chart formats are rejected', () => {
+void test('package responses with missing or incompatible chart formats are rejected', () => {
   assert.equal(
     packageContractError({
       chartFormat: REQUIRED_CHART_FORMAT,

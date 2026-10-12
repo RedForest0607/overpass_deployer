@@ -10,7 +10,7 @@ import {
 } from './communication-edge-layout.ts';
 import { Position } from '@xyflow/react';
 
-test('keeps a rounded smooth-step line while moving its bend', () => {
+void test('keeps a rounded smooth-step line while moving its bend', () => {
   const geometry = communicationEdgeGeometry(
     { x: 0, y: 20 },
     { x: 100, y: 60 },
@@ -25,7 +25,7 @@ test('keeps a rounded smooth-step line while moving its bend', () => {
   assert.match(geometry.path, /L100 60$/);
 });
 
-test('constrains bend movement to the smooth-step routing axis', () => {
+void test('constrains bend movement to the smooth-step routing axis', () => {
   assert.deepEqual(
     constrainedBendOffset(Position.Right, { x: 50, y: 50 }, { x: 80, y: 10 }),
     { x: 30, y: 0 },
@@ -36,7 +36,7 @@ test('constrains bend movement to the smooth-step routing axis', () => {
   );
 });
 
-test('calculates stable offsets for persistence', () => {
+void test('calculates stable offsets for persistence', () => {
   assert.deepEqual(midpoint({ x: 10, y: 20 }, { x: 50, y: 100 }), {
     x: 30,
     y: 60,
@@ -47,7 +47,7 @@ test('calculates stable offsets for persistence', () => {
   });
 });
 
-test('projects a dragged label onto the communication path', () => {
+void test('projects a dragged label onto the communication path', () => {
   const horizontalPath = {
     getTotalLength: () => 100,
     getPointAtLength: (length) => ({ x: length, y: 20 }),

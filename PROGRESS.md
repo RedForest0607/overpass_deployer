@@ -1,10 +1,14 @@
 # Progress
 
+- 2026-10-12 Studio 전체 lint 정리 완료: Node test runner 등록 69곳에 의도적 Promise 미사용을 명시하고, 공용 UI의 pointer 접근성·pagination 링크 콘텐츠·재사용 label 예외를 정리했다. Carousel 상태는 effect 내부 동기 setState 대신 `useSyncExternalStore` 기반 Embla 이벤트 구독으로 전환하고 reInit/select listener를 모두 해제한다. Chart payload key는 string/number만 허용해 예상하지 못한 함수·객체 값을 안전한 기본 key로 처리한다. ARIA group/status처럼 네이티브 태그 치환이 의미를 훼손하는 공용 primitive에는 `prefer-tag-over-role`을 적용하지 않도록 lint 정책을 명시했다.
+
+- 2026-10-12 정리 검증: 전체 `npm run lint`, TypeScript `--noEmit`, Node 테스트 69개, API 생성물 drift 검사, production build 및 diff whitespace 검사를 통과했다. 오류 3가지(테스트 등록 Promise 오진으로 lint gate 실패, Carousel 초기화/재초기화 시 상태 갱신 및 listener 누수, 비문자 Recharts key의 암묵적 문자열 변환)를 방지 로직과 전체 검증으로 확인했다. build의 500 kB 초과 chunk 경고는 남아 있다.
+
 - 2026-09-28 전체 코드 정리 후속: Crosswalk validator를 SSH·컨테이너·앱·파일·bootstrap·tag 검증으로, VM bootstrap을 package·사용자·system·Compose·service로 분리했다. Studio 토폴로지 palette/results/toolbar와 CSS token/base/topology/delivery를 분리하고 Docker·Compose 생성기의 typed target 모델을 공유해 YAML 생성 후 재파싱을 제거했다. 파일 목록·편집 요청에 프로젝트 범위 취소/응답 식별을 적용하고, ZIP 입력/출력·staging 취소, SSH 명령 기본 10분 제한 및 context 실행, blob 참조 조회의 fail-closed 처리를 보강했다. React ref/effect와 모바일 상태 구독을 정리하고 SSH 취소·원격 롤백의 차이를 문서화했다.
 
 - 2026-09-28 정리 검증: 오류 3가지(프로젝트 전환 후 지연 응답 유입, 취소 중 ZIP 읽기/쓰기 대기, DB 조회·manifest 오류 후 정상 blob 오삭제)를 방지 로직과 회귀 테스트로 검토했다. 프론트 69개 테스트·API drift·typecheck·앱/features/lib 및 모바일 훅 lint·production build, Studio backend 전체 race/vet, Crosswalk config/VM/docker/compose/dashboard/monitor/CLI 및 SSH 신규 취소 테스트 race와 변경 모듈 vet 통과. localhost Chrome E2E 6개 모두 통과(패키지 ZIP, 생성 재시도, 미저장 이동, 지연 파일 목록, 반응형/다크 모드/가져오기 초기화, 저장 충돌). CSS 최종 light/dark token 및 theme alias 값은 보존했다. 테스트 서버 종료를 확인했으며 실제 VM/Registry 접속은 하지 않았다.
 
-- 다음 To-Do: 전체 `npm run lint`에는 공용 UI 템플릿 접근성/타입/React 진단 18개와 Node 테스트 등록의 no-floating-promises 69개가 남아 별도 정리가 필요하다(앱 범위 lint는 통과). 미사용 PackagePreview/preview 파일 삭제는 승인 대기이며 현재 보존한다. production bundle의 500 kB 초과 경고는 후속 lazy-loading 후보로 유지한다. M3/M7 외부 Docker·Registry와 M4 DEV/PRD 인수는 대상·권한 확정 후 진행하며 M5는 미착수다.
+- 다음 To-Do: production bundle의 500 kB 초과 경고는 후속 lazy-loading 후보로 유지한다. 미사용 PackagePreview/preview 파일 삭제는 승인 대기이며 현재 보존한다. M3/M7 외부 Docker·Registry와 M4 DEV/PRD 인수는 대상·권한 확정 후 진행하며 M5는 미착수다.
 
 - 2026-09-28 M5 이전 로컬 후속 개발: M4 dashboard에 서버/앱별 최근 결과 표, 선택 앱의 read-only 상태 재조회, 확인 후 실패 제어/배포 재시도와 중복 작업 차단을 추가했다. 작업 확인 후 선택이 바뀌어도 원래 대상을 유지하고, 성공 재시도는 이전 실패를 대체하며 상태 갱신·이력 제한으로 재시도 정보를 잃지 않는다. 조회·작업·선택 설정을 파일별로 분리하고 VM Java local-file 규약 및 CLI tag 선택과의 차이를 문서화했다. Studio는 편집 동작·미저장 탐색·패키지 생성·파일 미리보기를 전용 훅으로 분리하고 polling의 취소/리스너 정리·다운로드 취소·생성/이력 재시도 직렬화를 보강했다. backend delivery는 artifact 처리/검사, generation, package 생성/조회로 분리했다. 오류 검토: 잘못된 앱 재시도, 부분 실패 후 중복 실행, 취소된 패키지 응답으로 화면 덮어쓰기 모두 방지 로직과 회귀 테스트로 검토했다. M3/M7 외부 Docker/Harbor 및 M4 DEV custom·PRD read-only 인수는 대상·권한 확정 후 진행하며 M5는 미착수로 유지한다.
 

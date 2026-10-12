@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { ArtifactRequests } from './artifact-requests.ts';
 
-test('late responses stay stale across A to B to A project switches', () => {
+void test('late responses stay stale across A to B to A project switches', () => {
   const scope = new ArtifactRequests();
   const a = scope.begin('A', 'list');
   scope.cancel();
@@ -14,7 +14,7 @@ test('late responses stay stale across A to B to A project switches', () => {
   assert.equal(scope.isCurrent(nextA), true);
 });
 
-test('manual refresh cancels older refresh and stale completion cannot unlock it', () => {
+void test('manual refresh cancels older refresh and stale completion cannot unlock it', () => {
   const scope = new ArtifactRequests();
   const old = scope.begin('A', 'list');
   const current = scope.begin('A', 'list');
@@ -23,7 +23,7 @@ test('manual refresh cancels older refresh and stale completion cannot unlock it
   assert.equal(scope.isCurrent(current), true);
 });
 
-test('upload is synchronously serialized and disposed responses are ignored', () => {
+void test('upload is synchronously serialized and disposed responses are ignored', () => {
   const scope = new ArtifactRequests();
   const upload = scope.begin('A', 'upload');
   assert.equal(scope.begin('A', 'upload'), null);

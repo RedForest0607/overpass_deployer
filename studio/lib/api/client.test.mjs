@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { APIError, request, requestBlob } from './client.ts';
 import { projectsAPI } from './projects.ts';
 
-test('client preserves revision conflicts without retrying a write', async (t) => {
+void test('client preserves revision conflicts without retrying a write', async (t) => {
   let count = 0;
   t.mock.method(globalThis, 'fetch', async () => {
     count++;
@@ -23,7 +23,7 @@ test('client preserves revision conflicts without retrying a write', async (t) =
   );
   assert.equal(count, 1);
 });
-test('project listing follows cursors and save sends the expected revision', async (t) => {
+void test('project listing follows cursors and save sends the expected revision', async (t) => {
   const calls = [];
   t.mock.method(globalThis, 'fetch', async (url, options) => {
     calls.push({ url, options });
@@ -45,7 +45,7 @@ test('project listing follows cursors and save sends the expected revision', asy
   assert.equal(JSON.parse(calls[2].options.body).expectedRevision, 2);
   assert.match(calls[2].url, /\/projects\/a\/topologies\/qa$/);
 });
-test('invalid server response is not presented as success', async (t) => {
+void test('invalid server response is not presented as success', async (t) => {
   t.mock.method(globalThis, 'fetch', async () => new Response('not json'));
   await assert.rejects(
     request('/projects'),
@@ -53,7 +53,7 @@ test('invalid server response is not presented as success', async (t) => {
   );
 });
 
-test('multipart requests keep the browser boundary and ZIP responses keep filename', async (t) => {
+void test('multipart requests keep the browser boundary and ZIP responses keep filename', async (t) => {
   const calls = [];
   t.mock.method(globalThis, 'fetch', async (url, options = {}) => {
     calls.push({ url, options });

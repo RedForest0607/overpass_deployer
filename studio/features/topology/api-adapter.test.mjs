@@ -5,7 +5,7 @@ import { createNode, sample } from './model.ts';
 import { fromAPI, toAPI } from './api-adapter.ts';
 import { placeWorkload } from './placement.ts';
 
-test('iSTOCKMALL DEV example is editable without dropping topology data', () => {
+void test('iSTOCKMALL DEV example is editable without dropping topology data', () => {
   const sample = JSON.parse(
     readFileSync('examples/istockmall-dev-topology.json', 'utf8'),
   );
@@ -27,7 +27,7 @@ test('iSTOCKMALL DEV example is editable without dropping topology data', () => 
   );
 });
 
-test('unsupported modes and extra ports cannot be silently rewritten', () => {
+void test('unsupported modes and extra ports cannot be silently rewritten', () => {
   const doc = toAPI(sample().nodes, sample().edges, { x: 0, y: 0, zoom: 1 });
   doc.blueprint.placements[0].mode = 'compose';
   assert.throws(() => fromAPI(doc.blueprint, doc.layout), /배치/);
@@ -37,7 +37,7 @@ test('unsupported modes and extra ports cannot be silently rewritten', () => {
   assert.throws(() => fromAPI(doc.blueprint, doc.layout), /포트/);
 });
 
-test('parent dimensions contain all persisted children without resetting coordinates', () => {
+void test('parent dimensions contain all persisted children without resetting coordinates', () => {
   const doc = toAPI(sample().nodes, sample().edges, { x: 0, y: 0, zoom: 1 });
   doc.layout.nodes.find((n) => n.nodeId === 'redis').position.y = 800;
   const restored = fromAPI(doc.blueprint, doc.layout);
@@ -45,7 +45,7 @@ test('parent dimensions contain all persisted children without resetting coordin
   assert.ok(restored.nodes.find((n) => n.id === 'vm').style.height >= 1000);
 });
 
-test('React Flow topology round-trips through Blueprint and layout', () => {
+void test('React Flow topology round-trips through Blueprint and layout', () => {
   const original = sample();
   original.nodes.find((node) => node.id === 'app').data.artifactRef =
     'artifact-01';
@@ -80,7 +80,7 @@ test('React Flow topology round-trips through Blueprint and layout', () => {
   );
 });
 
-test('communication bend and on-line label position round-trip only through layout', () => {
+void test('communication bend and on-line label position round-trip only through layout', () => {
   const original = sample();
   original.edges.find((edge) => edge.id === 'app-db').data.layout = {
     bendOffset: { x: 120, y: -35 },
@@ -108,7 +108,7 @@ test('communication bend and on-line label position round-trip only through layo
   );
 });
 
-test('external dependencies and AWS target map to explicit API enums', () => {
+void test('external dependencies and AWS target map to explicit API enums', () => {
   const original = sample();
   const vm = original.nodes.find((node) => node.id === 'vm');
   vm.data.platform = 'AWS EC2';
@@ -137,7 +137,7 @@ test('external dependencies and AWS target map to explicit API enums', () => {
   );
 });
 
-test('Crosswalk deployment profiles survive an API round trip', () => {
+void test('Crosswalk deployment profiles survive an API round trip', () => {
   const original = sample();
   const vm = original.nodes.find((node) => node.id === 'vm');
   const app = original.nodes.find((node) => node.id === 'app');
@@ -201,7 +201,7 @@ test('Crosswalk deployment profiles survive an API round trip', () => {
   );
 });
 
-test('Docker container and registry round-trip without storing token values', () => {
+void test('Docker container and registry round-trip without storing token values', () => {
   let { nodes, edges } = sample();
   const container = createNode('container', 'container', 0, 0);
   container.data.label = 'sample-container';

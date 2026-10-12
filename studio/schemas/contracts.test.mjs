@@ -7,7 +7,9 @@ import { spawnSync } from 'node:child_process';
 import { parse } from 'yaml';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
-const openAPI = parse(await readFile(path.join(directory, 'openapi-v1.yaml'), 'utf8'));
+const openAPI = parse(
+  await readFile(path.join(directory, 'openapi-v1.yaml'), 'utf8'),
+);
 const blueprint = JSON.parse(
   await readFile(path.join(directory, 'blueprint-v1.schema.json'), 'utf8'),
 );
@@ -30,7 +32,7 @@ function resolvePointer(document, pointer) {
     .reduce((current, part) => current?.[part], document);
 }
 
-test('OpenAPI document and local references are internally consistent', async () => {
+void test('OpenAPI document and local references are internally consistent', async () => {
   assert.equal(openAPI.openapi, '3.1.0');
   assert.equal(openAPI.servers[0].url, '/api/v1');
   for (const reference of references(openAPI)) {
@@ -44,28 +46,34 @@ test('OpenAPI document and local references are internally consistent', async ()
   }
 });
 
-test('operation IDs are unique and API operations define error responses', () => {
+void test('operation IDs are unique and API operations define error responses', () => {
   const operationIDs = [];
   for (const pathItem of Object.values(openAPI.paths)) {
     for (const method of ['get', 'post', 'put', 'patch', 'delete']) {
       const operation = pathItem[method];
       if (!operation) continue;
       operationIDs.push(operation.operationId);
-      assert.ok(operation.responses.default, `${operation.operationId} default response`);
+      assert.ok(
+        operation.responses.default,
+        `${operation.operationId} default response`,
+      );
     }
   }
   assert.equal(new Set(operationIDs).size, operationIDs.length);
 });
 
-test('Blueprint schema has a stable version and valid local references', () => {
+void test('Blueprint schema has a stable version and valid local references', () => {
   assert.equal(blueprint.properties.apiVersion.const, 'studio.deployer/v1');
   for (const reference of references(blueprint)) {
-    assert.ok(reference.startsWith('#/'), `unexpected external reference ${reference}`);
+    assert.ok(
+      reference.startsWith('#/'),
+      `unexpected external reference ${reference}`,
+    );
     assert.notEqual(resolvePointer(blueprint, reference), undefined, reference);
   }
 });
 
-test('generated API contracts match OpenAPI', () => {
+void test('generated API contracts match OpenAPI', () => {
   const result = spawnSync(
     process.execPath,
     [path.join(directory, '../scripts/generate-api-contracts.mjs'), '--check'],

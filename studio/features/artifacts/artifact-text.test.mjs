@@ -8,7 +8,7 @@ import {
 
 const artifact = (originalName, kind = 'file') => ({ originalName, kind });
 
-test('only YAML and XML text artifacts are editable', () => {
+void test('only YAML and XML text artifacts are editable', () => {
   assert.equal(isEditableArtifact(artifact('application-prod.yml')), true);
   assert.equal(isEditableArtifact(artifact('values.YAML')), true);
   assert.equal(isEditableArtifact(artifact('logback.xml')), true);
@@ -17,7 +17,7 @@ test('only YAML and XML text artifacts are editable', () => {
   assert.equal(isEditableArtifact(artifact('notes.txt')), false);
 });
 
-test('YAML validation rejects malformed content', () => {
+void test('YAML validation rejects malformed content', () => {
   assert.equal(
     validateArtifactText('values.yml', 'server:\n  port: 8080'),
     undefined,
@@ -39,7 +39,7 @@ test('YAML validation rejects malformed content', () => {
   );
 });
 
-test('artifact media type follows the edited format', () => {
+void test('artifact media type follows the edited format', () => {
   assert.equal(artifactMediaType('logback.xml'), 'application/xml');
   assert.equal(artifactMediaType('values.yaml'), 'application/yaml');
 });

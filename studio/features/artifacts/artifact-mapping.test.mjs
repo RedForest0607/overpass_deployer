@@ -81,7 +81,7 @@ const artifacts = [
   artifact('limits-1', 'file', 'limits.conf'),
 ];
 
-test('discovers typed artifact requirements and reports their status', () => {
+void test('discovers typed artifact requirements and reports their status', () => {
   const requirements = analyzeArtifactMappings(topology(), artifacts);
   assert.equal(requirements.length, 5);
   assert.deepEqual(
@@ -101,7 +101,7 @@ test('discovers typed artifact requirements and reports their status', () => {
   );
 });
 
-test('stages suggestions and applies mappings without mutating input nodes', () => {
+void test('stages suggestions and applies mappings without mutating input nodes', () => {
   const nodes = topology();
   const original = structuredClone(nodes);
   const requirements = analyzeArtifactMappings(nodes, artifacts);
@@ -122,7 +122,7 @@ test('stages suggestions and applies mappings without mutating input nodes', () 
   assert.equal(vm.data.deployment.files[0].artifactRef, 'limits-1');
 });
 
-test('rejects foreign, incompatible, and stale assignments', () => {
+void test('rejects foreign, incompatible, and stale assignments', () => {
   const requirements = analyzeArtifactMappings(topology(), artifacts);
   const jarRequirement = requirements.find(({ label }) => label === '실행 JAR');
 

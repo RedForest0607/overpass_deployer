@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { deliveryAPI } from './delivery.ts';
 
-test('artifact listing follows project-scoped cursors', async (t) => {
+void test('artifact listing follows project-scoped cursors', async (t) => {
   const calls = [];
   t.mock.method(globalThis, 'fetch', async (url) => {
     calls.push(String(url));
@@ -19,7 +19,7 @@ test('artifact listing follows project-scoped cursors', async (t) => {
   assert.match(calls[0], /projects\/project%2Fa\/artifacts/);
 });
 
-test('generation sends an idempotency key with immutable revision', async (t) => {
+void test('generation sends an idempotency key with immutable revision', async (t) => {
   let call;
   t.mock.method(globalThis, 'fetch', async (url, options) => {
     call = { url: String(url), options };
@@ -44,7 +44,7 @@ test('generation sends an idempotency key with immutable revision', async (t) =>
   });
 });
 
-test('Docker validation and generation send the selected generator', async (t) => {
+void test('Docker validation and generation send the selected generator', async (t) => {
   const bodies = [];
   t.mock.method(globalThis, 'fetch', async (_url, options) => {
     bodies.push(JSON.parse(options.body));
@@ -74,7 +74,7 @@ test('Docker validation and generation send the selected generator', async (t) =
   assert.equal(bodies[1].generator, 'crosswalk-docker');
 });
 
-test('Compose validation and generation send the selected generator', async (t) => {
+void test('Compose validation and generation send the selected generator', async (t) => {
   const bodies = [];
   t.mock.method(globalThis, 'fetch', async (_url, options) => {
     bodies.push(JSON.parse(options.body));
@@ -104,7 +104,7 @@ test('Compose validation and generation send the selected generator', async (t) 
   assert.equal(bodies[1].generator, 'crosswalk-compose');
 });
 
-test('generation history and retry keep project and snapshot source scoped', async (t) => {
+void test('generation history and retry keep project and snapshot source scoped', async (t) => {
   const calls = [];
   t.mock.method(globalThis, 'fetch', async (url, options = {}) => {
     calls.push({ url: String(url), options });
@@ -135,7 +135,7 @@ test('generation history and retry keep project and snapshot source scoped', asy
   );
 });
 
-test('artifact upload uses multipart fields expected by the backend', async (t) => {
+void test('artifact upload uses multipart fields expected by the backend', async (t) => {
   let call;
   t.mock.method(globalThis, 'fetch', async (url, options) => {
     call = { url: String(url), options };
@@ -149,7 +149,7 @@ test('artifact upload uses multipart fields expected by the backend', async (t) 
   assert.equal(new Headers(call.options.headers).has('Content-Type'), false);
 });
 
-test('artifact content read stays within the encoded project and artifact path', async (t) => {
+void test('artifact content read stays within the encoded project and artifact path', async (t) => {
   let call;
   t.mock.method(globalThis, 'fetch', async (url, options) => {
     call = { url: String(url), options };

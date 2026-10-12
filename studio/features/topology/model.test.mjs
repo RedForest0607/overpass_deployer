@@ -5,7 +5,7 @@ import { filesFor } from '../generation/preview.ts';
 import { placeWorkload, removeResource } from './placement.ts';
 import { parse } from 'yaml';
 
-test('sample topology passes and VM draft references only deployed applications', () => {
+void test('sample topology passes and VM draft references only deployed applications', () => {
   const { nodes, edges } = sample();
   assert.deepEqual(validate(nodes, edges), []);
   const files = filesFor(nodes, edges, 'DEV');
@@ -14,7 +14,7 @@ test('sample topology passes and VM draft references only deployed applications'
   assert.equal(doc.servers[0].apps[0].name, 'bo-pcweb');
   assert.match(files['README.txt'], /실행 가능한 배포 패키지가 아닙니다/);
 });
-test('rejects invalid ports, disconnected workloads and duplicate names', () => {
+void test('rejects invalid ports, disconnected workloads and duplicate names', () => {
   const { nodes, edges } = sample();
   nodes.find((n) => n.id === 'app').data.port = 70000;
   nodes.find((n) => n.id === 'vm').data.label = nodes.find(
@@ -28,13 +28,13 @@ test('rejects invalid ports, disconnected workloads and duplicate names', () => 
   assert.ok(issues.some((i) => i.id === 'apptarget'));
   assert.ok(issues.some((i) => i.id === 'appduplicate'));
 });
-test('rejects forbidden connections and dangling references', () => {
+void test('rejects forbidden connections and dangling references', () => {
   assert.equal(connectionType('database', 'vm'), null);
   const { nodes, edges } = sample();
   edges.push({ id: 'dangling', source: 'app', target: 'missing' });
   assert.ok(validate(nodes, edges).some((i) => i.id === 'dangling'));
 });
-test('detects same-host application port collision and stale network binding', () => {
+void test('detects same-host application port collision and stale network binding', () => {
   const { nodes, edges } = sample();
   const second = createNode('java', 'second', 0, 0);
   nodes.push(second);
@@ -44,7 +44,7 @@ test('detects same-host application port collision and stale network binding', (
   assert.ok(issues.some((i) => i.id === 'secondconflict'));
   assert.ok(issues.some((i) => i.id === 'app-dbbinding'));
 });
-test('YAML serialization safely quotes arbitrary draft values', () => {
+void test('YAML serialization safely quotes arbitrary draft values', () => {
   const { nodes, edges } = sample();
   nodes.find((n) => n.id === 'app').data.artifact =
     'odd: filename # comment.jar';
@@ -54,7 +54,7 @@ test('YAML serialization safely quotes arbitrary draft values', () => {
     './assets/odd: filename # comment.jar',
   );
 });
-test('multiple Java and search services share one host with independent slots', () => {
+void test('multiple Java and search services share one host with independent slots', () => {
   let { nodes, edges } = sample();
   const app = createNode('java', 'second', 0, 0);
   app.data.port = 8081;
@@ -81,7 +81,7 @@ test('multiple Java and search services share one host with independent slots', 
     'vm',
   );
 });
-test('moving a service replaces placement and deleting the target preserves services', () => {
+void test('moving a service replaces placement and deleting the target preserves services', () => {
   let { nodes, edges } = sample();
   const host = createNode('vm', 'ec2', 800, 0);
   host.data.host = '10.0.0.2';
@@ -101,7 +101,7 @@ test('moving a service replaces placement and deleting the target preserves serv
   assert.ok(validate(nodes, edges).some((i) => i.id === 'apptarget'));
   assert.ok(nodes.every((n) => n.parentId !== 'ec2'));
 });
-test('hosted Redis needs no endpoint, external Redis does; mixed service ports collide', () => {
+void test('hosted Redis needs no endpoint, external Redis does; mixed service ports collide', () => {
   let { nodes, edges } = sample();
   assert.deepEqual(validate(nodes, edges), []);
   nodes.find((n) => n.id === 'redis').data.port = 8080;
@@ -109,13 +109,13 @@ test('hosted Redis needs no endpoint, external Redis does; mixed service ports c
   ({ nodes, edges } = placeWorkload(nodes, edges, 'redis'));
   assert.ok(validate(nodes, edges).some((i) => i.id === 'redishost'));
 });
-test('rejects inconsistent visual parent and deployment relationship', () => {
+void test('rejects inconsistent visual parent and deployment relationship', () => {
   const { nodes, edges } = sample();
   nodes.find((n) => n.id === 'app').parentId = 'missing';
   assert.ok(validate(nodes, edges).some((i) => i.id === 'appplacement'));
 });
 
-test('Docker container requires a VM placement, pinned image, and registry token environment', () => {
+void test('Docker container requires a VM placement, pinned image, and registry token environment', () => {
   let { nodes, edges } = sample();
   const container = createNode('container', 'container', 0, 0);
   container.data.label = 'sample-container';
@@ -140,7 +140,7 @@ test('Docker container requires a VM placement, pinned image, and registry token
   assert.ok(issues.some((issue) => issue.id === 'registrytoken-env'));
 });
 
-test('legacy registry secret references remain editable for VM blueprints', () => {
+void test('legacy registry secret references remain editable for VM blueprints', () => {
   const { nodes, edges } = sample();
   const registry = createNode('registry', 'registry', 600, 300);
   registry.data.label = 'legacy-registry';

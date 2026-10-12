@@ -7,7 +7,7 @@ import {
 
 const projectADev = { projectId: 'project-a', environment: 'dev' };
 
-test('requires confirmation before opening another project with unsaved changes', () => {
+void test('requires confirmation before opening another project with unsaved changes', () => {
   assert.equal(
     requiresUnsavedConfirmation(true, projectADev, {
       projectId: 'project-b',
@@ -17,7 +17,7 @@ test('requires confirmation before opening another project with unsaved changes'
   );
 });
 
-test('requires confirmation before changing environment with unsaved changes', () => {
+void test('requires confirmation before changing environment with unsaved changes', () => {
   assert.equal(
     requiresUnsavedConfirmation(true, projectADev, {
       projectId: 'project-a',
@@ -27,7 +27,7 @@ test('requires confirmation before changing environment with unsaved changes', (
   );
 });
 
-test('keeps the current edit when reopening the same topology context', () => {
+void test('keeps the current edit when reopening the same topology context', () => {
   assert.equal(isSameTopologyContext(projectADev, projectADev), true);
   assert.equal(
     requiresUnsavedConfirmation(true, projectADev, projectADev),
@@ -35,7 +35,7 @@ test('keeps the current edit when reopening the same topology context', () => {
   );
 });
 
-test('allows context changes when there are no unsaved changes', () => {
+void test('allows context changes when there are no unsaved changes', () => {
   assert.equal(
     requiresUnsavedConfirmation(false, projectADev, {
       projectId: 'project-b',

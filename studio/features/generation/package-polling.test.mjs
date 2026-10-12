@@ -11,7 +11,7 @@ const result = {
 };
 const done = { id: 'gen-1', status: 'succeeded', packageId: result.id };
 
-test('delay rejects an already-aborted signal and removes completed listeners', async () => {
+void test('delay rejects an already-aborted signal and removes completed listeners', async () => {
   const aborted = new AbortController();
   aborted.abort();
   await assert.rejects(abortableDelay(10000, aborted.signal), {
@@ -22,7 +22,7 @@ test('delay rejects an already-aborted signal and removes completed listeners', 
   assert.equal(getEventListeners(current.signal, 'abort').length, 0);
 });
 
-test('polling waits for success and checks the expected generator contract', async () => {
+void test('polling waits for success and checks the expected generator contract', async () => {
   const statuses = [{ id: 'gen-1', status: 'running' }, done];
   const progress = [],
     delays = [];
@@ -54,7 +54,7 @@ test('polling waits for success and checks the expected generator contract', asy
   assert.deepEqual(delays, [1000, 2000]);
 });
 
-test('late generation responses cannot publish progress after cancellation', async () => {
+void test('late generation responses cannot publish progress after cancellation', async () => {
   const controller = new AbortController();
   let published = false,
     packageRead = false;
@@ -86,7 +86,7 @@ test('late generation responses cannot publish progress after cancellation', asy
   assert.equal(packageRead, false);
 });
 
-test('late package responses cannot return a cancelled result', async () => {
+void test('late package responses cannot return a cancelled result', async () => {
   const controller = new AbortController();
   const api = {
     async getPackage() {
@@ -107,7 +107,7 @@ test('late package responses cannot return a cancelled result', async () => {
   );
 });
 
-test('failed jobs, missing package IDs and incompatible packages stay errors', async () => {
+void test('failed jobs, missing package IDs and incompatible packages stay errors', async () => {
   const api = {
     async getPackage() {
       return { ...result, generator: 'crosswalk-vm' };

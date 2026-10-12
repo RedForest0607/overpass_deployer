@@ -7,7 +7,7 @@ import {
 } from './topology-import.ts';
 import { validate } from './model.ts';
 
-test('imports the exported iSTOCKMALL topology envelope', () => {
+void test('imports the exported iSTOCKMALL topology envelope', () => {
   const value = parseTopologyImport(
     readFileSync('examples/istockmall-dev-topology.json', 'utf8'),
   );
@@ -17,7 +17,7 @@ test('imports the exported iSTOCKMALL topology envelope', () => {
   assert.equal(value.graph.deployment.ssh.user, 'ec2-user');
 });
 
-test('imports the Docker commerce example without losing deployment fields', () => {
+void test('imports the Docker commerce example without losing deployment fields', () => {
   const value = parseTopologyImport(
     readFileSync('examples/docker-commerce-dev-topology.json', 'utf8'),
   );
@@ -34,7 +34,7 @@ test('imports the Docker commerce example without losing deployment fields', () 
   assert.deepEqual(validate(value.graph.nodes, value.graph.edges), []);
 });
 
-test('imports a raw Blueprint and creates an editable default layout', () => {
+void test('imports a raw Blueprint and creates an editable default layout', () => {
   const value = parseTopologyImport(
     JSON.stringify({
       apiVersion: 'studio.deployer/v1',
@@ -70,7 +70,7 @@ test('imports a raw Blueprint and creates an editable default layout', () => {
   assert.equal(value.graph.viewport.zoom, 0.8);
 });
 
-test('rejects malformed, incompatible, and oversized input', () => {
+void test('rejects malformed, incompatible, and oversized input', () => {
   assert.throws(() => parseTopologyImport('{'), /JSON 문법/);
   assert.throws(
     () => parseTopologyImport(JSON.stringify({ apiVersion: 'legacy' })),
@@ -98,7 +98,7 @@ test('rejects malformed, incompatible, and oversized input', () => {
   );
 });
 
-test('imports connection layout and rejects unknown connection references', () => {
+void test('imports connection layout and rejects unknown connection references', () => {
   const sample = JSON.parse(
     readFileSync('examples/istockmall-dev-topology.json', 'utf8'),
   );
